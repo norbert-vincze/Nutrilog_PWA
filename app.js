@@ -19,6 +19,7 @@ const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); r
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
+const VERSION = '4 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function fmt(v) {
@@ -595,6 +596,9 @@ function viewData() {
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 14px">Mode: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'} · <span id="persist-state">persistent storage: checking…</span></p>
       <button class="btn" data-act="persist">Request persistent storage</button></div>
+    <div class="card"><div class="card-t">App version</div>
+      <p class="muted small" style="margin:6px 0 14px">Nutrilog version <b>${esc(VERSION)}</b>. If a fix is published but you still see the old behaviour, tap the button: it reloads the app files. Your diary and foods stay untouched. Needs internet.</p>
+      <button class="btn" data-act="refresh-app">Reload app files</button></div>
     <div class="card"><div class="card-t">Sources &amp; licences</div>
       <p class="small" style="margin:8px 0">Generic foods: Anses. 2020. Ciqual French food composition table. <a href="https://doi.org/10.5281/zenodo.4770202" target="_blank" rel="noopener">doi.org/10.5281/zenodo.4770202</a> (CC BY 4.0).</p>
       <p class="small" style="margin:8px 0">Packaged products: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
@@ -971,6 +975,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'export-json') exportJson();
   else if (a === 'export-entries') exportEntries();
   else if (a === 'export-days') exportDays();
+  else if (a === 'refresh-app') refreshApp();
   else if (a === 'persist') {
     (navigator.storage && navigator.storage.persist ? navigator.storage.persist() : Promise.resolve(false)).then((ok) => { toast(ok ? 'Persistent storage enabled' : 'The browser declined. Install the app to your home screen and back up regularly.'); persistState(); });
   }
@@ -982,6 +987,16 @@ document.addEventListener('change', (ev) => {
 document.addEventListener('input', (ev) => {
   if (ev.target.id === 'ffilter') { S.filter = ev.target.value; $('#flist').innerHTML = foodListHtml(); }
 });
+/* Forget the saved copy of the app files and load them again. The diary lives in IndexedDB and is not touched. */
+async function refreshApp() {
+  if (!navigator.onLine) { toast('You are offline. Connect to the internet first.'); return; }
+  toast('Reloading app files…');
+  try {
+    if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+  } catch { /* reload anyway */ }
+  location.reload();
+}
 function defaultMeal() {
   const h = new Date().getHours();
   return h < 10 ? 'm1' : h < 15 ? 'm2' : h < 21 ? 'm3' : 'm4';

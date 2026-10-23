@@ -114,7 +114,7 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 2. Nyisd meg a repót a GitHubon, kattints az „Add file” gombra, majd az „Upload files” menüpontra.
 3. Húzd be az új fájlokat. Az azonos nevűeket a GitHub felülírja.
 4. „Commit changes”. Pár perc múlva az új verzió él.
-5. A telefonon zárd be az appot, és nyisd meg újra, szükség esetén kétszer. Az adataid megmaradnak.
+5. A telefonon nyisd meg az appot, és nézd meg a Data fül alján az „App version” kártyát. Ha ott még a régi verziószám áll, koppints a „Reload app files” gombra (internet kell hozzá). Az adataid megmaradnak, csak az app fájljai töltődnek le újra.
 
 ## Ha elakadsz
 
@@ -122,7 +122,7 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 |---|---|
 | A webcím „404”-et ad | Várj 10 percet, és ellenőrizd, hogy az `index.html` a repó főoldalán van-e, nem almappában. Ha almappában van, töltsd fel újra a fájlokat. |
 | „The app could not start” | Az `index.html`-re duplán kattintva az app nem indul, mert tárhely kell hozzá. Nyisd meg a GitHub-címről. |
-| Üres oldal vagy régi verzió | Frissítsd az oldalt, vagy zárd be és nyisd meg újra az appot. |
+| Üres oldal vagy régi verzió | Data fül → „App version” kártya → „Reload app files”. Ha az app el sem indul, frissítsd az oldalt, vagy zárd be és nyisd meg újra. |
 | A kamera nem indul | Engedélyezd a kamerát a telefon beállításaiban a böngészőnek. Addig is beírhatod a vonalkód számjegyeit a „Scan” ablakban. |
 | Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Az első koppintásnál a régi érték szürke háttérszámmá válik, és az új szám a helyére kerül. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
 | „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „New food from label” gombot. |
