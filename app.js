@@ -18,6 +18,7 @@ const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
+const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function fmt(v) {
@@ -372,19 +373,29 @@ function offToFood(p) {
     note: 'Open Food Facts (community data, taken from the label)', fetched: Date.now(),
   };
 }
-async function offFetch(url) {
+/* allow404: for a barcode lookup Open Food Facts answers "404" when the product simply is not in the database */
+async function offFetch(url, allow404) {
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!r.ok) throw new Error('Open Food Facts did not respond (HTTP ' + r.status + ').');
+  if (r.status === 404 && allow404) return { status: 0 };
+  if (!r.ok) throw new Error('Open Food Facts is not available right now (HTTP ' + r.status + '). Try again in a minute.');
   return r.json();
 }
+/* the same product can be stored as a 12-digit UPC-A or as a 13-digit EAN with a leading 0 */
+function codeVariants(code) {
+  const c = String(code).replace(/\s/g, '');
+  if (c.length === 12) return [c, '0' + c];
+  if (c.length === 13 && c[0] === '0') return [c, c.slice(1)];
+  return [c];
+}
 async function offProduct(code) {
-  const j = await offFetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`);
-  if (j.status !== 1 || !j.product) return null;
-  j.product.code = j.product.code || code;
-  return offToFood(j.product);
+  for (const c of codeVariants(code)) {
+    const j = await offFetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(c)}.json?fields=${OFF_FIELDS}`, true);
+    if (j.status === 1 && j.product) { j.product.code = j.product.code || c; return offToFood(j.product); }
+  }
+  return null;
 }
 async function offSearch(q, huOnly) {
-  const p = new URLSearchParams({ search_terms: q, search_simple: '1', action: 'process', json: '1', page_size: '15', fields: OFF_FIELDS });
+  const p = new URLSearchParams({ search_terms: q, search_simple: '1', action: 'process', json: '1', page_size: '20', sort_by: 'unique_scans_n', fields: OFF_FIELDS });
   if (huOnly) { p.set('tagtype_0', 'countries'); p.set('tag_contains_0', 'contains'); p.set('tag_0', 'hungary'); }
   const j = await offFetch('https://world.openfoodfacts.org/cgi/search.pl?' + p);
   return (j.products || []).filter((x) => x.code).map(offToFood);
@@ -597,10 +608,10 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
   const sh = openSheet(title, `
     <input id="q" type="search" class="search" inputmode="search" autocomplete="off" placeholder="Search: egg, tojás, bread, kenyér…" aria-label="Search foods">
     <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button><button class="btn" data-a="off">Search Open Food Facts</button></div>
-    <label class="chk"><input type="checkbox" id="huonly" checked> Open Food Facts: Hungarian market only</label>
+    <label class="chk"><input type="checkbox" id="huonly"> Name search: only products sold in Hungary</label>
     <div id="res" aria-live="polite"></div>`);
   const q = $('#q', sh.el), res = $('#res', sh.el);
-  let off = null, offMsg = '';
+  let off = null, offMsg = '', notFound = false;
   const list = (arr, kind) => `<div class="rows">${arr.map((f) => foodRow(f, `data-pick="${esc(f.id)}" data-kind="${kind}"`)).join('')}</div>`;
   function paint() {
     const text = q.value.trim();
@@ -622,25 +633,35 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
     }
     if (off) html += `<h4>Open Food Facts</h4>${off.length ? list(off, 'off') : '<p class="muted">No results.</p>'}`;
     if (offMsg) html += `<p class="note">${esc(offMsg)}</p>`;
-    html += '<div class="row gap" style="margin-top:16px"><button class="btn" data-a="new">+ New food from label</button></div>';
+    html += `<div class="row gap" style="margin-top:16px"><button class="btn${notFound ? ' primary' : ''}" data-a="new">+ New food from label</button></div>`;
     res.innerHTML = html;
   }
   async function runOff(code) {
-    offMsg = '';
+    offMsg = ''; notFound = false;
     const text = q.value.trim();
     if (!text) { offMsg = 'Type a name or a barcode first.'; paint(); return; }
+    if (code) {
+      /* a product you saved earlier (same barcode) wins, and works offline */
+      const variants = codeVariants(code);
+      const mine = Object.values(S.foods).find((f) => f.barcode && variants.includes(f.barcode));
+      if (mine) { off = null; paint(); pick(mine); return; }
+    }
     res.insertAdjacentHTML('afterbegin', '<p class="muted">Searching Open Food Facts…</p>');
     try {
       if (code) {
         const food = await offProduct(code);
-        if (!food) { off = []; offMsg = 'This barcode is not in Open Food Facts. Add it yourself with “New food from label”.'; paint(); return; }
+        if (!food) {
+          off = []; notFound = true;
+          offMsg = `Open Food Facts does not have barcode ${code}. It is a community database, so some products are missing, especially supplements and items from outside Europe. Tap “New food from label” and copy the values from the package. The barcode is filled in, so the next scan finds the product in your own foods.`;
+          paint(); return;
+        }
         off = [food]; paint();
         const kept = keepOff(food);
         if (!Object.keys(kept.n).length) offMsg = 'Open Food Facts has no nutrition values for this product. Fill them in from the label under My foods.';
         pick(kept);
       } else {
         off = await offSearch(text, $('#huonly', sh.el).checked);
-        if (!off.length && $('#huonly', sh.el).checked) offMsg = 'No Hungarian results. Untick “Hungarian market only” to search everywhere.';
+        if (!off.length && $('#huonly', sh.el).checked) offMsg = 'No results among products sold in Hungary. Untick the box to search worldwide.';
         paint();
       }
     } catch (err) {
@@ -649,7 +670,7 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
     }
   }
   function pick(food) { onPick(food); }
-  q.addEventListener('input', () => { paint(); });
+  q.addEventListener('input', () => { notFound = false; paint(); });
   sh.el.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
     if (!b) return;
@@ -664,7 +685,8 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
   });
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const t = q.value.replace(/\s/g, ''); if (/^\d{8,14}$/.test(t)) runOff(t); } });
   paint();
-  setTimeout(() => q.focus(), 60);
+  /* iPhone: the keyboard only opens if focus() runs inside the tap that opened the sheet; elsewhere do it with a short delay */
+  if (TOUCH) { try { q.focus({ preventScroll: true }); } catch { /* the field can be tapped */ } } else setTimeout(() => q.focus(), 60);
   return sh;
 }
 
@@ -727,7 +749,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     <div class="card" id="prev"></div>
     <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food.src !== 'ciqual' ? '<button class="btn" id="editfood">Edit food</button>' : ''}<span style="flex:1"></span><button class="btn primary" id="ok">${entry ? 'Save' : 'Add'}</button></div>`);
   const amt = $('#amt', sh.el);
-  const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
+  const val = () => { const v = num(amt.value.trim() === '' && amt.dataset.prev ? amt.dataset.prev : amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function prev() {
     const a = val(), v = vecOf(food);
     if (Number.isNaN(a)) { $('#prev', sh.el).innerHTML = '<span class="muted">Enter a positive number.</span>'; return; }
@@ -767,7 +789,14 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const ef = $('#editfood', sh.el);
   if (ef) ef.onclick = () => openFoodEditor(food, { after: () => { sh.close(); render(); } });
   prev();
-  setTimeout(() => { amt.focus(); amt.select(); }, 60);
+  /* Focus the field by hand only on computers. On an iPhone, focus() outside a tap leaves the field "focused" without a keyboard,
+     and tapping it afterwards does nothing. So on touch screens the person taps the field, and the old value gets selected. */
+  let cleared = false;   /* first focus empties the field (old value shows grey), so the new number simply replaces it */
+  amt.addEventListener('focus', () => { if (!cleared) { cleared = true; amt.dataset.prev = amt.value; amt.placeholder = amt.value; amt.value = ''; prev(); } });
+  amt.addEventListener('blur', () => { if (amt.value.trim() === '') { amt.value = amt.dataset.prev || ''; prev(); } });
+  amt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#ok', sh.el).click(); } });
+  if (!TOUCH) setTimeout(() => { amt.focus(); amt.select(); }, 60);
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
 }
 
 function addFlow(meal) {

@@ -36,7 +36,7 @@ Az egész kb. 25 percig tart, ingyenes, és nem kell hozzá programozni. A lény
 
 ## 4. Töltsd fel a fájlokat
 
-1. Az új, üres repón kattints az „**uploading an existing file**” feliratú linkre. Ha nem látod, az „Add file” gomb alatt az „Upload files” menüpont ugyanezt csinálja.
+1. Az új, üres repón még nincs „Add file” gomb, az csak az első feltöltés után jelenik meg. Az oldal közepén, a „Quick setup” részben ott van egy mondat: „Get started by creating a new file or **uploading an existing file**”. Kattints az „**uploading an existing file**” kék linkre. Ha a link nem látszik, írd be a böngésző címsorába a repód címét ezzel a véggel: `https://github.com/FELHASZNÁLÓNEVED/nutrilog/upload/main`
 2. Nyisd meg a kicsomagolt mappát, és jelöld ki az összes fájlt benne (**Windows:** Ctrl+A, **Mac:** Cmd+A).
 3. Húzd át őket a böngészőablakba, a „Drag files here” feliratra. **Csak a fájlokat húzd, magát a mappát ne.**
 4. Várj, amíg minden fájl mellett kész a töltősáv. 14 fájlnak kell megjelennie.
@@ -81,7 +81,8 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 1. Koppints a „**Scan**” gombra, és engedélyezd a kamerát.
 2. Tartsd a vonalkódot a kamera elé. Az app az Open Food Facts adatbázisból tölti le a tápértéket.
 3. Ha a kamera nem megy, a „or type the number” mezőbe begépelheted a vonalkód számjegyeit, és koppinthatsz a „Look up” gombra.
-4. Ha a termék nincs az adatbázisban, vagy hiányosak az adatai, vedd fel kézzel (lásd lent).
+4. A vonalkódos keresés az egész világ termékei között keres, nem csak a magyarok között. Az Open Food Facts viszont közösségi adatbázis, ezért hiányozhatnak belőle termékek, főleg étrend-kiegészítők és Európán kívüli áruk. Ilyenkor az app ezt írja: „Open Food Facts does not have barcode…”. Koppints a kék „New food from label” gombra, és másold be az értékeket a csomagolásról. A vonalkód már be van írva, és a következő beolvasásnál az app azonnal a saját ételedet hozza.
+5. A névkeresésnél („Search Open Food Facts”) alapból az egész világon keres. Ha csak a Magyarországon árult termékeket akarod látni, pipáld be a „Name search: only products sold in Hungary” négyzetet.
 
 **Étel vagy kiegészítő felvétele a címkéről:**
 1. Koppints a „**New food**” gombra.
@@ -123,6 +124,9 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | „The app could not start” | Az `index.html`-re duplán kattintva az app nem indul, mert tárhely kell hozzá. Nyisd meg a GitHub-címről. |
 | Üres oldal vagy régi verzió | Frissítsd az oldalt, vagy zárd be és nyisd meg újra az appot. |
 | A kamera nem indul | Engedélyezd a kamerát a telefon beállításaiban a böngészőnek. Addig is beírhatod a vonalkód számjegyeit a „Scan” ablakban. |
+| Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Az első koppintásnál a régi érték szürke háttérszámmá válik, és az új szám a helyére kerül. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
+| „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „New food from label” gombot. |
+| „Open Food Facts is not available right now” | Az adatbázis szervere éppen nem válaszol. Próbáld újra egy perc múlva. |
 | „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „New food” gombot. |
 | Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. |
 
