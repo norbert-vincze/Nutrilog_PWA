@@ -22,6 +22,7 @@ explain every manual step (GitHub clicks, phone steps) in small numbered steps w
 - Look: Revolut-inspired fintech style (big number, circular actions, grey cards, bottom sheets, light/dark). Do not copy the brand.
 - Meals are `Meal 1` … `Meal N`, count set by `MEAL_COUNT` (6). No breakfast/lunch names. A new entry defaults to the meal of the latest entry on the shown day (Meal 1 on an empty day).
 - Every diary entry has a time of day: `tm` ("HH:MM", local, 24 h), editable in the Amount/Edit entry sheet (`#tm`, `<input type="time">`, next to Meal). New entries start at the current time. Entries without `tm` (made before version 6) show the time they were added (`t`, never changed). The time never moves an entry to another day (`d` stays the shown day). Within a meal entries are sorted by time (`byTime`); `defaultMeal()` still uses the creation order `t`. The entries CSV has a `time` column after `date`. Do not call `focus()` on the time field (iOS).
+- Theme is a manual setting: Data tab → **Appearance** → Auto / Light / Dark (`localStorage` key `nutrilog.theme`, not part of the backup). CSS has only `:root` (light) and `:root[data-theme="dark"]`; there is no `prefers-color-scheme` block. `data-theme` is always set to `light` or `dark`: first by the inline script in `index.html` (before first paint, no flash), then by `applyTheme()` in app.js, which also follows live phone changes while Auto is on. Keep the rule in both places identical. The `theme-color` meta is a single tag updated by script.
 - There is **no Recipe feature**. It was removed on purpose. Do not add it back.
 - Missing data is not zero: values are lower/upper vectors with NaN; totals show `≥`, the `cnt/n` pill, `~` for energy estimated from macros, "Lower estimate" chip. Empty field = no data, 0 = real zero.
 - Data stays in the browser (IndexedDB `tapnaplo`/`kv`, localStorage fallback). Backup JSON keeps the marker `app:'tapnaplo'`. CSV exports (entries, daily totals) are for analysis with Claude; columns ending `__max` are upper bounds of "<x" values, `__n` counts items with data.
@@ -48,6 +49,7 @@ python3 test_scanner.py        # camera scan with fake video (ZXing path)
 python3 test_barcode_keyboard.py  # not-found barcode, 12/13 digits, amount field, Hungary filter, reload button
 python3 test_audit_fixes.py    # the 18 points of the UX/accessibility audit (contrast, 44 px targets, wording, errors, dialogs)
 python3 test_entry_time.py     # entry time: default now, edit, sort, empty-time error, old entries, reload, CSV column
+python3 test_theme.py          # Auto/Light/Dark: no flash, saved, survives reload, Auto follows the phone live
 ```
 Not testable here: a real iPhone, the live Open Food Facts API, the native BarcodeDetector. Ask Norbert for a screenshot.
 Commit messages end with the attribution lines required by the session.

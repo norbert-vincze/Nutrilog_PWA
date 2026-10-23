@@ -21,8 +21,30 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '6 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '7 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
+   The same rule runs in index.html before the first paint. */
+const THEMES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
+const mqDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+let themeMem = 'auto';   // used only when localStorage is blocked (private mode)
+function themePref() {
+  try { const p = localStorage.getItem('nutrilog.theme'); if (p === 'auto' || p === 'light' || p === 'dark') return p; } catch { /* private mode */ }
+  return themeMem;
+}
+function applyTheme() {
+  const p = themePref(), dark = p === 'dark' || (p === 'auto' && !!(mqDark && mqDark.matches));
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const m = document.querySelector('meta[name=theme-color]');
+  if (m) m.setAttribute('content', dark ? '#000000' : '#ffffff');
+}
+function setTheme(p) {
+  themeMem = p;
+  try { localStorage.setItem('nutrilog.theme', p); } catch { /* private mode: the choice lasts until the page is closed */ }
+  applyTheme();
+}
+if (mqDark) { if (mqDark.addEventListener) mqDark.addEventListener('change', applyTheme); else if (mqDark.addListener) mqDark.addListener(applyTheme); }
 
 function fmt(v) {
   if (!Number.isFinite(v)) return '–';
@@ -592,7 +614,11 @@ function foodListHtml() {
 /* ---- Data ---- */
 function viewData() {
   const b = S.meta.backup ? new Date(S.meta.backup).toLocaleString(LOC) : 'never';
+  const tp = themePref();
   return `<div class="stack" style="margin-top:8px">
+    <div class="card"><div class="card-t">Appearance</div>
+      <p class="muted small" style="margin:6px 0 12px">Auto follows your phone’s light or dark setting. Light and Dark stay as you pick them.</p>
+      <div class="seg" role="group" aria-label="Theme">${THEMES.map(([v, l]) => `<button data-act="theme" data-v="${v}" aria-pressed="${v === tp}">${l}</button>`).join('')}</div></div>
     <div class="card"><div class="card-t">Backup</div>
       <p class="muted small" style="margin:6px 0 14px">Your data lives only on this device, in this browser. Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
       <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
@@ -1049,6 +1075,10 @@ document.addEventListener('click', (ev) => {
   else if (a === 'new-food') openFoodEditor(null);
   else if (a === 'edit-food') { const f = S.foods[t.dataset.id]; if (f) openFoodEditor(f); }
   else if (a === 'export-json') exportJson();
+  else if (a === 'theme') {
+    setTheme(t.dataset.v);
+    $$('[data-act=theme]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === t.dataset.v)));
+  }
   else if (a === 'export-entries') exportEntries();
   else if (a === 'export-days') exportDays();
   else if (a === 'refresh-app') refreshApp();

@@ -1,5 +1,5 @@
 /* Nutrilog: fintech-style look (big numbers, soft rounded cards, circular actions, bottom sheets).
-   Light and dark follow the phone's setting. No external fonts: works offline. */
+   Light and dark: Auto follows the phone, or the person picks one (Data tab). No external fonts: works offline. */
 :root {
   --bg: #ffffff;
   --sheet: #ffffff;
@@ -29,36 +29,36 @@
   --av5-bg: #dcf3f6; --av5-fg: #0a717c;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000;
-    --sheet: #111315;
-    --surface: #17191c;
-    --surface-2: #25282c;
-    --ink: #f4f5f7;
-    --muted: #8d949c;
-    --line: #25282c;
-    --accent: #4d94ff;
-    --btn: #1a6fee;
-    --on-btn: #ffffff;
-    --accent-soft: #11264a;
-    --c-p: #4d94ff;
-    --c-c: #a98bff;
-    --c-f: #ffb13b;
-    --warn: #ffbf66;
-    --warn-soft: #3a2a0c;
-    --danger: #ff6b7d;
-    --ok: #55d8a9;
-    --ok-soft: #0d3326;
-    --shadow: 0 10px 40px rgb(0 0 0 / .6);
-    --av0-bg: #12264a; --av0-fg: #9cc1ff;
-    --av1-bg: #251a4a; --av1-fg: #c3adff;
-    --av2-bg: #0f3326; --av2-fg: #7fe0b9;
-    --av3-bg: #3d2a0d; --av3-fg: #ffc680;
-    --av4-bg: #44162a; --av4-fg: #ff9fbf;
-    --av5-bg: #0d3236; --av5-fg: #7edbe5;
-    color-scheme: dark;
-  }
+/* The theme is set on <html data-theme="light|dark"> by the script in index.html (and by app.js when it changes):
+   the Appearance setting in the Data tab is Auto (the phone decides), Light or Dark. */
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --sheet: #111315;
+  --surface: #17191c;
+  --surface-2: #25282c;
+  --ink: #f4f5f7;
+  --muted: #8d949c;
+  --line: #25282c;
+  --accent: #4d94ff;
+  --btn: #1a6fee;
+  --on-btn: #ffffff;
+  --accent-soft: #11264a;
+  --c-p: #4d94ff;
+  --c-c: #a98bff;
+  --c-f: #ffb13b;
+  --warn: #ffbf66;
+  --warn-soft: #3a2a0c;
+  --danger: #ff6b7d;
+  --ok: #55d8a9;
+  --ok-soft: #0d3326;
+  --shadow: 0 10px 40px rgb(0 0 0 / .6);
+  --av0-bg: #12264a; --av0-fg: #9cc1ff;
+  --av1-bg: #251a4a; --av1-fg: #c3adff;
+  --av2-bg: #0f3326; --av2-fg: #7fe0b9;
+  --av3-bg: #3d2a0d; --av3-fg: #ffc680;
+  --av4-bg: #44162a; --av4-fg: #ff9fbf;
+  --av5-bg: #0d3236; --av5-fg: #7edbe5;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -219,6 +219,9 @@ input:focus, select:focus, textarea:focus { outline: none; box-shadow: inset 0 0
 .btn.danger { color: var(--danger); }
 .btn.block { width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg); border-radius: 999px; padding: 4px; }
+.seg button { border: 0; background: none; border-radius: 999px; min-height: 44px; font-weight: 650; color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--btn); color: var(--on-btn); }
 .chk { display: inline-flex; gap: 8px; align-items: center; font-size: .86rem; color: var(--muted); font-weight: 560; }
 .chk input { width: 20px; height: 20px; accent-color: var(--btn); }
 .nin { display: grid; grid-template-columns: 1fr 112px 44px; gap: 8px; align-items: center; padding: 4px 0; }

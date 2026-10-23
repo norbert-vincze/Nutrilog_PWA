@@ -98,6 +98,11 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 - A jobb oldali jelvény (pl. `4/6`) azt mutatja, hogy a nap hat tételéből négyhez van adat az adott tápanyagról. A tápanyagra koppintva látod, melyik tételből hiányzik.
 - A `~` jel az energia előtt azt jelzi, hogy a CIQUAL nem közölt kalóriát, és a fehérjéből, szénhidrátból és zsírból számoltuk ki.
 
+**Világos vagy sötét téma:**
+1. Koppints a **Data** fülre. Legfelül van az „**Appearance**” kártya három gombbal.
+2. „Auto”: az app a telefonod beállítását követi, és magától vált, ha a telefon vált (például este). „Light”: mindig világos. „Dark”: mindig sötét.
+3. A választás megmarad, amikor bezárod és újra megnyitod az appot. Az adatmentésnek (JSON) nem része, ezért új telefonon újra be kell állítanod.
+
 ## 8. Mentsd rendszeresen az adataidat
 
 Az adataid csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon nincsenek. Ha törlöd a böngészőadatokat vagy telefont cserélsz, elvesznek. Az iPhone Safari ráadásul törölheti egy weboldal adatait, ha hét napig nem használod. A kezdőképernyőre tett appra ez nem vonatkozik, ezért iPhone-on mindig onnan indítsd.
