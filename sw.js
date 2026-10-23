@@ -3,7 +3,7 @@
      Change the number in DATA only when one of these two files changes.
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v8';   // keep in step with VERSION in app.js
+const CACHE = 'nutrilog-v9';   // keep in step with VERSION in app.js
 const DATA = 'nutrilog-data-1';
 const DATA_FILES = ['ciqual.json', 'usda.json'];
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',

@@ -91,7 +91,7 @@ async def main():
         # ---- offline: the food tables sit in their own cache
         await page.click('[data-tab=log]'); await page.wait_for_timeout(1500)
         keys = await T("caches.keys().then(async ks=>{const o={};for(const k of ks){o[k]=(await (await caches.open(k)).keys()).map(r=>new URL(r.url).pathname.split('/').pop())}return o})")
-        check('ciqual.json and usda.json are cached together, apart from the app files', sorted(keys.get('nutrilog-data-1', [])) == ['ciqual.json', 'usda.json'] and 'usda.json' not in keys.get('nutrilog-v8', []), keys)
+        check('ciqual.json and usda.json are cached together, apart from the app files', sorted(keys.get('nutrilog-data-1', [])) == ['ciqual.json', 'usda.json'] and not any('usda.json' in v for k, v in keys.items() if k != 'nutrilog-data-1'), keys)
         await ctx.set_offline(True)
         await page.reload(); await page.wait_for_selector('.hero', timeout=10000)
         check('offline reload still shows the USDA entry', 'USDA' in await page.inner_text('.entry'))

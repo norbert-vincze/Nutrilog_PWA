@@ -15,6 +15,7 @@
   --c-p: #0666eb;
   --c-c: #8f5cff;
   --c-f: #ff9f1c;
+  --n1: #1f9d6b; --n2: #d9a400; --n3: #ee7d1f; --n4: #d6334f; --n0: #9aa1a9;   /* NOVA groups 1-4 and not classified */
   --warn: #9a5200;
   --warn-soft: #fff0d9;
   --danger: #c4263a;
@@ -46,6 +47,7 @@
   --c-p: #4d94ff;
   --c-c: #a98bff;
   --c-f: #ffb13b;
+  --n1: #3fc790; --n2: #f0c53a; --n3: #ff9a4a; --n4: #ff6b85; --n0: #5b626a;
   --warn: #ffbf66;
   --warn-soft: #3a2a0c;
   --danger: #ff6b7d;
@@ -255,10 +257,11 @@ video#scan-v { width: 100%; max-height: 50dvh; background: #000; border-radius: 
 
 #toast {
   position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(100px + env(safe-area-inset-bottom, 0px));
-  background: var(--ink); color: var(--bg); border-radius: 999px; padding: 12px 20px; max-width: min(92vw, 520px);
-  display: flex; gap: 14px; align-items: center; box-shadow: var(--shadow); font-size: .92rem; font-weight: 600;
+  background: var(--ink); color: var(--bg); border-radius: 26px; padding: 6px 8px 6px 20px; width: max-content; max-width: min(92vw, 520px);   /* width: max-content, because left: 50% would otherwise squeeze a long text into half the screen */
+  display: flex; gap: 6px; align-items: center; box-shadow: var(--shadow); font-size: .92rem; font-weight: 600; min-height: 44px;
 }
-#toast button { background: none; border: 0; color: inherit; font-weight: 760; text-decoration: underline; padding: 0; }
+#toast span { padding: 6px 0; }
+#toast button { background: none; border: 0; color: inherit; font-weight: 760; text-decoration: underline; padding: 0 14px; min-height: 44px; min-width: 44px; flex: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   .sheet { animation: up .22s cubic-bezier(.2, .8, .2, 1); }
@@ -272,3 +275,25 @@ details.fold details.fold { background: var(--sheet); }
 .hint { font-size: .84rem; color: var(--muted); }
 .offbox { margin-top: 14px; display: grid; gap: 10px; }
 .offbox h4 { margin: 8px 0 0; }
+
+/* NOVA card (Nutrients tab) */
+.nova-card .bar { margin-top: 2px; }
+.nova-rows { margin-top: 12px; }
+.nova-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 9px 0; }
+.nova-row + .nova-row { border-top: 1px solid var(--line); }
+.nova-row .dot { width: 10px; height: 10px; }
+.nova-name { font-size: .9rem; line-height: 1.3; color: var(--muted); }
+.nova-name b { color: var(--ink); font-weight: 680; margin-right: 4px; }
+.nova-val { text-align: right; font-size: 1.05rem; line-height: 1.15; }
+.nova-val small { display: block; font-size: .74rem; color: var(--muted); font-weight: 500; min-height: 1em; }
+.nova-h { margin: 14px 0 4px; font-size: .86rem; font-weight: 700; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.nova-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.nova-item-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nova-item-name { font-size: .92rem; font-weight: 600; overflow-wrap: anywhere; }
+.nova-item-sub { font-size: .78rem; color: var(--muted); }
+.nova-btns { display: flex; gap: 6px; flex: none; }
+.nbtn { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--bg); color: var(--ink); font-size: 1rem; font-weight: 700; }
+.nbtn[aria-pressed="true"] { background: var(--btn); color: var(--on-btn); }
+.nova-def { padding: 0 0 12px; }
+.nova-def p { margin: 0 0 10px; font-size: .9rem; line-height: 1.4; }
+#nova { margin-top: 12px; }

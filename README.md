@@ -99,6 +99,16 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 - A jobb oldali jelvény (pl. `4/6`) azt mutatja, hogy a nap hat tételéből négyhez van adat az adott tápanyagról. A tápanyagra koppintva látod, melyik tételből hiányzik.
 - A `~` jel az energia előtt azt jelzi, hogy a CIQUAL nem közölt kalóriát, és a fehérjéből, szénhidrátból és zsírból számoltuk ki.
 
+**NOVA: mennyire feldolgozott, amit eszel:**
+A Nutrients fül tetején van a „**Food processing (NOVA)**” kártya. A NOVA az ételeket négy csoportba sorolja aszerint, hogy mennyire ipari: az 1-es a feldolgozatlan vagy minimálisan feldolgozott étel (zöldség, gyümölcs, tojás, tej, nyers hús, rizs), a 2-es a konyhai alapanyag (olaj, vaj, cukor, só), a 3-as a feldolgozott étel (konzerv, sajt, friss kenyér), a 4-es az ultrafeldolgozott étel (üdítő, chips, édesség, instant leves, felvágott). A kártya azt mutatja, hogy a nap energiájának hány százaléka esik az egyes csoportokra. Az „Unclassified” sor azt a részt mutatja, amelyhez még nincs csoport. A százalékok mindig 100-ra jönnek ki, és csak azokat a tételeket számolják, amelyeknek van energia-adata.
+Az app **nem találgat**: a CIQUAL és az USDA ételeknél nincs NOVA-adat, az Open Food Facts termékeknél csak egy részénél van. Ezért a legtöbb étel eleinte „Unclassified”, és te állítod be egyszer, kézzel:
+1. A Nutrients fülön koppints a kártya alatti „**Set NOVA groups**” sorra. Mellette látod, hány étel vár besorolásra.
+2. Az „Unclassified” listában a legtöbb energiát adó étel van legfelül. Minden sor végén négy kör van: 1, 2, 3, 4. Koppints arra a számra, amelyik az ételre szerinted illik. Az étel átkerül a „Classified” listába, és a kártya azonnal frissül.
+3. Ha elnyomtad, alul megjelenik egy értesítés az „**Undo**” gombbal. Utólag is javíthatsz: a „Classified” listában koppints másik számra, vagy a már kijelölt számra újra, akkor a besorolás törlődik.
+4. A választás magához az ételhez tartozik, ezért minden más napon is él. Egy ételt elég egyszer besorolni. A „Create food” ételeknél ugyanez a mező az étel szerkesztésénél is megvan („Food-processing group”), és a kettő mindig ugyanazt mutatja.
+5. A „What are the NOVA groups?” sor rövid leírást ad a négy csoportról példákkal.
+A NOVA a feldolgozottság mértéke, nem az egészséges voltáé. A besorolás ítélet kérdése, a hozzávalók és a márka sokat számítanak, ezért a saját ételeidnél érdemes átgondolni. A Diary fülön is látszik egy szürke sor az ultrafeldolgozott (4-es) ételek energiaarányával, amint legalább egy ételnek van csoportja.
+
 **Világos vagy sötét téma:**
 1. Koppints a **Data** fülre. Legfelül van az „**Appearance**” kártya három gombbal.
 2. „Auto”: az app a telefonod beállítását követi, és magától vált, ha a telefon vált (például este). „Light”: mindig világos. „Dark”: mindig sötét.
@@ -110,12 +120,12 @@ Az adataid csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon ninc
 
 1. Nyisd meg a **Data** fület. A „Storage” kártya megmondja, védi-e a böngésző az adataidat („Persistent”), vagy törölheti őket („Not persistent”). Koppints a „**Save backup (JSON)**” gombra.
 2. A fájl a letöltések közé kerül. Másold át a felhőbe (Google Drive, iCloud) vagy küldd el magadnak e-mailben.
-3. Heti egy mentés elég. Visszatöltés: Data fül, „Restore from file”.
+3. Heti egy mentés elég. A mentésben benne vannak a naplóbejegyzések, a saját ételeid és a NOVA-besorolásaid is. Visszatöltés: Data fül, „Restore from file”.
 4. **Ne töltsd fel a mentésfájlt a GitHubra.** Az nyilvános lenne.
 
 ## 9. Elemzés Claude-dal
 
-A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `source` oszlop megmondja, honnan jön az étel (`ciqual`, `usda`, `off` vagy `user`), a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
+A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `source` oszlop megmondja, honnan jön az étel (`ciqual`, `usda`, `off` vagy `user`), a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), a `nova` oszlop az étel NOVA-csoportja (1–4, üres, ha nincs besorolva), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
 
 ## 10. Hogyan frissítesz egy új verzióra
 
@@ -136,6 +146,7 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
 | A „Time” mező 12 órás formában (AM/PM) mutatja az időt | A mező a telefon beállítását követi. Az iPhone-on: Settings → General → Date & Time → kapcsold be a „24-Hour Time” kapcsolót. A naplóban és a CSV-ben az idő mindig 24 órás. |
 | „The USDA food data could not be loaded” a naplóban, vagy nincsenek USDA-találatok | Az `usda.json` fájl nem töltődött le. Kapcsold be az internetet, majd Data fül → „Reload app files”. Az USDA-tételek addig rejtve vannak, törölve nincsenek. |
+| A Nutrients fülön az „Unclassified” sor 100% | A NOVA-csoportot neked kell beállítanod: Nutrients fül → „Set NOVA groups” → koppints az 1–4 számokra az ételek mellett. A CIQUAL és USDA ételekhez nincs beépített besorolás. |
 | „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „Create food from label” gombot. |
 | „Open Food Facts is not available right now” | Az adatbázis szervere éppen nem válaszol. Próbáld újra egy perc múlva. |
 | „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „Create food” gombot. |

@@ -21,7 +21,7 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '8 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '9 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -121,10 +121,12 @@ const Store = (() => {
 /* ================= state ================= */
 const MEAL_COUNT = 6;           // how many "Meal N" slots the diary shows
 const MEALS = Array.from({ length: MEAL_COUNT }, (_, i) => ({ id: 'm' + (i + 1), name: 'Meal ' + (i + 1) }));
+/* meta: last = last meal/amount per food, portions = your own portion sizes, nova = NOVA group you chose for CIQUAL and USDA foods (food id -> 1..4) */
+const metaDefaults = () => ({ last: {}, portions: {}, nova: {}, backup: null });
 const S = {
   log: [],                      // {id, d, m, f, a, t}
   foods: {},                    // custom and Open Food Facts foods
-  meta: { last: {}, portions: {}, backup: null },
+  meta: metaDefaults(),
   day: ymd(new Date()),
   tab: 'log',
   filter: '',
@@ -362,6 +364,58 @@ const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) =
 const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'off' ? 'OFF' : 'custom');
 const kcalPer = (f) => vecOf(f).lo[0];
 
+/* ---- NOVA: how processed a food is (1 minimal … 4 ultra-processed) ----
+   Open Food Facts gives a group for some products; CIQUAL and USDA give none. Unknown stays unknown: nothing is guessed.
+   Foods you create and Open Food Facts foods are stored in S.foods and keep the group in food.nova (the same field as in Edit food).
+   CIQUAL and USDA foods cannot be edited, so your choice for them is kept in S.meta.nova[food id]. */
+const NOVA = [
+  [1, 'Unprocessed or minimally processed', 'vegetables, fruit, eggs, milk, plain meat and fish, rice, flour, nuts'],
+  [2, 'Processed culinary ingredients', 'oil, butter, sugar, salt, honey, vinegar'],
+  [3, 'Processed foods', 'canned vegetables, cheese, fresh bread, salted nuts, fruit in syrup'],
+  [4, 'Ultra-processed foods', 'soft drinks, packaged snacks, sweets, instant soups, ready meals, sausages, most breakfast cereals'],
+];
+const novaStored = (f) => f.src === 'user' || f.src === 'off';
+function novaOf(f) {
+  const v = Number(novaStored(f) ? f.nova : (S.meta.nova || {})[f.id]);
+  return [1, 2, 3, 4].includes(v) ? v : null;
+}
+function setNova(f, v) {                             // v = 1..4, or null for "not classified"
+  if (novaStored(f)) f.nova = v;
+  else {
+    if (!S.meta.nova || typeof S.meta.nova !== 'object') S.meta.nova = {};
+    if (v) S.meta.nova[f.id] = v; else delete S.meta.nova[f.id];
+  }
+  save();
+}
+/* Energy of the given entries split by NOVA group (key 'u' = not classified), and one row per food. Entries without energy data
+   cannot be weighed, so they are counted in noEnergy and left out of the shares. */
+function novaStats(es) {
+  const by = { 1: 0, 2: 0, 3: 0, 4: 0, u: 0 };
+  const items = new Map();
+  let noEnergy = 0;
+  for (const e of es) {
+    const food = getFood(e.f);
+    if (!food) continue;
+    const g = novaOf(food), kv = vecOf(food).lo[0];
+    let it = items.get(food.id);
+    if (!it) { it = { food, g, kcal: 0, known: 0 }; items.set(food.id, it); }
+    if (Number.isNaN(kv)) { noEnergy++; continue; }
+    const kcal = kv * e.a / food.basis.qty;
+    it.kcal += kcal; it.known++; by[g || 'u'] += kcal;
+  }
+  const sum = by[1] + by[2] + by[3] + by[4] + by.u;
+  return { by, sum, items: [...items.values()].sort((a, b) => b.kcal - a.kcal), noEnergy };
+}
+/* whole percents that add up to exactly 100 (largest remainder) */
+function sharePct(vals, total) {
+  const raw = vals.map((v) => (total > 0 ? v / total * 100 : 0));
+  const out = raw.map(Math.floor);
+  let rest = 100 - out.reduce((a, b) => a + b, 0);
+  raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (rest > 0 && raw[i] > 0) { out[i]++; rest--; } });
+  return out;
+}
+let novaOpen = false;                                // the "Set NOVA groups" list stays open while you work through it
+
 /* ================= saving ================= */
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 120); }
 async function doSave() {
@@ -519,13 +573,7 @@ function viewLog() {
 
   let nova = '';
   if (es.length) {
-    const by = { 1: 0, 2: 0, 3: 0, 4: 0, u: 0 };
-    for (const e of es) {
-      const food = getFood(e.f), kv = vecOf(food).lo[0];
-      if (Number.isNaN(kv)) continue;
-      by[food.nova || 'u'] += kv * e.a / food.basis.qty;
-    }
-    const sum = by[1] + by[2] + by[3] + by[4] + by.u;
+    const { by, sum } = novaStats(es);
     if (sum > 0 && by[1] + by[2] + by[3] + by[4] > 0) {
       nova = `<div class="banner">Ultra-processed (NOVA 4): <b>${fmt(by[4] / sum * 100)}%</b> of energy · NOVA 1–3: ${fmt((by[1] + by[2] + by[3]) / sum * 100)}% · unclassified: ${fmt(by.u / sum * 100)}%</div>`;
     }
@@ -600,7 +648,61 @@ function viewNutr() {
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>`
       : `<details class="group"><summary>${gname}</summary>${list}</details>`;
   }).join('');
-  return note + out;
+  return note + `<div id="nova">${novaHtml(es)}</div>` + out;
+}
+
+/* NOVA summary card and the list for setting a group by hand. Drawn again on its own after every tap (see novaTap). */
+function novaHtml(es) {
+  const s = novaStats(es);
+  const vals = [s.by[1], s.by[2], s.by[3], s.by[4], s.by.u];
+  const pc = sharePct(vals, s.sum);
+  const names = [...NOVA.map(([n, name]) => `NOVA ${n}: ${name}`), 'Unclassified'];
+  const pcText = (i) => (pc[i] === 0 && vals[i] > 0 ? '<1%' : pc[i] + '%');
+  const colors = ['var(--n1)', 'var(--n2)', 'var(--n3)', 'var(--n4)', 'var(--n0)'];
+  const bar = s.sum > 0 ? vals.map((v, i) => (v > 0 ? `<i style="width:${v / s.sum * 100}%;background:${colors[i]}"></i>` : '')).join('') : '';
+  const label = s.sum > 0 ? 'Energy by NOVA group: ' + names.map((n, i) => `${n} ${pcText(i)}`).join(', ') : 'No energy data to split by NOVA group';
+  const rows = names.map((nm, i) => {
+    const head = i < 4 ? `<b>NOVA ${i + 1}</b> ${esc(NOVA[i][1])}` : '<b>Unclassified</b> no group set yet';
+    return `<div class="nova-row"><span class="dot" style="background:${colors[i]}"></span><span class="nova-name">${head}</span>
+      <span class="nova-val"><b>${s.sum > 0 ? pcText(i) : '–'}</b><small>${vals[i] > 0 ? fmt(vals[i]) + ' kcal' : ''}</small></span></div>`;
+  }).join('');
+  const un = s.items.filter((x) => !x.g), done = s.items.filter((x) => x.g);
+  const itemHtml = (x) => {
+    const sub = x.known ? fmt(x.kcal) + ' kcal today' : 'no energy data';
+    return `<div class="nova-item"><div class="nova-item-main"><span class="nova-item-name">${esc(cap(x.food.name))}</span><span class="nova-item-sub">${esc(sub)}</span></div>
+      <div class="nova-btns" role="group" aria-label="NOVA group of ${esc(x.food.name)}">${[1, 2, 3, 4].map((n) =>
+    `<button type="button" class="nbtn" data-act="nova-set" data-id="${esc(x.food.id)}" data-v="${n}" aria-pressed="${x.g === n}" aria-label="NOVA ${n}: ${esc(NOVA[n - 1][1])}">${n}</button>`).join('')}</div></div>`;
+  };
+  const coverage = `${done.length} of ${plural(s.items.length, 'food')} classified.${s.noEnergy ? ` ${s.noEnergy} ${s.noEnergy === 1 ? 'entry has' : 'entries have'} no energy data and ${s.noEnergy === 1 ? 'is' : 'are'} not counted in the shares.` : ''}`;
+  return `<div class="card nova-card">
+      <div class="card-t">Food processing (NOVA)</div>
+      <p class="muted small" style="margin:6px 0 14px">Share of today’s energy by how processed the foods are. Only items with energy data count.</p>
+      <div class="bar" role="img" aria-label="${esc(label)}">${bar}</div>
+      <div class="nova-rows">${rows}</div>
+      <p class="muted small" style="margin:12px 0 0">${coverage}</p>
+    </div>
+    <details class="fold" id="novafold" ${novaOpen ? 'open' : ''}><summary>Set NOVA groups${un.length ? ` · ${un.length} unclassified` : ''}</summary>
+      <p class="hint" style="margin:0 0 12px">Tap 1–4 for a food. 1 = minimal, 2 = culinary ingredient, 3 = processed, 4 = ultra-processed. Your choice is saved for the food, so you set it only once. Tap the chosen number again to clear it.</p>
+      ${un.length ? `<h4 class="nova-h">Unclassified (${un.length})</h4>${un.map(itemHtml).join('')}` : '<p class="small" style="margin:0 0 12px">Every food of the day has a group.</p>'}
+      ${done.length ? `<h4 class="nova-h">Classified (${done.length})</h4>${done.map(itemHtml).join('')}` : ''}
+    </details>
+    <details class="fold"><summary>What are the NOVA groups?</summary>
+      <div class="nova-def">${NOVA.map(([n, name, ex]) => `<p><b>${n} · ${esc(name)}</b><br><span class="muted">${esc(cap(ex))}.</span></p>`).join('')}
+      <p class="hint">NOVA sorts foods by how industrially they are processed, not by how healthy they are. A group is a judgement: ingredient lists and brands matter, so check it for your own foods.</p></div>
+    </details>`;
+}
+function novaTap(id, v) {
+  const f = getFood(id);
+  if (!f) return;
+  const before = novaOf(f), next = before === v ? null : v;
+  setNova(f, next);
+  refreshNova();
+  const nm = cap(f.name.length > 38 ? f.name.slice(0, 37) + '…' : f.name);
+  toast(next ? `${nm}: NOVA ${next}` : `${nm}: group cleared`, () => { setNova(f, before); refreshNova(); });
+}
+function refreshNova() {
+  const el = $('#nova');
+  if (el) el.innerHTML = novaHtml(entriesOf(S.day));
 }
 
 /* ---- My foods ---- */
@@ -959,7 +1061,7 @@ function openFoodEditor(food, opts = {}) {
     <p class="muted small">Fill in what the label shows. An empty field means “no data”, a 0 is a real zero. Write &lt;0.3 for a value below a detection limit.</p>
     <div id="nuts">${nutInputs(f0)}</div>
     <details class="fold" ${f0.nova ? 'open' : ''}><summary>Food-processing group (NOVA, optional)</summary>
-      <p class="hint" style="margin:0 0 10px">1 = unprocessed or minimally processed, 2 = culinary ingredient (oil, sugar, flour), 3 = processed food (bread, canned vegetables), 4 = ultra-processed (soft drinks, packaged snacks). Leave it unset if you are not sure.</p>
+      <p class="hint" style="margin:0 0 10px">1 = unprocessed or minimally processed, 2 = culinary ingredient (oil, butter, sugar, salt), 3 = processed food (bread, canned vegetables), 4 = ultra-processed (soft drinks, packaged snacks). Leave it unset if you are not sure.</p>
       <label class="f">NOVA group<select id="fnova"><option value="">Not set</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label></details>
     <div id="portwrap"><h4>Portions (in grams)</h4><div id="ports">${portionRows(f0.portions || [])}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
     <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="400">${esc(f0.note || '')}</textarea></label>
@@ -1039,7 +1141,7 @@ function exportEntries() {
   const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || '', f.src, e.a, f.basis.unit, f.nova || '', energyEstimated(f) ? 1 : 0, ...lo, ...mi.map((i) => hi[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || '', f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, ...lo, ...mi.map((i) => hi[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -1067,7 +1169,7 @@ function importJson(file) {
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
         text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.`,
         onOk: () => {
-          S.log = j.log; S.foods = j.foods; S.meta = Object.assign({ last: {}, portions: {}, backup: null }, j.meta || {});
+          S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {});
           invalidate(); save(); render(); toast('Restored');
         },
       });
@@ -1090,6 +1192,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'new-food') openFoodEditor(null);
   else if (a === 'edit-food') { const f = S.foods[t.dataset.id]; if (f) openFoodEditor(f); }
   else if (a === 'export-json') exportJson();
+  else if (a === 'nova-set') novaTap(t.dataset.id, Number(t.dataset.v));
   else if (a === 'theme') {
     setTheme(t.dataset.v);
     $$('[data-act=theme]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === t.dataset.v)));
@@ -1101,6 +1204,8 @@ document.addEventListener('click', (ev) => {
     (navigator.storage && navigator.storage.persist ? navigator.storage.persist() : Promise.resolve(false)).then((ok) => { toast(ok ? 'Persistent storage enabled' : 'The browser declined. Install the app to your home screen and back up regularly.'); persistState(); });
   }
 });
+/* 'toggle' does not bubble, so listen while it travels down (third argument true) */
+document.addEventListener('toggle', (ev) => { if (ev.target.id === 'novafold') novaOpen = ev.target.open; }, true);
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value; render(); }
   if (ev.target.id === 'importfile' && ev.target.files[0]) { importJson(ev.target.files[0]); ev.target.value = ''; }
@@ -1167,7 +1272,7 @@ async function init() {
     const [log, foods, meta] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
-    if (meta && typeof meta === 'object') S.meta = Object.assign({ last: {}, portions: {}, backup: null }, meta);
+    if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
     render();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -1175,7 +1280,7 @@ async function init() {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;
   }
 }
-window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, render, save };
+window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, render, save };
 init();
 
 })();
