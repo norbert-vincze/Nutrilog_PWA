@@ -75,8 +75,10 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 1. A Diary fülön koppints a „**Log food**” gombra.
 2. Írd be, hogy `főtt tojás` (vagy `boiled egg`), és koppints az „Egg, hard-boiled” sorra.
 3. Az „Amount” ablakban a mennyiség grammban látszik, alapból 100. Koppints a számra, és írd át (pl. `50`). A tizedest ponttal és vesszővel is írhatod (`1,5` és `1.5` ugyanaz). A kék gomb felirata megmondja, mit rögzítesz, például „Add 50 g”.
-   Az étkezés alapból az, amelyikbe aznap utoljára vittél fel valamit (üres napon Meal 1). A „Meal” listából átállíthatod, Meal 1-től Meal 6-ig. Ha készen vagy, koppints a kék gombra.
-4. A tétel megjelenik a naplóban. Ha módosítani vagy törölni akarod, koppints rá.
+   Az étkezés alapból az, amelyikbe aznap utoljára vittél fel valamit (üres napon Meal 1). A „Meal” listából átállíthatod, Meal 1-től Meal 6-ig.
+   Mellette a „Time” mező az étel felvételének időpontját mutatja, alapból a pillanatnyi időt. Ha korábban ettél, koppints a mezőre, és állítsd be a valódi időpontot (az iPhone görgethető időválasztót ad). A nap dátuma nem változik: az mindig az a nap, amelyik a Diary tetején látszik.
+   Ha készen vagy, koppints a kék gombra.
+4. A tétel megjelenik a naplóban, a neve alatt az időponttal (pl. `07:45 · 100 g · CIQUAL`). Egy étkezésen belül a tételek idő szerint követik egymást. Ha módosítani (a mennyiséget, az étkezést vagy az időpontot) vagy törölni akarod, koppints rá.
 
 **Csomagolt termék vonalkóddal:**
 1. Koppints a „**Scan**” gombra, és engedélyezd a kamerát.
@@ -107,7 +109,7 @@ Az adataid csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon ninc
 
 ## 9. Elemzés Claude-dal
 
-A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja, az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
+A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
 
 ## 10. Hogyan frissítesz egy új verzióra
 
@@ -126,6 +128,7 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | Üres oldal vagy régi verzió | Data fül → „App version” kártya → „Reload app files”. Ha az app el sem indul, frissítsd az oldalt, vagy zárd be és nyisd meg újra. |
 | A kamera nem indul | Engedélyezd a kamerát a telefon beállításaiban a böngészőnek. Addig is beírhatod a vonalkód számjegyeit a „Scan” ablakban. |
 | Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
+| A „Time” mező 12 órás formában (AM/PM) mutatja az időt | A mező a telefon beállítását követi. Az iPhone-on: Settings → General → Date & Time → kapcsold be a „24-Hour Time” kapcsolót. A naplóban és a CSV-ben az idő mindig 24 órás. |
 | „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „Create food from label” gombot. |
 | „Open Food Facts is not available right now” | Az adatbázis szervere éppen nem válaszol. Próbáld újra egy perc múlva. |
 | „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „Create food” gombot. |

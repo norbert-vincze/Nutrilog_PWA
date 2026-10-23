@@ -169,6 +169,7 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .entry-main, .item-main { min-width: 0; display: grid; }
 .entry-name, .item-name { font-weight: 640; overflow-wrap: anywhere; }
 .entry-sub, .item-sub { font-size: .86rem; color: var(--muted); overflow-wrap: anywhere; }
+.entry-time { font-variant-numeric: tabular-nums; font-weight: 640; }
 .entry-kcal { text-align: right; font-weight: 720; }
 .entry-kcal small { display: block; font-weight: 560; font-size: .75rem; color: var(--muted); }
 .item .r { text-align: right; font-size: .84rem; color: var(--muted); white-space: nowrap; font-weight: 560; }
@@ -198,10 +199,12 @@ h4 { margin: 20px 0 6px; font-size: .78rem; text-transform: uppercase; letter-sp
 
 /* forms */
 label.f { display: grid; gap: 6px; font-size: .84rem; color: var(--muted); font-weight: 600; }
-input[type=text], input[type=search], input[type=number], input[type=date], select, textarea {
+input[type=text], input[type=search], input[type=number], input[type=date], input[type=time], select, textarea {
   width: 100%; border: 0; background: var(--surface); border-radius: 16px; padding: 0 16px; min-height: 52px; color: var(--ink); font-weight: 520;
   -webkit-appearance: none; appearance: none;
 }
+input[type=time], input[type=date] { min-width: 0; text-align: left; }
+input[type=time]::-webkit-date-and-time-value, input[type=date]::-webkit-date-and-time-value { text-align: left; }
 select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 22px) 22px, calc(100% - 16px) 22px; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 40px; }
 textarea { min-height: 84px; padding: 14px 16px; resize: vertical; }
 input::placeholder, textarea::placeholder { color: var(--muted); font-weight: 450; }

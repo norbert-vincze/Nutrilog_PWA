@@ -16,10 +16,12 @@ const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;                          // 14:05
+const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '5 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '6 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function fmt(v) {
@@ -324,6 +326,9 @@ function totalsFor(entries) {
   return { lo, hi, cnt, n, missing };
 }
 const entriesOf = (day) => S.log.filter((e) => e.d === day && getFood(e.f));
+/* Time of an entry: the saved time (tm, "HH:MM", editable); entries from before this feature use the moment they were added (t). */
+const timeOf = (e) => (validHm(e.tm) ? e.tm : Number.isFinite(e.t) ? hm(new Date(e.t)) : '');
+const byTime = (a, b) => timeOf(a).localeCompare(timeOf(b)) || (a.t || 0) - (b.t || 0);
 const amountText = (e, f) => `${fmt(e.a)} ${f.basis.unit}`;
 const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (Number.isNaN(v.lo[i]) ? 0 : 1), 0); };
 const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'off' ? 'OFF' : 'custom');
@@ -499,14 +504,14 @@ function viewLog() {
   }
 
   const meals = MEALS.map((m) => {
-    const list = es.filter((e) => e.m === m.id);
+    const list = es.filter((e) => e.m === m.id).sort(byTime);
     let mk = 0, mkn = 0;
     for (const e of list) { const fd = getFood(e.f), v = vecOf(fd).lo[0]; if (!Number.isNaN(v)) { mk += v * e.a / fd.basis.qty; mkn++; } }
     const rows = list.map((e) => {
       const food = getFood(e.f), v = vecOf(food).lo[0], k = e.a / food.basis.qty;
       const kt = Number.isNaN(v) ? '–' : (energyEstimated(food) ? '~' : '') + fmt(v * k);
       return `<button class="entry" data-act="edit-entry" data-id="${e.id}">${avatar(food.name)}
-        <span class="entry-main"><span class="entry-name">${esc(cap(food.name))}</span><span class="entry-sub">${esc(amountText(e, food))} · ${esc(food.brand ? food.brand + ' · ' : '')}${srcTag(food)}</span></span>
+        <span class="entry-main"><span class="entry-name">${esc(cap(food.name))}</span><span class="entry-sub">${timeOf(e) ? `<span class="entry-time">${timeOf(e)}</span> · ` : ''}${esc(amountText(e, food))} · ${esc(food.brand ? food.brand + ' · ' : '')}${srcTag(food)}</span></span>
         <span class="entry-kcal">${kt}<small>kcal</small></span></button>`;
     }).join('');
     return `<section class="meal"><div class="meal-h"><h3>${m.name}</h3>${mkn ? `<span class="mk">${fmt(mk)} kcal</span>` : ''}
@@ -752,13 +757,18 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const unitG = isG(food);
   const start = entry ? entry.a : (S.meta.last[food.id] ?? (portionsOf(food)[0] ? portionsOf(food)[0].grams : unitG ? 100 : 1));
   const chips = (unitG ? [...portionsOf(food).map((p) => [p.label, p.grams]), ...[10, 30, 50, 100, 200].map((g) => [g + ' g', g])] : [0.5, 1, 2, 3].map((x) => [x + ' ' + food.basis.unit, x]));
+  const startTime = (entry && timeOf(entry)) || hm(new Date());   // new entry: now; existing entry: the saved time
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
     <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
     <label class="f">Amount (${esc(food.basis.unit)})<input type="text" inputmode="decimal" id="amt" value="${esc(String(start))}"></label>
     <p class="note field-err" id="amterr" role="alert" hidden>Enter an amount greater than 0.</p>
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     ${unitG ? '<button class="chip-btn accent" id="saveportion" style="justify-self:start">+ Save as portion</button>' : ''}
-    <label class="f">Meal<select id="meal">${MEALS.map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
+    <div class="grid2">
+      <label class="f">Meal<select id="meal">${MEALS.map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
+      <label class="f">Time<input type="time" id="tm" value="${startTime}"></label>
+    </div>
+    <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time, for example 13:45.</p>
     <div class="card" id="prev"></div>
     <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food.src !== 'ciqual' ? '<button class="btn" id="editfood">Edit food</button>' : ''}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
   const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
@@ -787,12 +797,17 @@ function openAmount({ food, entry, meal, afterAdd }) {
       },
     });
   };
+  const tm = $('#tm', sh.el), tmerr = $('#tmerr', sh.el);
+  tm.addEventListener('input', () => { tmerr.hidden = true; tm.removeAttribute('aria-invalid'); });
   ok.onclick = () => {
-    const a = val();
+    const a = val(), tmv = tm.value;
+    const badTime = !validHm(tmv);
+    if (badTime) { tmerr.hidden = false; tm.setAttribute('aria-invalid', 'true'); }   // no focus() on the time field: on iOS it can stay "focused" without opening the picker
     if (Number.isNaN(a)) { amterr.hidden = false; amt.setAttribute('aria-invalid', 'true'); amt.focus(); return; }
+    if (badTime) { tmerr.scrollIntoView({ block: 'center' }); return; }
     const m = $('#meal', sh.el).value;
     const mealName = (MEALS.find((x) => x.id === m) || {}).name;
-    if (entry) { entry.a = a; entry.m = m; } else S.log.push({ id: uid(), d: S.day, m, f: food.id, a, t: Date.now() });
+    if (entry) { entry.a = a; entry.m = m; entry.tm = tmv; } else S.log.push({ id: uid(), d: S.day, m, f: food.id, a, t: Date.now(), tm: tmv });
     S.meta.last[food.id] = a;
     save(); sh.close(); render();
     toast(entry ? `Updated: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit}` : `Added: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit} to ${mealName}`);
@@ -971,7 +986,7 @@ function exportJson() {
   toast('Backup downloaded'); if (S.tab === 'data') render();
 }
 function exportEntries() {
-  const rows = [...S.log].filter((e) => getFood(e.f)).sort((a, b) => a.d.localeCompare(b.d) || a.t - b.t);
+  const rows = [...S.log].filter((e) => getFood(e.f)).sort((a, b) => a.d.localeCompare(b.d) || byTime(a, b));
   const withMax = new Set();
   const data = rows.map((e) => {
     const f = getFood(e.f), v = vecOf(f), k = e.a / f.basis.qty;
@@ -980,10 +995,10 @@ function exportEntries() {
     return { e, f, lo, hi };
   });
   const mi = [...withMax].sort((a, b) => a - b);
-  const head = ['date', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max')];
+  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi } of data) {
-    lines.push(csvLine([e.d, (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || '', f.src, e.a, f.basis.unit, f.nova || '', energyEstimated(f) ? 1 : 0, ...lo, ...mi.map((i) => hi[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || '', f.src, e.a, f.basis.unit, f.nova || '', energyEstimated(f) ? 1 : 0, ...lo, ...mi.map((i) => hi[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -1104,7 +1119,7 @@ async function init() {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;
   }
 }
-window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, getFood, offToFood, fmt, get KEYS() { return KEYS; }, get IDX() { return IDX; }, render };
+window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, getFood, offToFood, fmt, get KEYS() { return KEYS; }, get IDX() { return IDX; }, render, save };
 init();
 
 })();
