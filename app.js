@@ -1,5 +1,5 @@
 /* Nutrilog: calorie, macro and micronutrient diary. No build step, one script.
-   Data: CIQUAL 2020 (Anses, CC BY 4.0) in ciqual.json; Open Food Facts (ODbL) looked up live.
+   Data: CIQUAL 2020 (Anses, CC BY 4.0) in ciqual.json; USDA FoodData Central (Foundation Foods, SR Legacy; U.S. public domain) in usda.json; Open Food Facts (ODbL) looked up live.
    Principle: missing data is not zero. Totals are lower estimates and always show their coverage. */
 'use strict';
 (() => {
@@ -21,7 +21,7 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '7 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '8 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -129,7 +129,8 @@ const S = {
   tab: 'log',
   filter: '',
 };
-let CAT = null, CIQ = [], CIQ_BY_ID = new Map();
+let CAT = null, CIQ = [], CIQ_BY_ID = new Map();   // CIQ_BY_ID holds the CIQUAL ('c:') and the USDA ('usda:') foods; 'u:' is already taken by foods you create
+let USDA = [], USDA_ERR = '';
 let KEYS = [], UNITS = [], IDX = {}, NUT_N = 0;
 let saveTimer = null;
 
@@ -175,8 +176,8 @@ let TRACKED = [];          // indexes of the tracked nutrients (macros, fatty ac
    Words that are not in the list are searched as typed, so plain English works without any entry. */
 const DICT = {
   /* Hungarian */
-  tojas: ['egg'], tej: ['milk'], tejfol: ['cream, 15-20% fat', 'cream, fat content unknown', 'cream'], tejszin: ['cream, fat content unknown', 'cream'], sajt: ['cheese'],
-  turo: ['quark', 'fresh cheese', 'uncured soft cheese', 'fromage blanc'],
+  tojas: ['egg'], tej: ['milk'], tejfol: ['cream, 15-20% fat', 'cream, fat content unknown', 'sour cream', 'cream'], tejszin: ['cream, fat content unknown', 'cream'], sajt: ['cheese'],
+  turo: ['quark', 'fresh cheese', 'uncured soft cheese', 'fromage blanc', 'cottage'],
   joghurt: ['yogurt', 'yoghurt'], kefir: ['kefir'], vaj: ['butter'], margarin: ['margarine'],
   kenyer: ['bread'], zsemle: ['bread', 'roll'], kifli: ['bread', 'roll'], rizs: ['rice'], teszta: ['pasta'], makaroni: ['pasta'],
   kuszkusz: ['couscous'], zab: ['oat'], zabpehely: ['oat'], muzli: ['muesli'], burgonya: ['potato'], krumpli: ['potato'],
@@ -189,14 +190,14 @@ const DICT = {
   cseresznye: ['cherry'], dinnye: ['melon', 'watermelon'], kivi: ['kiwi'],
   mogyoro: ['hazelnut'], foldimogyoro: ['peanut'], dio: ['walnut'], mandula: ['almond'], kesudio: ['cashew'], pisztacia: ['pistachio'],
   napraforgomag: ['sunflower'], tokmag: ['pumpkin'], lenmag: ['flax', 'linseed'], chia: ['chia'], szezam: ['sesame'],
-  olaj: ['oil'], olivaolaj: ['olive oil'], kokuszolaj: ['coconut'], cukor: ['sugar'], mez: ['honey'],
+  olaj: ['oil'], olivaolaj: ['olive oil', 'oil, olive'], kokuszolaj: ['coconut'], cukor: ['sugar'], mez: ['honey'],
   csokolade: ['chocolate'], kave: ['coffee'], tea: ['tea'], viz: ['water'], bor: ['wine'], sor: ['beer'],
   csirke: ['chicken'], pulyka: ['turkey'], marha: ['beef'], sertes: ['pork'], borju: ['veal'], barany: ['lamb'], kacsa: ['duck'],
   sonka: ['ham'], szalami: ['salami'], kolbasz: ['sausage'], szalonna: ['bacon', 'lard'],
   hal: ['fish'], lazac: ['salmon'], tonhal: ['tuna'], szardinia: ['sardine'], makrela: ['mackerel'], pisztrang: ['trout'],
-  ponty: ['carp'], garnela: ['shrimp', 'prawn'], tofu: ['tofu'], lencse: ['lentil'], bab: ['bean'], csicseriborso: ['hummus', 'legume'],
-  borso: ['pea'], kukorica: ['corn', 'maize'], szoja: ['soy'], mandulaital: ['almond drink', 'almond-based drink'], mandulatej: ['almond drink', 'almond-based drink'],
-  zabital: ['oat-based drink'], zabtej: ['oat-based drink'], rizsital: ['rice-based drink'], szojaital: ['soy drink'], szojatej: ['soy drink'], kokusztej: ['coconut milk'], kokusz: ['coconut'],
+  ponty: ['carp'], garnela: ['shrimp', 'prawn'], tofu: ['tofu'], lencse: ['lentil'], bab: ['bean'], csicseriborso: ['hummus', 'legume', 'chickpea'],
+  borso: ['pea'], kukorica: ['corn', 'maize'], szoja: ['soy'], mandulaital: ['almond drink', 'almond-based drink', 'almond milk'], mandulatej: ['almond drink', 'almond-based drink', 'almond milk'],
+  zabital: ['oat-based drink', 'oat milk'], zabtej: ['oat-based drink', 'oat milk'], rizsital: ['rice-based drink', 'rice milk'], szojaital: ['soy drink', 'soy milk'], szojatej: ['soy drink', 'soy milk'], kokusztej: ['coconut milk'], kokusz: ['coconut'],
   kecske: ['goat'], juh: ['ewe', 'sheep'], liszt: ['flour'], eleszto: ['yeast'], so: ['salt'], ecet: ['vinegar'],
   majonez: ['mayonnaise'], ketchup: ['ketchup'], mustar: ['mustard'], pizza: ['pizza'], palacsinta: ['crepe', 'pancake'],
   keksz: ['biscuit'], suti: ['cake', 'pastry'], fagylalt: ['ice cream'], chips: ['crisps', 'chips'], popcorn: ['pop-corn'],
@@ -212,7 +213,7 @@ const DICT = {
   /* English spelling variants and names that differ between UK/US/French usage */
   yogurt: ['yogurt', 'yoghurt'], yoghurt: ['yogurt', 'yoghurt'], zucchini: ['courgette', 'zucchini'], courgette: ['courgette', 'zucchini'],
   eggplant: ['eggplant', 'aubergine'], aubergine: ['eggplant', 'aubergine'], shrimp: ['shrimp', 'prawn'], prawn: ['shrimp', 'prawn'],
-  cookie: ['biscuit', 'cookie'], biscuit: ['biscuit', 'cookie'], chickpea: ['hummus', 'legume'], garbanzo: ['hummus', 'legume'],
+  cookie: ['biscuit', 'cookie'], biscuit: ['biscuit', 'cookie'], chickpea: ['hummus', 'legume', 'chickpea'], garbanzo: ['hummus', 'legume', 'garbanzo'],
   wholegrain: ['wholemeal', 'whole wheat', 'wholegrain'], wholewheat: ['wholemeal', 'whole wheat'], wholemeal: ['wholemeal', 'whole wheat'],
   mince: ['minced', 'ground'], candy: ['candy', 'confectionery', 'sweet'], sweets: ['candy', 'confectionery', 'sweet'],
   /* English words that would otherwise be caught by a Hungarian stem */
@@ -238,7 +239,7 @@ function altsFor(tok) {
   return out;
 }
 const tokensOf = (q) => norm(q).split(/[^a-z0-9]+/).filter(Boolean);
-function scoreName(nn, groups) {
+function scoreName(nn, groups, plural = false) {   // plural: USDA names say “Apples, raw”, so a typed “apple” also counts as a whole word there
   let score = 0;
   for (const alts of groups) {
     let best = 0;
@@ -246,11 +247,13 @@ function scoreName(nn, groups) {
       const i = nn.indexOf(a);
       if (i < 0) continue;
       const before = i === 0 || /[^a-z0-9]/.test(nn[i - 1]);
-      const after = nn[i + a.length];
+      let end = i + a.length;
+      if (plural) { const m = /^(es|s)(?![a-z0-9])/.exec(nn.slice(end)); if (m) end += m[1].length; }
+      const after = nn[end];
       const whole = after === undefined || /[^a-z0-9]/.test(after);
       let sc = 1;
       if (before) sc = whole ? 6 : 4;
-      if (i === 0 && whole && (after === undefined || after === ',' || (after === ' ' && nn[i + a.length + 1] === '('))) sc += 3;
+      if (i === 0 && whole && (after === undefined || after === ',' || (after === ' ' && nn[end + 1] === '('))) sc += 3;
       sc += Math.min(a.length, 24) / 10;   // longer, more specific matches rank first
       best = Math.max(best, sc);
     }
@@ -259,10 +262,10 @@ function scoreName(nn, groups) {
   }
   return score;
 }
-function rankFoods(groups, limit) {
+function rankFoods(groups, limit, pool = CIQ) {
   const out = [];
-  for (const f of CIQ) {
-    const s = scoreName(f._nn, groups);
+  for (const f of pool) {
+    const s = scoreName(f._nn, groups, pool !== CIQ);
     if (s) out.push([s * 100 - f._nn.length + (/(^|[^a-z])raw($|[^a-z])/.test(f._nn) ? 30 : 0), f]);
   }
   out.sort((a, b) => b[0] - a[0]);
@@ -275,19 +278,22 @@ const PHRASES = [
   [/\bcoconut milk\b/g, 'kokusztej'], [/\bsour cream\b/g, 'tejfol'], [/\b(whipping|heavy|double|single) cream\b/g, 'tejszin'],
   [/\bcottage cheese\b/g, 'turo'], [/\bground (beef|pork|turkey|chicken)\b/g, 'minced $1'],
 ];
-function searchCiqual(q, limit = 40) {
+function searchPool(pool, q, limit, usePhrases) {
   let qq = norm(q);
-  for (const [re, to] of PHRASES) qq = qq.replace(re, to);
+  if (usePhrases) for (const [re, to] of PHRASES) qq = qq.replace(re, to);
   const groups = tokensOf(qq).flatMap(altsFor);
   if (!groups.length) return [];
-  let res = rankFoods(groups, limit);
+  let res = rankFoods(groups, limit, pool);
   if (!res.length && groups.length > 1) {
     // drop words that match nothing and search with the rest
-    const useful = groups.filter((g) => CIQ.some((f) => scoreName(f._nn, [g])));
-    if (useful.length && useful.length < groups.length) res = rankFoods(useful, limit);
+    const useful = groups.filter((g) => pool.some((f) => scoreName(f._nn, [g], pool !== CIQ)));
+    if (useful.length && useful.length < groups.length) res = rankFoods(useful, limit, pool);
   }
   return res;
 }
+/* CIQUAL names differ from everyday English (almond milk = “almond drink”), so the phrase list only applies there. USDA names are plain US English. */
+const searchCiqual = (q, limit = 40) => searchPool(CIQ, q, limit, true);
+const searchUsda = (q, limit = 10) => searchPool(USDA, q, limit, false);
 function searchLocal(q, onlyGrams) {
   const toks = tokensOf(q);
   const digits = q.replace(/\s/g, '');
@@ -303,11 +309,11 @@ function searchLocal(q, onlyGrams) {
 }
 
 /* ================= nutrition maths ================= */
-const getFood = (id) => (id.startsWith('c:') ? CIQ_BY_ID.get(id) : S.foods[id]);
+const getFood = (id) => (id.startsWith('c:') || id.startsWith('usda:') ? CIQ_BY_ID.get(id) : S.foods[id]);
 const isG = (f) => f.basis.unit === 'g';
 
 function cellOf(food, i) {
-  if (food.src === 'ciqual') return food._cells[i];
+  if (food._cells) return food._cells[i];            // CIQUAL and USDA foods keep their numbers in an array
   return food.n ? food.n[KEYS[i]] : undefined;
 }
 function parseCell(c) {
@@ -328,7 +334,7 @@ function vecOf(food) {
   food._vec = { lo, hi };
   return food._vec;
 }
-const energyEstimated = (f) => f.src === 'ciqual' && !!f.estE;
+const energyEstimated = (f) => !!f._cells && !!f.estE;
 function invalidate() { for (const f of Object.values(S.foods)) delete f._vec; }
 
 function totalsFor(entries) {
@@ -353,7 +359,7 @@ const timeOf = (e) => (validHm(e.tm) ? e.tm : Number.isFinite(e.t) ? hm(new Date
 const byTime = (a, b) => timeOf(a).localeCompare(timeOf(b)) || (a.t || 0) - (b.t || 0);
 const amountText = (e, f) => `${fmt(e.a)} ${f.basis.unit}`;
 const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (Number.isNaN(v.lo[i]) ? 0 : 1), 0); };
-const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'off' ? 'OFF' : 'custom');
+const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'off' ? 'OFF' : 'custom');
 const kcalPer = (f) => vecOf(f).lo[0];
 
 /* ================= saving ================= */
@@ -525,6 +531,8 @@ function viewLog() {
     }
   }
 
+  const lostU = USDA_ERR ? S.log.filter((e) => e.d === S.day && e.f.startsWith('usda:')).length : 0;
+  const usdaWarn = lostU ? `<div class="banner">The USDA food data could not be loaded (${esc(USDA_ERR)}), so ${lostU} ${lostU === 1 ? 'entry is' : 'entries are'} hidden on this day. Check your internet connection and reload the app.</div>` : '';
   const meals = MEALS.map((m) => {
     const list = es.filter((e) => e.m === m.id).sort(byTime);
     let mk = 0, mkn = 0;
@@ -564,7 +572,8 @@ function viewLog() {
       </div>
       <div class="mini"><span>Fibre <b>${fmt(g('fibres'))} g</b></span><span>Sugars <b>${fmt(g('sugars'))} g</b></span><span>Salt <b>${fmt(g('salt'))} g</b></span></div>
     </div>
-    ${estE ? '<div class="banner">~ means the energy was calculated from protein, carbohydrate and fat (CIQUAL, Atwater factors).</div>' : ''}
+    ${usdaWarn}
+    ${estE ? '<div class="banner">~ means the energy was calculated from protein, carbohydrate and fat (generic food data, Atwater factors).</div>' : ''}
     ${nova}${empty}${meals}`;
 }
 
@@ -634,9 +643,10 @@ function viewData() {
       <button class="btn" data-act="refresh-app">Reload app files</button></div>
     <div class="card"><div class="card-t">Sources &amp; licences</div>
       <p class="small" style="margin:8px 0">Generic foods: Anses. 2020. Ciqual French food composition table. <a href="https://doi.org/10.5281/zenodo.4770202" target="_blank" rel="noopener">doi.org/10.5281/zenodo.4770202</a> (CC BY 4.0).</p>
+      <p class="small" style="margin:8px 0">Generic foods (second source): U.S. Department of Agriculture, Agricultural Research Service. FoodData Central: Foundation Foods (April 2026) and SR Legacy (April 2018). <a href="https://fdc.nal.usda.gov" target="_blank" rel="noopener">fdc.nal.usda.gov</a> (U.S. public domain).</p>
       <p class="small" style="margin:8px 0">Packaged products: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
-      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${CAT ? CAT.nutrients.length : 0} nutrients.</p></div>
+      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}</p></div>
   </div>`;
 }
 
@@ -647,7 +657,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button></div>
     <div id="res" aria-live="polite"></div>`);
   const q = $('#q', sh.el), res = $('#res', sh.el);
-  let off = null, offMsg = '', notFound = false, huOnly = false;
+  let off = null, offMsg = '', notFound = false, huOnly = false, usdaLimit = 10;
   const list = (arr, kind) => `<div class="rows">${arr.map((f) => foodRow(f, `data-pick="${esc(f.id)}" data-kind="${kind}"`)).join('')}</div>`;
   function paint() {
     const text = q.value.trim();
@@ -662,9 +672,11 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     } else {
       const loc = searchLocal(text, onlyGrams);
       const ciq = searchCiqual(text);
+      const usAll = searchUsda(text, usdaLimit + 1), us = usAll.slice(0, usdaLimit);
       if (loc.length) html += `<h4>My foods &amp; saved products</h4>${list(loc, 'x')}`;
       if (ciq.length) html += `<h4>CIQUAL (generic foods)</h4>${list(ciq, 'x')}`;
-      if (!loc.length && !ciq.length) html += '<p class="muted">No local match. Try another word, or search Open Food Facts.</p>';
+      if (us.length) html += `<h4>USDA (generic foods, US)</h4>${list(us, 'x')}${usAll.length > us.length ? '<button class="btn block" data-a="more-usda" style="margin-top:8px">Show more USDA results</button>' : ''}`;
+      if (!loc.length && !ciq.length && !us.length) html += '<p class="muted">No local match. Try another word, or search Open Food Facts.</p>';
       if (/^\d{8,14}$/.test(text.replace(/\s/g, ''))) html += `<button class="btn block primary" data-a="code" style="margin-top:12px">Look up barcode: ${esc(text.replace(/\s/g, ''))}</button>`;
     }
     if (text) {
@@ -712,7 +724,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     }
   }
   function pick(food) { onPick(food); }
-  q.addEventListener('input', () => { notFound = false; paint(); });
+  q.addEventListener('input', () => { notFound = false; usdaLimit = 10; paint(); });
   sh.el.addEventListener('change', (e) => { if (e.target.id === 'huonly') huOnly = e.target.checked; });
   sh.el.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
@@ -721,7 +733,8 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
       let food = b.dataset.kind === 'off' ? (off || []).find((f) => f.id === b.dataset.pick) : getFood(b.dataset.pick);
       if (b.dataset.kind === 'off' && food) food = keepOff(food);
       if (food) pick(food);
-    } else if (b.dataset.a === 'off') runOff(null);
+    } else if (b.dataset.a === 'more-usda') { usdaLimit += 30; paint(); }
+    else if (b.dataset.a === 'off') runOff(null);
     else if (b.dataset.a === 'code') runOff(q.value.replace(/\s/g, ''));
     else if (b.dataset.a === 'scan') scanBarcode((code) => { q.value = code; paint(); runOff(code); });
     else if (b.dataset.a === 'new') openFoodEditor(null, { name: /\D/.test(q.value) ? q.value.trim() : '', barcode: /^\d{8,14}$/.test(q.value.trim()) ? q.value.trim() : '', after: (f) => pick(f) });
@@ -779,9 +792,11 @@ function loadScript(src) {
 
 /* ================= amount sheet (new entry / edit entry) ================= */
 function portionsOf(f) { return [...(f.portions || []), ...(S.meta.portions[f.id] || [])]; }
+/* Which portion a new entry starts with: the serving of a packaged product, or a portion the person saved. USDA household measures only appear as buttons: a start of 100 g is clearer than "1 cup". */
+const startPortion = (f) => [...(f.src === 'usda' ? [] : f.portions || []), ...(S.meta.portions[f.id] || [])][0];
 function openAmount({ food, entry, meal, afterAdd }) {
   const unitG = isG(food);
-  const start = entry ? entry.a : (S.meta.last[food.id] ?? (portionsOf(food)[0] ? portionsOf(food)[0].grams : unitG ? 100 : 1));
+  const start = entry ? entry.a : (S.meta.last[food.id] ?? (startPortion(food) ? startPortion(food).grams : unitG ? 100 : 1));
   const chips = (unitG ? [...portionsOf(food).map((p) => [p.label, p.grams]), ...[10, 30, 50, 100, 200].map((g) => [g + ' g', g])] : [0.5, 1, 2, 3].map((x) => [x + ' ' + food.basis.unit, x]));
   const startTime = (entry && timeOf(entry)) || hm(new Date());   // new entry: now; existing entry: the saved time
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
@@ -796,7 +811,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     </div>
     <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time, for example 13:45.</p>
     <div class="card" id="prev"></div>
-    <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food.src !== 'ciqual' ? '<button class="btn" id="editfood">Edit food</button>' : ''}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
+    <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food._cells ? '' : '<button class="btn" id="editfood">Edit food</button>'}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
   const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
   const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function prev() {
@@ -1120,7 +1135,7 @@ function persistState() {
 
 /* ================= start ================= */
 async function loadCatalog() {
-  const r = await fetch('ciqual.json');
+  const [r, ru] = await Promise.all([fetch('ciqual.json'), fetch('usda.json').catch((e) => e)]);   // both files load at the same time
   if (!r.ok) throw new Error('ciqual.json could not be loaded (HTTP ' + r.status + ').');
   CAT = await r.json();
   KEYS = CAT.nutrients.map((n) => n.key);
@@ -1133,6 +1148,17 @@ async function loadCatalog() {
     basis: { qty: 100, unit: 'g' }, portions: [], nova: null, estE: !!f.e, _cells: f.v, _nn: norm(f.n),
   }));
   CIQ_BY_ID = new Map(CIQ.map((f) => [f.id, f]));
+  /* USDA is a second source of generic foods. CIQUAL is the base: the app still starts if usda.json cannot be read. */
+  try {
+    if (!ru || !ru.ok) throw new Error(ru && ru.status ? 'HTTP ' + ru.status : 'no connection');
+    const U = await ru.json();
+    if (!Array.isArray(U.keys) || U.keys.join() !== KEYS.join()) throw new Error('its nutrient list differs from ciqual.json');
+    USDA = U.foods.map((f) => ({
+      id: 'usda:' + f.c, src: 'usda', name: f.n, group: f.g || '',
+      basis: { qty: 100, unit: 'g' }, portions: (f.p || []).map(([label, grams]) => ({ label, grams })), nova: null, estE: !!f.e, _cells: f.v, _nn: norm(f.n),
+    }));
+    for (const f of USDA) CIQ_BY_ID.set(f.id, f);
+  } catch (err) { USDA = []; USDA_ERR = (err && err.message) || 'unknown error'; }
 }
 
 async function init() {
@@ -1149,7 +1175,7 @@ async function init() {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;
   }
 }
-window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, getFood, offToFood, fmt, get KEYS() { return KEYS; }, get IDX() { return IDX; }, render, save };
+window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, render, save };
 init();
 
 })();

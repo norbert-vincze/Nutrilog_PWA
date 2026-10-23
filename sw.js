@@ -1,19 +1,25 @@
 /* Nutrilog service worker: offline use.
-   - ciqual.json: cache-first (it rarely changes)
+   - ciqual.json and usda.json (the food tables): cache-first, kept in their own cache (DATA) that is NOT renewed with every app version.
+     Change the number in DATA only when one of these two files changes.
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v7';   // keep in step with VERSION in app.js
+const CACHE = 'nutrilog-v8';   // keep in step with VERSION in app.js
+const DATA = 'nutrilog-data-1';
+const DATA_FILES = ['ciqual.json', 'usda.json'];
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',
-  'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js', 'ciqual.json'];
+  'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(Promise.all([
+    caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))),
+    caches.open(DATA).then(async (c) => { for (const u of DATA_FILES) if (!(await c.match(u))) await c.add(new Request(u, { cache: 'reload' })); }),
+  ]).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== DATA).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -24,11 +30,11 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  if (url.pathname.endsWith('/ciqual.json')) {
+  if (DATA_FILES.some((f) => url.pathname.endsWith('/' + f))) {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
+        caches.open(DATA).then((c) => c.put(req, copy));
         return res;
       }))
     );

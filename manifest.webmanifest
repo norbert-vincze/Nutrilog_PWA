@@ -1,7 +1,7 @@
 {
   "name": "Nutrilog",
   "short_name": "Nutrilog",
-  "description": "Calorie, macro and micronutrient diary using CIQUAL and Open Food Facts.",
+  "description": "Calorie, macro and micronutrient diary using CIQUAL, USDA and Open Food Facts.",
   "lang": "en",
   "start_url": "./",
   "scope": "./",

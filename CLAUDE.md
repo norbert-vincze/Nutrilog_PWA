@@ -10,8 +10,9 @@ explain every manual step (GitHub clicks, phone steps) in small numbered steps w
 - Norbert tests on an iPhone 14 (iOS 26, Chrome). That is WebKit: no `BarcodeDetector`, ZXing is used for scanning.
 
 ## Files
-- `index.html`, `style.css`, `app.js` (all logic, ~1000 lines), `sw.js` (offline), `manifest.webmanifest`, icons.
+- `index.html`, `style.css`, `app.js` (all logic, ~1200 lines), `sw.js` (offline), `manifest.webmanifest`, icons.
 - `ciqual.json` (CIQUAL 2020, 3186 foods, 64 nutrients, CC BY 4.0). Built from the CIQUAL Excel table (.xls, Zenodo 4770202) with `python3 tools/ciqual_to_json.py <table.xls> ciqual.json` (needs pandas and xlrd). The source table is not in the repo.
+- `usda.json` (USDA FoodData Central: Foundation Foods April 2026, 436 foods + SR Legacy April 2018, 7793 foods; U.S. public domain; 3.5 MB, about 0.9 MB gzipped). Same 64 nutrients in the same order as `ciqual.json` (`keys` is checked at load). Built from the two CSV downloads at fdc.nal.usda.gov/download-datasets with `python3 -I tools/usda_to_json.py <foundation_csv_dir> <sr_legacy_csv_dir> ciqual.json usda.json` (needs pandas). The CSV folders are not in the repo.
 - `zxing.min.js` (vendored ZXing-js, Apache 2.0, licence in `ZXING-LICENSE.txt`).
 - `README.md` is the Hungarian beginner guide for installing and using the app. Keep it in step with the app.
 - `tests/` Playwright scripts (see below).
@@ -23,6 +24,7 @@ explain every manual step (GitHub clicks, phone steps) in small numbered steps w
 - Meals are `Meal 1` … `Meal N`, count set by `MEAL_COUNT` (6). No breakfast/lunch names. A new entry defaults to the meal of the latest entry on the shown day (Meal 1 on an empty day).
 - Every diary entry has a time of day: `tm` ("HH:MM", local, 24 h), editable in the Amount/Edit entry sheet (`#tm`, `<input type="time">`, next to Meal). New entries start at the current time. Entries without `tm` (made before version 6) show the time they were added (`t`, never changed). The time never moves an entry to another day (`d` stays the shown day). Within a meal entries are sorted by time (`byTime`); `defaultMeal()` still uses the creation order `t`. The entries CSV has a `time` column after `date`. Do not call `focus()` on the time field (iOS).
 - Theme is a manual setting: Data tab → **Appearance** → Auto / Light / Dark (`localStorage` key `nutrilog.theme`, not part of the backup). CSS has only `:root` (light) and `:root[data-theme="dark"]`; there is no `prefers-color-scheme` block. `data-theme` is always set to `light` or `dark`: first by the inline script in `index.html` (before first paint, no flash), then by `applyTheme()` in app.js, which also follows live phone changes while Auto is on. Keep the rule in both places identical. The `theme-color` meta is a single tag updated by script.
+- USDA is a second source of generic foods next to CIQUAL (Norbert asked for it after seeing that kaloriabazis.hu uses USDA). It is bundled, not a live API: the FDC API needs a key in every request and deactivates keys found in public repos. Search sheet order: My foods, CIQUAL, USDA (10 rows, "Show more USDA results" adds 30), Open Food Facts. USDA foods: id `usda:<fdc_id>`, `src:'usda'`, tag USDA, 100 g basis, no Edit food, household measures from FDC as buttons but the amount still starts at 100 g (`startPortion`). The search uses the same DICT (Hungarian) but not PHRASES, and matches plurals ("Apples"). Id prefixes: `c:` CIQUAL, `usda:` USDA, `o:` Open Food Facts, `u:` foods you create (never reuse `u:` for anything else). Missing stays missing: only salt (from sodium), crude protein (nitrogen x 6.25), vitamin D from IU and energy from kJ/Atwater are derived, see the docstring of the converter. Fatty acids use exact isomers only, vitamin K2 is MK-4 only. If `usda.json` cannot load, the app starts without it and the Diary says how many entries are hidden.
 - There is **no Recipe feature**. It was removed on purpose. Do not add it back.
 - Missing data is not zero: values are lower/upper vectors with NaN; totals show `≥`, the `cnt/n` pill, `~` for energy estimated from macros, "Lower estimate" chip. Empty field = no data, 0 = real zero.
 - Data stays in the browser (IndexedDB `tapnaplo`/`kv`, localStorage fallback). Backup JSON keeps the marker `app:'tapnaplo'`. CSV exports (entries, daily totals) are for analysis with Claude; columns ending `__max` are upper bounds of "<x" values, `__n` counts items with data.
@@ -36,6 +38,7 @@ explain every manual step (GitHub clicks, phone steps) in small numbered steps w
 - The Create food form shows **Essentials** first; everything else is under **More values**.
 - The active tab is remembered (`localStorage` key `nutrilog.tab`).
 - GitHub Pages sends files with a 10-minute browser cache. `sw.js` therefore fetches with `cache: 'no-cache'`.
+- `sw.js` keeps `ciqual.json` and `usda.json` in their own cache `DATA` (`nutrilog-data-1`), cache-first, so a new app version does not download the 4.9 MB again. Raise the number in `DATA` only when one of the two files changes (the "Reload app files" button clears everything anyway).
 - With every change: raise `VERSION` in `app.js` **and** `CACHE` in `sw.js` (same number). The Data tab shows the version and has a "Reload app files" button (clears service worker and caches, keeps the diary).
 
 ## Testing
@@ -50,6 +53,7 @@ python3 test_barcode_keyboard.py  # not-found barcode, 12/13 digits, amount fiel
 python3 test_audit_fixes.py    # the 18 points of the UX/accessibility audit (contrast, 44 px targets, wording, errors, dialogs)
 python3 test_entry_time.py     # entry time: default now, edit, sort, empty-time error, old entries, reload, CSV column
 python3 test_theme.py          # Auto/Light/Dark: no flash, saved, survives reload, Auto follows the phone live
+python3 test_usda.py           # USDA: data values, search (HU/EN, plurals), household measures, CSV, offline cache, app without usda.json
 ```
 Not testable here: a real iPhone, the live Open Food Facts API, the native BarcodeDetector. Ask Norbert for a screenshot.
 Commit messages end with the attribution lines required by the session.
