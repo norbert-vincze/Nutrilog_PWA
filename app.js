@@ -19,7 +19,7 @@ const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); r
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '4 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '5 · 23 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function fmt(v) {
@@ -449,7 +449,7 @@ function toast(msg, undo) {
 }
 
 /* ================= header, tabs, views ================= */
-const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'Foods', IC.foods], ['data', 'Data', IC.data]];
+const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'My foods', IC.foods], ['data', 'Data', IC.data]];
 
 function renderChrome() {
   $('#tabbar').innerHTML = TABS.map(([id, name, ic]) => `<button class="tab" data-act="tab" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}>${ic}<span>${name}</span></button>`).join('');
@@ -471,6 +471,7 @@ function renderChrome() {
 function render() {
   renderChrome();
   $('#view').innerHTML = S.tab === 'log' ? viewLog() : S.tab === 'nutr' ? viewNutr() : S.tab === 'foods' ? viewFoods() : viewData();
+  if (S.tab === 'data') persistState();
 }
 
 /* ---- Diary ---- */
@@ -509,12 +510,12 @@ function viewLog() {
         <span class="entry-kcal">${kt}<small>kcal</small></span></button>`;
     }).join('');
     return `<section class="meal"><div class="meal-h"><h3>${m.name}</h3>${mkn ? `<span class="mk">${fmt(mk)} kcal</span>` : ''}
-      <button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Add food to ${m.name}">${IC.plus}</button></div>
+      <button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Log food in ${m.name}">${IC.plus}</button></div>
       <div class="rows">${rows}</div></section>`;
   }).join('');
 
   const empty = !S.log.length ? `<div class="card" style="margin-top:16px"><div class="card-t">Log your first food</div>
-    <p class="muted small" style="margin-top:6px">Tap <b>Add food</b>. Search in English or Hungarian (egg, tojás, bread, kenyér, avocado), scan a barcode, or look a product up in Open Food Facts. Use <b>New food</b> to enter your own from a label.</p></div>` : '';
+    <p class="muted small" style="margin-top:6px">Tap <b>Log food</b>. Search in English or Hungarian (egg, tojás, bread, kenyér, avocado), scan a barcode, or look a product up in Open Food Facts. Use <b>Create food</b> to enter your own from a label.</p></div>` : '';
 
   return `<section class="hero">
       <div class="hero-label">Energy</div>
@@ -522,16 +523,16 @@ function viewLog() {
       ${noE > 0 ? `<span class="chip warn">Lower estimate · ${noE} without energy data</span>` : `<span class="chip">${es.length ? plural(es.length, 'item') + ' logged' : 'Nothing logged yet'}</span>`}
     </section>
     <div class="actions">
-      <button class="act primary" data-act="add"><span class="act-c">${IC.plus}</span>Add food</button>
+      <button class="act primary" data-act="add"><span class="act-c">${IC.plus}</span>Log food</button>
       <button class="act" data-act="scan"><span class="act-c">${IC.scan}</span>Scan</button>
-      <button class="act" data-act="new-food"><span class="act-c">${IC.tag}</span>New food</button>
+      <button class="act" data-act="new-food"><span class="act-c">${IC.tag}</span>Create food</button>
     </div>
     <div class="card">
       <div class="bar" role="img" aria-label="Energy split between protein, carbohydrate and fat">${tot > 0
     ? `<i style="width:${p / tot * 100}%;background:var(--c-p)"></i><i style="width:${c / tot * 100}%;background:var(--c-c)"></i><i style="width:${f / tot * 100}%;background:var(--c-f)"></i>` : ''}</div>
       <div class="mtiles">
         <div><div class="mt-name"><span class="dot" style="background:var(--c-p)"></span>Protein</div><div class="mt-val">${fmt(g('protein'))}<small>g</small></div><div class="mt-pct">${pct(p)}</div></div>
-        <div><div class="mt-name"><span class="dot" style="background:var(--c-c)"></span>Carbs</div><div class="mt-val">${fmt(g('carbohydrate'))}<small>g</small></div><div class="mt-pct">${pct(c)}</div></div>
+        <div><div class="mt-name"><span class="dot" style="background:var(--c-c)"></span>Carbohydrate</div><div class="mt-val">${fmt(g('carbohydrate'))}<small>g</small></div><div class="mt-pct">${pct(c)}</div></div>
         <div><div class="mt-name"><span class="dot" style="background:var(--c-f)"></span>Fat</div><div class="mt-val">${fmt(g('fat'))}<small>g</small></div><div class="mt-pct">${pct(f)}</div></div>
       </div>
       <div class="mini"><span>Fibre <b>${fmt(g('fibres'))} g</b></span><span>Sugars <b>${fmt(g('sugars'))} g</b></span><span>Salt <b>${fmt(g('salt'))} g</b></span></div>
@@ -543,7 +544,7 @@ function viewLog() {
 /* ---- Nutrients ---- */
 function viewNutr() {
   const es = entriesOf(S.day);
-  if (!es.length) return '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p></div>';
+  if (!es.length) return '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
   const T = totalsFor(es);
   const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>';
   const out = GROUPS.map(([gid, gname, open]) => {
@@ -568,7 +569,7 @@ function viewNutr() {
 
 /* ---- My foods ---- */
 function viewFoods() {
-  return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} New food</button></div>
+  return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} Create food</button></div>
     <input type="search" class="search" id="ffilter" placeholder="Search my foods" value="${esc(S.filter)}" aria-label="Search my foods">
     <div id="flist" style="margin-top:12px">${foodListHtml()}</div>`;
 }
@@ -591,10 +592,11 @@ function viewData() {
       <p class="muted small" style="margin:6px 0 14px">Your data lives only on this device, in this browser. Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
       <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
     <div class="card"><div class="card-t">For analysis</div>
-      <p class="muted small" style="margin:6px 0 14px">UTF-8 CSV with decimal points. An empty cell means no data. Columns ending in __max hold the upper bound for values reported as “&lt; x”.</p>
+      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x.</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
-      <p class="muted small" style="margin:6px 0 14px">Mode: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'} · <span id="persist-state">persistent storage: checking…</span></p>
+      <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
+      <p class="small" id="persist-state" style="margin:0 0 14px">Checking…</p>
       <button class="btn" data-act="persist">Request persistent storage</button></div>
     <div class="card"><div class="card-t">App version</div>
       <p class="muted small" style="margin:6px 0 14px">Nutrilog version <b>${esc(VERSION)}</b>. If a fix is published but you still see the old behaviour, tap the button: it reloads the app files. Your diary and foods stay untouched. Needs internet.</p>
@@ -608,14 +610,13 @@ function viewData() {
 }
 
 /* ================= food picker ================= */
-function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
+function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
   const sh = openSheet(title, `
     <input id="q" type="search" class="search" inputmode="search" autocomplete="off" placeholder="Search: egg, tojás, bread, kenyér…" aria-label="Search foods">
-    <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button><button class="btn" data-a="off">Search Open Food Facts</button></div>
-    <label class="chk"><input type="checkbox" id="huonly"> Name search: only products sold in Hungary</label>
+    <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button></div>
     <div id="res" aria-live="polite"></div>`);
   const q = $('#q', sh.el), res = $('#res', sh.el);
-  let off = null, offMsg = '', notFound = false;
+  let off = null, offMsg = '', notFound = false, huOnly = false;
   const list = (arr, kind) => `<div class="rows">${arr.map((f) => foodRow(f, `data-pick="${esc(f.id)}" data-kind="${kind}"`)).join('')}</div>`;
   function paint() {
     const text = q.value.trim();
@@ -635,9 +636,15 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
       if (!loc.length && !ciq.length) html += '<p class="muted">No local match. Try another word, or search Open Food Facts.</p>';
       if (/^\d{8,14}$/.test(text.replace(/\s/g, ''))) html += `<button class="btn block primary" data-a="code" style="margin-top:12px">Look up barcode: ${esc(text.replace(/\s/g, ''))}</button>`;
     }
-    if (off) html += `<h4>Open Food Facts</h4>${off.length ? list(off, 'off') : '<p class="muted">No results.</p>'}`;
+    if (text) {
+      const shown = text.length > 26 ? text.slice(0, 26) + '…' : text;
+      html += `<div class="offbox"><h4>Open Food Facts (packaged products)</h4>
+        <button class="btn block" data-a="off">Search “${esc(shown)}” in Open Food Facts</button>
+        <label class="chk"><input type="checkbox" id="huonly" ${huOnly ? 'checked' : ''}> Only products sold in Hungary</label></div>`;
+    }
+    if (off) html += off.length ? list(off, 'off') : '<p class="muted">No results.</p>';
     if (offMsg) html += `<p class="note">${esc(offMsg)}</p>`;
-    html += `<div class="row gap" style="margin-top:16px"><button class="btn${notFound ? ' primary' : ''}" data-a="new">+ New food from label</button></div>`;
+    html += `<div class="row gap" style="margin-top:16px"><button class="btn${notFound ? ' primary' : ''}" data-a="new">+ Create food from label</button></div>`;
     res.innerHTML = html;
   }
   async function runOff(code) {
@@ -656,16 +663,16 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
         const food = await offProduct(code);
         if (!food) {
           off = []; notFound = true;
-          offMsg = `Open Food Facts does not have barcode ${code}. It is a community database, so some products are missing, especially supplements and items from outside Europe. Tap “New food from label” and copy the values from the package. The barcode is filled in, so the next scan finds the product in your own foods.`;
+          offMsg = `Open Food Facts does not have barcode ${code}. It is a community database, so some products are missing, especially supplements and items from outside Europe. Tap “Create food from label” and copy the values from the package. The barcode is filled in, so the next scan finds the product in your own foods.`;
           paint(); return;
         }
         off = [food]; paint();
         const kept = keepOff(food);
-        if (!Object.keys(kept.n).length) offMsg = 'Open Food Facts has no nutrition values for this product. Fill them in from the label under My foods.';
+        if (!Object.keys(kept.n).length) offMsg = 'Open Food Facts has no nutrition values for this product. Fill them in from the label: open My foods and tap the product.';
         pick(kept);
       } else {
-        off = await offSearch(text, $('#huonly', sh.el).checked);
-        if (!off.length && $('#huonly', sh.el).checked) offMsg = 'No results among products sold in Hungary. Untick the box to search worldwide.';
+        off = await offSearch(text, huOnly);
+        if (!off.length && huOnly) offMsg = 'No results among products sold in Hungary. Untick the box to search worldwide.';
         paint();
       }
     } catch (err) {
@@ -675,6 +682,7 @@ function openPicker({ title = 'Add food', onlyGrams = false, onPick }) {
   }
   function pick(food) { onPick(food); }
   q.addEventListener('input', () => { notFound = false; paint(); });
+  sh.el.addEventListener('change', (e) => { if (e.target.id === 'huonly') huOnly = e.target.checked; });
   sh.el.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
     if (!b) return;
@@ -747,41 +755,47 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
     <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
     <label class="f">Amount (${esc(food.basis.unit)})<input type="text" inputmode="decimal" id="amt" value="${esc(String(start))}"></label>
+    <p class="note field-err" id="amterr" role="alert" hidden>Enter an amount greater than 0.</p>
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     ${unitG ? '<button class="chip-btn accent" id="saveportion" style="justify-self:start">+ Save as portion</button>' : ''}
     <label class="f">Meal<select id="meal">${MEALS.map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
     <div class="card" id="prev"></div>
-    <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food.src !== 'ciqual' ? '<button class="btn" id="editfood">Edit food</button>' : ''}<span style="flex:1"></span><button class="btn primary" id="ok">${entry ? 'Save' : 'Add'}</button></div>`);
-  const amt = $('#amt', sh.el);
-  const val = () => { const v = num(amt.value.trim() === '' && amt.dataset.prev ? amt.dataset.prev : amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
+    <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food.src !== 'ciqual' ? '<button class="btn" id="editfood">Edit food</button>' : ''}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
+  const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
+  const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function prev() {
     const a = val(), v = vecOf(food);
+    ok.textContent = (entry ? 'Save' : 'Add') + (Number.isNaN(a) ? '' : ' ' + fmt(a) + ' ' + food.basis.unit);
     if (Number.isNaN(a)) { $('#prev', sh.el).innerHTML = '<span class="muted">Enter a positive number.</span>'; return; }
     const k = a / food.basis.qty, g = (key) => v.lo[IDX[key]] * k;
     const known = trackedKnown(food);
     $('#prev', sh.el).innerHTML = `<div class="card-t">${Number.isNaN(v.lo[0]) ? 'no energy data' : (energyEstimated(food) ? '~' : '') + fmt(v.lo[0] * k) + ' kcal'}</div>
-      <div class="muted small" style="margin-top:4px">protein ${fmt(g('protein'))} g · carbs ${fmt(g('carbohydrate'))} g · fat ${fmt(g('fat'))} g · fibre ${fmt(g('fibres'))} g</div>
+      <div class="muted small" style="margin-top:4px">protein ${fmt(g('protein'))} g · carbohydrate ${fmt(g('carbohydrate'))} g · fat ${fmt(g('fat'))} g · fibre ${fmt(g('fibres'))} g</div>
       <div class="small" style="margin-top:8px">Data for <b>${known}</b> of the ${TRACKED.length} tracked nutrients${known < TRACKED.length * 0.6 ? ' <span style="color:var(--warn)">(few — micronutrient totals will be incomplete)</span>' : ''}</div>`;
   }
-  amt.addEventListener('input', prev);
-  $('#chips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = String(b.dataset.v); prev(); } });
+  amt.addEventListener('input', () => { amterr.hidden = true; amt.removeAttribute('aria-invalid'); prev(); });
+  $('#chips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = String(b.dataset.v); amterr.hidden = true; prev(); } });
   const sp = $('#saveportion', sh.el);
   if (sp) sp.onclick = () => {
     const a = val();
-    if (Number.isNaN(a)) return;
-    const label = window.prompt('Portion name (e.g. 1 piece, 1 tbsp):', '1 piece');
-    if (!label) return;
-    (S.meta.portions[food.id] = S.meta.portions[food.id] || []).push({ label: label.trim().slice(0, 40), grams: a });
-    save(); toast('Portion saved: ' + label.trim()); sh.close(); openAmount({ food, entry, meal, afterAdd });
+    if (Number.isNaN(a)) { amterr.hidden = false; amt.focus(); return; }
+    askText({
+      title: 'Save as portion', label: 'Portion name (e.g. 1 piece, 1 tbsp)', value: '1 piece', okLabel: 'Save portion',
+      onOk: (label) => {
+        (S.meta.portions[food.id] = S.meta.portions[food.id] || []).push({ label, grams: a });
+        save(); toast('Portion saved: ' + label); sh.close(); openAmount({ food, entry, meal, afterAdd });
+      },
+    });
   };
-  $('#ok', sh.el).onclick = () => {
+  ok.onclick = () => {
     const a = val();
-    if (Number.isNaN(a)) { amt.focus(); return; }
+    if (Number.isNaN(a)) { amterr.hidden = false; amt.setAttribute('aria-invalid', 'true'); amt.focus(); return; }
     const m = $('#meal', sh.el).value;
+    const mealName = (MEALS.find((x) => x.id === m) || {}).name;
     if (entry) { entry.a = a; entry.m = m; } else S.log.push({ id: uid(), d: S.day, m, f: food.id, a, t: Date.now() });
     S.meta.last[food.id] = a;
     save(); sh.close(); render();
-    toast(entry ? 'Updated' : 'Added: ' + cap(food.name));
+    toast(entry ? `Updated: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit}` : `Added: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit} to ${mealName}`);
     if (afterAdd) afterAdd();
   };
   const del = $('#del', sh.el);
@@ -793,14 +807,34 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const ef = $('#editfood', sh.el);
   if (ef) ef.onclick = () => openFoodEditor(food, { after: () => { sh.close(); render(); } });
   prev();
-  /* Focus the field by hand only on computers. On an iPhone, focus() outside a tap leaves the field "focused" without a keyboard,
-     and tapping it afterwards does nothing. So on touch screens the person taps the field, and the old value gets selected. */
-  let cleared = false;   /* first focus empties the field (old value shows grey), so the new number simply replaces it */
-  amt.addEventListener('focus', () => { if (!cleared) { cleared = true; amt.dataset.prev = amt.value; amt.placeholder = amt.value; amt.value = ''; prev(); } });
-  amt.addEventListener('blur', () => { if (amt.value.trim() === '') { amt.value = amt.dataset.prev || ''; prev(); } });
-  amt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#ok', sh.el).click(); } });
+  /* The value is always visible in the field. Computers: focus and select it, so typing replaces it.
+     Touch screens: no focus() by hand (on an iPhone it leaves the field "focused" without a keyboard);
+     the person taps the field and the number is selected, where the browser allows it. */
+  amt.addEventListener('focus', () => setTimeout(() => { try { amt.setSelectionRange(0, amt.value.length); } catch { /* ignore */ } }, 40));
+  amt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok.click(); } });
   if (!TOUCH) setTimeout(() => { amt.focus(); amt.select(); }, 60);
   else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+}
+
+/* In-app replacements for window.confirm and window.prompt: native dialogs freeze the page on some browsers and look foreign. */
+function askConfirm({ title, text, okLabel = 'OK', danger = false, onOk }) {
+  const d = openSheet(title, `<p>${esc(text)}</p><div class="row gap"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn ${danger ? 'danger' : 'primary'}" data-ok>${esc(okLabel)}</button></div>`);
+  $('[data-dx]', d.el).onclick = () => d.close();
+  $('[data-ok]', d.el).onclick = () => { d.close(); onOk(); };
+  return d;
+}
+function askText({ title, label, value = '', okLabel = 'Save', onOk }) {
+  const d = openSheet(title, `<label class="f">${esc(label)}<input type="text" id="ask-v" value="${esc(value)}" maxlength="40"></label>
+    <p class="note field-err" id="ask-err" role="alert" hidden>Type a name first.</p>
+    <div class="row gap"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>${esc(okLabel)}</button></div>`);
+  const inp = $('#ask-v', d.el);
+  const go = () => { const v = inp.value.trim().slice(0, 40); if (!v) { $('#ask-err', d.el).hidden = false; inp.focus(); return; } d.close(); onOk(v); };
+  $('[data-dx]', d.el).onclick = () => d.close();
+  $('[data-ok]', d.el).onclick = go;
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  inp.addEventListener('input', () => { $('#ask-err', d.el).hidden = true; });
+  if (!TOUCH) setTimeout(() => { inp.focus(); inp.select(); }, 60);
+  return d;
 }
 
 function addFlow(meal) {
@@ -817,16 +851,35 @@ function parseInput(s) {
   const x = Number(t);
   return Number.isFinite(x) && x >= 0 ? { v: x } : { err: true };
 }
+const ESSENTIAL = ['kcal', 'protein', 'carbohydrate', 'sugars', 'fat', 'fa_saturated', 'fibres', 'salt'];
+function nutField(food, i) {
+  const cur = food && food.n ? food.n[KEYS[i]] : undefined;
+  const shown = cur === undefined || cur === null ? '' : String(cur);
+  return `<div class="nin"><label for="n_${KEYS[i]}">${esc(labelOf(i))}</label><input type="text" inputmode="decimal" id="n_${KEYS[i]}" data-k="${KEYS[i]}" value="${esc(shown)}" placeholder="–"><span class="u">${esc(UNITS[i])}</span></div>`;
+}
 function nutInputs(food) {
-  return GROUPS.map(([gid, gname]) => {
-    const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid && !(gid === 'oth' && UNITS[i] === 'kcal'));
-    const fields = idxs.map((i) => {
-      const cur = food && food.n ? food.n[KEYS[i]] : undefined;
-      const shown = cur === undefined || cur === null ? '' : String(cur);
-      return `<div class="nin"><label for="n_${KEYS[i]}">${esc(labelOf(i))}</label><input type="text" inputmode="decimal" id="n_${KEYS[i]}" data-k="${KEYS[i]}" value="${esc(shown)}" placeholder="–"><span class="u">${esc(UNITS[i])}</span></div>`;
-    }).join('');
-    return `<details class="fold" ${['mac', 'min', 'vit'].includes(gid) || idxs.some((i) => food && food.n && food.n[KEYS[i]] != null) ? 'open' : ''}><summary>${gname}</summary>${fields}</details>`;
+  const has = (i) => food && food.n && food.n[KEYS[i]] != null;
+  const ess = ESSENTIAL.map((k) => IDX[k]).filter((i) => i !== undefined);
+  let moreHas = false;
+  const groups = GROUPS.map(([gid, gname]) => {
+    const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid && !ess.includes(i) && !(gid === 'oth' && UNITS[i] === 'kcal'));
+    if (!idxs.length) return '';
+    const any = idxs.some(has);
+    if (any) moreHas = true;
+    return `<details class="fold" ${['fa', 'min', 'vit'].includes(gid) || any ? 'open' : ''}><summary>${gname}</summary>${idxs.map((i) => nutField(food, i)).join('')}</details>`;
   }).join('');
+  return `<div class="card ess"><div class="card-t">Essentials</div>${ess.map((i) => nutField(food, i)).join('')}</div>
+    <details class="fold more" ${moreHas ? 'open' : ''}><summary>More values (fatty acids, minerals, vitamins…)</summary>${groups}</details>`;
+}
+/* Show an error right under the field, open any folded group around it, and put the cursor there. */
+function fieldError(input, msg) {
+  const host = input.closest('.nin, label.f') || input;
+  $$('.field-err', host.parentNode).forEach((x) => x.remove());
+  host.insertAdjacentHTML('afterend', `<p class="note field-err" role="alert">${esc(msg)}</p>`);
+  input.setAttribute('aria-invalid', 'true');
+  for (let d = input.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  input.focus();
+  input.scrollIntoView({ block: 'center' });
 }
 function portionRows(list) {
   return list.map((p) => `<div class="ing"><input type="text" class="pl" value="${esc(p.label)}" aria-label="Portion name" placeholder="e.g. 1 piece"><input type="text" inputmode="decimal" class="pg" value="${esc(String(p.grams))}" aria-label="Portion in grams" placeholder="g"><button class="icon-btn sm" data-rm aria-label="Remove">${IC.close}</button></div>`).join('');
@@ -839,34 +892,35 @@ function openFoodEditor(food, opts = {}) {
   const isNew = !food;
   const f0 = food || { name: opts.name || '', brand: '', barcode: opts.barcode || '', basis: { qty: 100, unit: 'g' }, n: {}, nova: null, portions: [], note: '' };
   const perUnit = !isG(f0);
-  const sh = openSheet(isNew ? 'New food (from label)' : 'Edit food', `
+  const sh = openSheet(isNew ? 'Create food from label' : 'Edit food', `
     <label class="f">Name<input type="text" id="fname" value="${esc(f0.name)}" maxlength="120" placeholder="e.g. Almond barista drink"></label>
     <div class="grid2"><label class="f">Brand<input type="text" id="fbrand" value="${esc(f0.brand || '')}" maxlength="80"></label>
       <label class="f">Barcode<input type="text" inputmode="numeric" id="fcode" value="${esc(f0.barcode || '')}" maxlength="14"></label></div>
     <fieldset><legend class="muted small" style="margin-bottom:8px;font-weight:600">The values below are per</legend>
       <div class="row gap"><label class="chk"><input type="radio" name="basis" value="g" ${perUnit ? '' : 'checked'}> 100 g</label>
       <label class="chk"><input type="radio" name="basis" value="u" ${perUnit ? 'checked' : ''}> 1 unit (capsule, tablet, piece)</label>
-      <input type="text" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'disabled'}></div></fieldset>
-    <label class="f">NOVA group (degree of processing)<select id="fnova"><option value="">unknown</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label>
+      <input type="text" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'hidden'}></div></fieldset>
     <p class="muted small">Fill in what the label shows. An empty field means “no data”, a 0 is a real zero. Write &lt;0.3 for a value below a detection limit.</p>
     <div id="nuts">${nutInputs(f0)}</div>
+    <details class="fold" ${f0.nova ? 'open' : ''}><summary>Food-processing group (NOVA, optional)</summary>
+      <p class="hint" style="margin:0 0 10px">1 = unprocessed or minimally processed, 2 = culinary ingredient (oil, sugar, flour), 3 = processed food (bread, canned vegetables), 4 = ultra-processed (soft drinks, packaged snacks). Leave it unset if you are not sure.</p>
+      <label class="f">NOVA group<select id="fnova"><option value="">Not set</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label></details>
     <div id="portwrap"><h4>Portions (in grams)</h4><div id="ports">${portionRows(f0.portions || [])}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
     <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="400">${esc(f0.note || '')}</textarea></label>
-    <p class="note" id="ferr" hidden></p>
     <div class="row gap">${isNew ? '' : '<button class="btn danger" id="fdel">Delete</button>'}<span style="flex:1"></span><button class="btn primary" id="fok">Save</button></div>`);
   const radios = $$('input[name=basis]', sh.el), unit = $('#funit', sh.el);
-  const syncBasis = () => { const u = radios.find((r) => r.checked).value === 'u'; unit.disabled = !u; $('#portwrap', sh.el).hidden = u; };
+  const syncBasis = () => { const u = radios.find((r) => r.checked).value === 'u'; unit.hidden = !u; unit.disabled = !u; $('#portwrap', sh.el).hidden = u; };
   radios.forEach((r) => r.addEventListener('change', syncBasis)); syncBasis();
   $('#addport', sh.el).onclick = () => $('#ports', sh.el).insertAdjacentHTML('beforeend', portionRows([{ label: '', grams: '' }]));
   sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) b.closest('.ing').remove(); });
+  sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
   $('#fok', sh.el).onclick = () => {
-    const err = $('#ferr', sh.el);
     const name = $('#fname', sh.el).value.trim();
-    if (!name) { err.textContent = 'Give the food a name.'; err.hidden = false; return; }
+    if (!name) { fieldError($('#fname', sh.el), 'Give the food a name.'); return; }
     const n = {};
     for (const inp of $$('[data-k]', sh.el)) {
       const p = parseInput(inp.value);
-      if (p.err) { err.textContent = 'Invalid number: ' + labelOf(IDX[inp.dataset.k]) + '. Use a positive number or <x.'; err.hidden = false; inp.focus(); return; }
+      if (p.err) { fieldError(inp, 'Invalid number for ' + labelOf(IDX[inp.dataset.k]) + '. Use a positive number, or <x for a value below the detection limit.'); return; }
       if (!p.empty) n[inp.dataset.k] = p.v;
     }
     const u = radios.find((r) => r.checked).value === 'u';
@@ -891,8 +945,9 @@ function openFoodEditor(food, opts = {}) {
 function deleteFood(food, done) {
   const used = S.log.filter((e) => e.f === food.id).length;
   if (used) { toast(`Can't delete: used in ${used === 1 ? '1 diary entry' : used + ' diary entries'}.`); return; }
-  if (!window.confirm('Delete “' + food.name + '”?')) return;
+  const copy = S.foods[food.id];
   delete S.foods[food.id]; invalidate(); save(); done();
+  toast('Deleted: ' + cap(food.name), () => { S.foods[copy.id] = copy; invalidate(); save(); render(); });
 }
 
 /* ================= export / import ================= */
@@ -951,9 +1006,15 @@ function importJson(file) {
     try {
       const j = JSON.parse(rd.result);
       if (j.app !== 'tapnaplo' || !Array.isArray(j.log) || typeof j.foods !== 'object') throw new Error('this is not a Nutrilog backup file.');
-      if (!window.confirm(`This replaces your current data with ${plural(j.log.length, 'entry').replace('entrys', 'entries')} and ${plural(Object.keys(j.foods).length, 'food')}. Continue?`)) return;
-      S.log = j.log; S.foods = j.foods; S.meta = Object.assign({ last: {}, portions: {}, backup: null }, j.meta || {});
-      invalidate(); save(); render(); toast('Restored');
+      const nE = j.log.length, nF = Object.keys(j.foods).length;
+      askConfirm({
+        title: 'Replace your data?', danger: true, okLabel: 'Replace',
+        text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.`,
+        onOk: () => {
+          S.log = j.log; S.foods = j.foods; S.meta = Object.assign({ last: {}, portions: {}, backup: null }, j.meta || {});
+          invalidate(); save(); render(); toast('Restored');
+        },
+      });
     } catch (err) { toast('Could not restore: ' + err.message); }
   };
   rd.readAsText(file);
@@ -964,7 +1025,7 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-act]');
   if (!t) return;
   const a = t.dataset.act;
-  if (a === 'tab') { S.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }
+  if (a === 'tab') { S.tab = t.dataset.tab; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); }
   else if (a === 'day') { S.day = addDays(S.day, +t.dataset.n); render(); }
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
@@ -997,15 +1058,19 @@ async function refreshApp() {
   } catch { /* reload anyway */ }
   location.reload();
 }
+/* The meal of the most recent entry on the day shown; Meal 1 when the day is still empty. */
 function defaultMeal() {
-  const h = new Date().getHours();
-  return h < 10 ? 'm1' : h < 15 ? 'm2' : h < 21 ? 'm3' : 'm4';
+  const last = S.log.filter((e) => e.d === S.day).sort((a, b) => b.t - a.t)[0];
+  return last && MEALS.some((m) => m.id === last.m) ? last.m : MEALS[0].id;
 }
 function persistState() {
   const el = $('#persist-state');
   if (!el) return;
-  if (!(navigator.storage && navigator.storage.persisted)) { el.textContent = 'persistent storage: not supported'; return; }
-  navigator.storage.persisted().then((p) => { el.textContent = 'persistent storage: ' + (p ? 'on' : 'off'); });
+  if (!(navigator.storage && navigator.storage.persisted)) { el.textContent = 'This browser cannot tell whether your diary is protected. Back up regularly.'; return; }
+  navigator.storage.persisted().then((p) => {
+    el.innerHTML = p ? '<b>Persistent:</b> the browser keeps your diary unless you clear the site data. Still back up now and then.'
+      : '<b>Not persistent:</b> the browser may clear your diary if the device runs low on space. Back up regularly and add the app to your home screen.';
+  }).catch(() => { el.textContent = 'Could not check the storage status.'; });
 }
 
 /* ================= start ================= */
@@ -1032,8 +1097,8 @@ async function init() {
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign({ last: {}, portions: {}, backup: null }, meta);
+    try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
     render();
-    persistState();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
   } catch (err) {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;

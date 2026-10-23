@@ -2,7 +2,7 @@
    - ciqual.json: cache-first (it rarely changes)
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v4';   // keep in step with VERSION in app.js
+const CACHE = 'nutrilog-v5';   // keep in step with VERSION in app.js
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js', 'ciqual.json'];
 

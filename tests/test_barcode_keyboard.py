@@ -47,7 +47,7 @@ async def run(touch):
         # editor prefilled with barcode
         await page.click('[data-a=new]'); await page.wait_for_selector('#fcode')
         print('  editor barcode prefilled:', await page.input_value('#fcode'))
-        await page.fill('#fname', 'My supplement'); await page.fill('#n_magnesium', '120'); await page.click('#fok')
+        await page.fill('#fname', 'My supplement'); await page.click('details.more > summary'); await page.fill('#n_magnesium', '120'); await page.click('#fok')
         await page.wait_for_selector('#amt'); await page.click('#ok'); await page.wait_for_timeout(200)
 
         # 2 same code again -> own food found, no network call
@@ -68,9 +68,7 @@ async def run(touch):
         active = await page.evaluate("document.activeElement && document.activeElement.id")
         print('4 activeElement after amount opens:', repr(active), '(touch: must NOT be amt; desktop: amt)')
         if touch:
-            await page.tap('#amt')
-        else:
-            await page.click('#amt')
+            await page.tap('#amt'); await page.wait_for_timeout(150)   # the number gets selected shortly after the tap
         await page.keyboard.type('75')
         print('  typed value:', await page.input_value('#amt'))
         await page.keyboard.press('Enter'); await page.wait_for_timeout(300)
@@ -83,8 +81,9 @@ async def run(touch):
 
         # 6 Hungary filter default off
         await page.click('.act.primary'); await page.wait_for_selector('#q')
+        await page.fill('#q', 'muesli')
         print('6 huonly checked by default:', await page.is_checked('#huonly'))
-        calls.clear(); await page.fill('#q', 'muesli'); await page.click('[data-a=off]'); await page.wait_for_timeout(300)
+        calls.clear(); await page.click('[data-a=off]'); await page.wait_for_timeout(300)
         print('  search url has hungary:', any('hungary' in c for c in calls), '| sorted:', any('unique_scans_n' in c for c in calls))
         await page.check('#huonly'); calls.clear(); await page.click('[data-a=off]'); await page.wait_for_timeout(300)
         print('  with box ticked has hungary:', any('hungary' in c for c in calls))
@@ -95,7 +94,8 @@ async def run(touch):
         n_before = await page.evaluate('__tapnaplo.S.log.length')
         await page.wait_for_timeout(800)
         await page.click('[data-act=refresh-app]')
-        await page.wait_for_load_state('load'); await page.wait_for_selector('.hero'); await page.wait_for_timeout(1500)
+        await page.wait_for_load_state('load'); await page.wait_for_selector('[data-act=refresh-app]'); await page.wait_for_timeout(1500)
+        print('  tab after reload (remembered):', await page.evaluate('__tapnaplo.S.tab'))
         print('  entries before/after reload:', n_before, await page.evaluate('__tapnaplo.S.log.length'))
         print('  caches after reload:', await page.evaluate('caches.keys()'))
         print('ERRS', errs)

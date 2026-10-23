@@ -47,7 +47,7 @@ async def main():
         # custom unit food
         await page.click('[data-tab=foods]'); await page.click('[data-act=new-food]')
         await page.fill('#fname','Magnesium capsule'); await page.check('input[name=basis][value=u]'); await page.fill('#funit','capsule')
-        await page.fill('#n_magnesium','100'); await page.fill('#n_vitamin_d','<0.5')
+        await page.click('details.more > summary'); await page.fill('#n_magnesium','100'); await page.fill('#n_vitamin_d','<0.5')
         await page.screenshot(path='n_editor.png'); await page.click('#fok'); await page.wait_for_timeout(200)
         await page.click('[data-tab=log]'); await page.click('[data-act=add][data-meal=m5]'); await page.fill('#q','magnesium')
         await page.click('[data-pick] >> nth=0'); await page.fill('#amt','3'); await page.click('#ok'); await page.wait_for_timeout(200)

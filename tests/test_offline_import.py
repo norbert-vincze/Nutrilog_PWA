@@ -69,8 +69,7 @@ async def main():
             await page.click('[data-act=export-json]')
         dl = await d.value; await dl.save_as('exp2.json')
         await T("(()=>{const S=__tapnaplo.S; S.log.length=0; })()")
-        page.on('dialog', lambda dlg: asyncio.ensure_future(dlg.accept()))
-        await page.set_input_files('#importfile','exp2.json'); await page.wait_for_timeout(400)
+        await page.set_input_files('#importfile','exp2.json'); await page.wait_for_selector('[data-ok]'); await page.click('[data-ok]'); await page.wait_for_timeout(400)
         print('after import entries', await T('__tapnaplo.S.log.length'))
         await page.screenshot(path='s_dark_data.png', full_page=True)
         # desktop

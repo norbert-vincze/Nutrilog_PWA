@@ -1,0 +1,4 @@
+tests/*.png
+tests/*.y4m
+tests/*.json
+tests/__pycache__/

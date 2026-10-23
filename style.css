@@ -6,10 +6,10 @@
   --surface: #f4f5f7;
   --surface-2: #e8eaee;
   --ink: #191c1f;
-  --muted: #6f7780;
+  --muted: #626a73;
   --line: #e4e6ea;
-  --accent: #0666eb;
-  --btn: #0666eb;
+  --accent: #0559d1;
+  --btn: #0559d1;
   --on-btn: #ffffff;
   --accent-soft: #e4eeff;
   --c-p: #0666eb;
@@ -17,8 +17,8 @@
   --c-f: #ff9f1c;
   --warn: #9a5200;
   --warn-soft: #fff0d9;
-  --danger: #e03449;
-  --ok: #0a7f5c;
+  --danger: #c4263a;
+  --ok: #086b4d;
   --ok-soft: #dcf4ea;
   --shadow: 0 10px 40px rgb(0 0 0 / .16);
   --av0-bg: #e4eeff; --av0-fg: #0b4fc2;
@@ -92,11 +92,11 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .topbar .sub { color: var(--muted); font-size: .92rem; margin-top: 2px; }
 .hdr-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .icon-btn {
-  width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink);
+  width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink);
   display: inline-grid; place-items: center; flex: none; position: relative;
 }
 .icon-btn svg { width: 20px; height: 20px; }
-.icon-btn.sm { width: 34px; height: 34px; }
+.icon-btn.sm { width: 44px; height: 44px; border: 5px solid transparent; background-clip: padding-box; }   /* 34 px circle, 44 px touch area */
 .icon-btn.sm svg { width: 18px; height: 18px; }
 .icon-btn input[type=date] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .chip-btn { border: 0; background: var(--surface); border-radius: 999px; padding: 8px 14px; font-size: .88rem; font-weight: 620; color: var(--ink); }
@@ -258,3 +258,11 @@ video#scan-v { width: 100%; max-height: 50dvh; background: #000; border-radius: 
   .sheet { animation: up .22s cubic-bezier(.2, .8, .2, 1); }
   @keyframes up { from { transform: translateY(40px); opacity: .5; } to { transform: none; opacity: 1; } }
 }
+
+/* folds inside the "More values" fold, inline field errors, essentials card */
+details.fold details.fold { background: var(--sheet); }
+.field-err { margin-top: 6px; }
+.ess { display: grid; gap: 2px; }
+.hint { font-size: .84rem; color: var(--muted); }
+.offbox { margin-top: 14px; display: grid; gap: 10px; }
+.offbox h4 { margin: 8px 0 0; }

@@ -72,23 +72,24 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 ## 7. Első használat
 
 **Étel felvétele:**
-1. A Diary fülön koppints az „**Add food**” gombra.
+1. A Diary fülön koppints a „**Log food**” gombra.
 2. Írd be, hogy `főtt tojás` (vagy `boiled egg`), és koppints az „Egg, hard-boiled” sorra.
-3. Az „Amount” ablakban írd be a mennyiséget grammban (pl. `50`), válaszd ki az étkezést a „Meal” listából (Meal 1-től Meal 6-ig), és koppints az „Add” gombra. A tizedest ponttal és vesszővel is írhatod (`1,5` és `1.5` ugyanaz).
+3. Az „Amount” ablakban a mennyiség grammban látszik, alapból 100. Koppints a számra, és írd át (pl. `50`). A tizedest ponttal és vesszővel is írhatod (`1,5` és `1.5` ugyanaz). A kék gomb felirata megmondja, mit rögzítesz, például „Add 50 g”.
+   Az étkezés alapból az, amelyikbe aznap utoljára vittél fel valamit (üres napon Meal 1). A „Meal” listából átállíthatod, Meal 1-től Meal 6-ig. Ha készen vagy, koppints a kék gombra.
 4. A tétel megjelenik a naplóban. Ha módosítani vagy törölni akarod, koppints rá.
 
 **Csomagolt termék vonalkóddal:**
 1. Koppints a „**Scan**” gombra, és engedélyezd a kamerát.
 2. Tartsd a vonalkódot a kamera elé. Az app az Open Food Facts adatbázisból tölti le a tápértéket.
 3. Ha a kamera nem megy, a „or type the number” mezőbe begépelheted a vonalkód számjegyeit, és koppinthatsz a „Look up” gombra.
-4. A vonalkódos keresés az egész világ termékei között keres, nem csak a magyarok között. Az Open Food Facts viszont közösségi adatbázis, ezért hiányozhatnak belőle termékek, főleg étrend-kiegészítők és Európán kívüli áruk. Ilyenkor az app ezt írja: „Open Food Facts does not have barcode…”. Koppints a kék „New food from label” gombra, és másold be az értékeket a csomagolásról. A vonalkód már be van írva, és a következő beolvasásnál az app azonnal a saját ételedet hozza.
-5. A névkeresésnél („Search Open Food Facts”) alapból az egész világon keres. Ha csak a Magyarországon árult termékeket akarod látni, pipáld be a „Name search: only products sold in Hungary” négyzetet.
+4. A vonalkódos keresés az egész világ termékei között keres, nem csak a magyarok között. Az Open Food Facts viszont közösségi adatbázis, ezért hiányozhatnak belőle termékek, főleg étrend-kiegészítők és Európán kívüli áruk. Ilyenkor az app ezt írja: „Open Food Facts does not have barcode…”. Koppints a kék „Create food from label” gombra, és másold be az értékeket a csomagolásról. A vonalkód már be van írva, és a következő beolvasásnál az app azonnal a saját ételedet hozza.
+5. Ha nevet írsz be, a találatok alatt van az „Open Food Facts” rész, benne a „Search … in Open Food Facts” gombbal. Ez alapból az egész világon keres. Ha csak a Magyarországon árult termékeket akarod látni, pipáld be alatta az „Only products sold in Hungary” négyzetet.
 
 **Étel vagy kiegészítő felvétele a címkéről:**
-1. Koppints a „**New food**” gombra.
+1. Koppints a „**Create food**” gombra (a Diary fülön vagy a My foods fülön).
 2. Írd be a nevét. Kapszulánál vagy tablettánál válaszd az „1 unit” lehetőséget, és írd mellé, hogy `capsule`.
-3. Töltsd ki azokat a mezőket, amelyek a címkén szerepelnek. **Amit nem tudsz, hagyd üresen**: az üres mező „nincs adat”, a 0 pedig valódi nulla.
-4. „Save”, majd az „Add food”-nál név szerint megtalálod.
+3. Az „Essentials” részben van a kalória, a fehérje, a szénhidrát, a cukor, a zsír, a telített zsír, a rost és a só. Ha a címkén vitaminok, ásványi anyagok vagy zsírsavak is szerepelnek, nyisd le a „More values” részt. **Amit nem tudsz, hagyd üresen**: az üres mező „nincs adat”, a 0 pedig valódi nulla.
+4. „Save”. Ha nem adsz nevet, az app a Name mező alatt szól, és oda viszi a kurzort. Mentés után a „Log food” keresőjében név szerint megtalálod, a My foods fülön pedig a saját ételeid listáját látod.
 
 **Hogyan olvasd a Nutrients fület:**
 - A `≥` jel azt jelenti: legalább ennyi. Hiányzó adatnál az összeg alsó becslés, mert az app a hiányt nem tekinti nullának.
@@ -99,7 +100,7 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 
 Az adataid csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon nincsenek. Ha törlöd a böngészőadatokat vagy telefont cserélsz, elvesznek. Az iPhone Safari ráadásul törölheti egy weboldal adatait, ha hét napig nem használod. A kezdőképernyőre tett appra ez nem vonatkozik, ezért iPhone-on mindig onnan indítsd.
 
-1. Nyisd meg a **Data** fület, és koppints a „**Save backup (JSON)**” gombra.
+1. Nyisd meg a **Data** fület. A „Storage” kártya megmondja, védi-e a böngésző az adataidat („Persistent”), vagy törölheti őket („Not persistent”). Koppints a „**Save backup (JSON)**” gombra.
 2. A fájl a letöltések közé kerül. Másold át a felhőbe (Google Drive, iCloud) vagy küldd el magadnak e-mailben.
 3. Heti egy mentés elég. Visszatöltés: Data fül, „Restore from file”.
 4. **Ne töltsd fel a mentésfájlt a GitHubra.** Az nyilvános lenne.
@@ -124,11 +125,11 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | „The app could not start” | Az `index.html`-re duplán kattintva az app nem indul, mert tárhely kell hozzá. Nyisd meg a GitHub-címről. |
 | Üres oldal vagy régi verzió | Data fül → „App version” kártya → „Reload app files”. Ha az app el sem indul, frissítsd az oldalt, vagy zárd be és nyisd meg újra. |
 | A kamera nem indul | Engedélyezd a kamerát a telefon beállításaiban a böngészőnek. Addig is beírhatod a vonalkód számjegyeit a „Scan” ablakban. |
-| Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Az első koppintásnál a régi érték szürke háttérszámmá válik, és az új szám a helyére kerül. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
-| „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „New food from label” gombot. |
+| Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
+| „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „Create food from label” gombot. |
 | „Open Food Facts is not available right now” | Az adatbázis szervere éppen nem válaszol. Próbáld újra egy perc múlva. |
-| „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „New food” gombot. |
-| Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. |
+| „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „Create food” gombot. |
+| Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. Az app megerősítést kér, mielőtt felülírja az adataidat. |
 
 ## Amit érdemes tudnod
 
