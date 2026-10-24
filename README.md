@@ -91,7 +91,7 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 
 **Csomagolt termék vonalkóddal:**
 1. Koppints a „**Scan**” gombra, és engedélyezd a kamerát.
-2. Tartsd a vonalkódot a kamera elé. Az app az Open Food Facts adatbázisból tölti le a tápértéket.
+2. Tartsd a vonalkódot a kamera elé, **10–20 cm-re, laposan és nyugodtan**, jó fényben. A csillogó fólián a fény visszaverődése sokat ront, ilyenkor dönts egy kicsit a csomagon. Az app akkor fogadja el a számot, ha **többször egymás után ugyanazt olvasta** (ez fél másodperc, ha a kód éles). Ezért kicsit várnia kell, de nem fogad el téves számot. Ha 10 másodperc alatt sem megy, az app ezt írja: „Still looking.” Ilyenkor közelíts vagy távolodj egy kicsit, vagy írd be a számot. Az app a dmBio termékeket a saját adatbázisából hozza, minden más termék tápértékét az Open Food Facts adatbázisból tölti le.
 3. Ha a kamera nem megy, a „or type the number” mezőbe begépelheted a vonalkód számjegyeit, és koppinthatsz a „Look up” gombra.
 4. A vonalkódos keresés az egész világ termékei között keres, nem csak a magyarok között. Az Open Food Facts viszont közösségi adatbázis, ezért hiányozhatnak belőle termékek, főleg étrend-kiegészítők és Európán kívüli áruk. Ilyenkor az app ezt írja: „Open Food Facts does not have barcode…”. Koppints a kék „Create food from label” gombra, és másold be az értékeket a csomagolásról. A vonalkód már be van írva, és a következő beolvasásnál az app azonnal a saját ételedet hozza.
 5. Ha nevet írsz be, a találatok alatt van az „Open Food Facts” rész, benne a „Search … in Open Food Facts” gombbal. Ez alapból az egész világon keres. Ha csak a Magyarországon árult termékeket akarod látni, pipáld be alatta az „Only products sold in Hungary” négyzetet.
@@ -152,6 +152,8 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | „The app could not start” | Az `index.html`-re duplán kattintva az app nem indul, mert tárhely kell hozzá. Nyisd meg a GitHub-címről. |
 | Üres oldal vagy régi verzió | Data fül → „App version” kártya → „Reload app files”. Ha az app el sem indul, frissítsd az oldalt, vagy zárd be és nyisd meg újra. |
 | A kamera nem indul | Engedélyezd a kamerát a telefon beállításaiban a böngészőnek. Addig is beírhatod a vonalkód számjegyeit a „Scan” ablakban. |
+| A beolvasott szám nem egyezik a vonalkód alatt nyomtatott számmal | A kamera félreolvasta. Koppints újra a „Scan barcode” gombra, vagy írd be a számot kézzel. Ha az „Open Food Facts does not have barcode …” üzenetet látod, először ellenőrizd a számot a csomagon. |
+| A szkenner sokáig keresi a kódot | Tartsd a telefont 10–20 cm-re, laposan. Túl közelről a kamera nem élesít. Világosabb helyen és a fényes fólia megdöntésével jobban megy. |
 | Az „Amount” mezőre koppintva nem jön fel a billentyűzet | Koppints közvetlenül a számra. Ha így sem jön fel a billentyűzet, használd a gyorsgombokat (10 g, 30 g, 50 g…), és szólj nekem. |
 | A „Time” mező 12 órás formában (AM/PM) mutatja az időt | A mező a telefon beállítását követi. Az iPhone-on: Settings → General → Date & Time → kapcsold be a „24-Hour Time” kapcsolót. A naplóban és a CSV-ben az idő mindig 24 órás. |
 | „The USDA food data could not be loaded” a naplóban, vagy nincsenek USDA-találatok | Az `usda.json` fájl nem töltődött le. Kapcsold be az internetet, majd Data fül → „Reload app files”. Az USDA-tételek addig rejtve vannak, törölve nincsenek. |

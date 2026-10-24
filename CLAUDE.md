@@ -34,6 +34,7 @@ explain every manual step (GitHub clicks, phone steps) in small numbered steps w
 - There is **no Recipe feature**. It was removed on purpose. Do not add it back.
 - Missing data is not zero: values are lower/upper vectors with NaN; totals show `≥`, the `cnt/n` pill, `~` for energy estimated from macros, "Lower estimate" chip. Empty field = no data, 0 = real zero.
 - Data stays in the browser (IndexedDB `tapnaplo`/`kv`, localStorage fallback). Backup JSON keeps the marker `app:'tapnaplo'`. CSV exports (entries, daily totals) are for analysis with Claude; columns ending `__max` are upper bounds of "<x" values, `__n` counts items with data.
+- **Barcode scanner** (`scanBarcode`, ZXing path on iPhone, `BarcodeDetector` where it exists). Norbert's iPhone read a dmBio package (real code 4070765076189) as 6072101076189. Cause, reproduced with his photo: ZXing-js misreads EAN codes when a bar is only about 1.3–2 camera pixels wide, and the wrong number can still pass the EAN check digit; iOS gives 640x480 unless asked; the first reading was accepted at once. Fixes that stay: (1) `getUserMedia` asks for `width/height ideal 1920x1080`, `facingMode ideal environment`; (2) only EAN-13, EAN-8, UPC-A, UPC-E are read (the QR code dm prints next to the barcode was read as a "barcode"); (3) `MultiFormatReader.decode(image, hints)` **forgets the hints after every call**, so pass `hints` in every call (`setHints` once does nothing); (4) a number is accepted by `vote()` only after it was read 3 times in the last 10 readings (2 times when one bar is at least 2.5 camera pixels wide, computed from the two result points, 92 bars apart; 2 times with `BarcodeDetector`) and no other number was read twice; (5) the loop looks about every 120 ms (quick look each frame, `TRY_HARDER` only on every 3rd failing frame because it is 10x slower). Voting cannot catch a systematic misread (the same wrong number again and again at about 1.3 px), so the resolution matters most. The not-found message says that the camera may have misread the number. Do not go back to `BrowserMultiFormatReader.decodeFromConstraints`.
 - Barcode lookup is worldwide (Open Food Facts v2 by code). HTTP 404 means "not in the database", not an error. 12-digit and 13-digit variants are tried. A saved food with the same barcode wins and works offline. The Hungary filter applies only to name search and is opt-in.
 - Liquids are treated as grams (1 ml ≈ 1 g).
 
@@ -53,15 +54,16 @@ Chromium + Playwright for Python, OFF requests are mocked (the live API is not r
 ```
 python3 -m http.server 8765 --bind 127.0.0.1      # in the repo root, keep running
 cd tests && python3 make_barcode_video.py          # creates bar.y4m (fake camera)
+python3 make_scan_fixtures.py                      # creates scan_good/hard/qr/blank.y4m from fixture_dm_barcode.jpg (a crop of a real dmBio barcode)
 python3 test_full_flow.py      # search HU/EN, add, custom food, meals, tabs, persistence
 python3 test_offline_import.py # service worker, offline reload, backup import
-python3 test_scanner.py        # camera scan with fake video (ZXing path)
 python3 test_barcode_keyboard.py  # not-found barcode, 12/13 digits, amount field, Hungary filter, reload button
 python3 test_audit_fixes.py    # the 18 points of the UX/accessibility audit (contrast, 44 px targets, wording, errors, dialogs)
 python3 test_entry_time.py     # entry time: default now, edit, sort, empty-time error, old entries, reload, CSV column
 python3 test_theme.py          # Auto/Light/Dark: no flash, saved, survives reload, Auto follows the phone live
 python3 test_usda.py           # USDA: data values, search (HU/EN, plurals), household measures, CSV, offline cache, app without usda.json
 python3 test_nova.py           # NOVA card: shares, hand-set groups (generic / own / OFF foods), Undo, clear, reload, other day, CSV, backup, <1%, contrast
+python3 test_scanner.py        # (needs make_barcode_video.py and make_scan_fixtures.py first) camera: HD request, real dm barcode photo, shaky small picture never a wrong number, QR ignored, voting rules with scripted readings, misread hint
 python3 test_dmbio.py          # dmBio: data counts, label vs estimate, search HU/EN, barcode offline, ml/prepared buttons, ~ and water on the Nutrients tab, CSV __est columns, own cache, app without dmbio.json, contrast
 ```
 Not testable here: a real iPhone, the live Open Food Facts API, the native BarcodeDetector. Ask Norbert for a screenshot.

@@ -21,7 +21,7 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '10 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '11 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -867,7 +867,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
         const food = await offProduct(code);
         if (!food) {
           off = []; notFound = true;
-          offMsg = `Open Food Facts does not have barcode ${code}. It is a community database, so some products are missing, especially supplements and items from outside Europe. Tap “Create food from label” and copy the values from the package. The barcode is filled in, so the next scan finds the product in your own foods.`;
+          offMsg = `Open Food Facts does not have barcode ${code}. It is a community database, so some products are missing, especially supplements and items from outside Europe. Tap “Create food from label” and copy the values from the package. The barcode is filled in, so the next scan finds the product in your own foods. If the number is not the one printed under the barcode, the camera misread it: scan again or type it.`;
           paint(); return;
         }
         off = [food]; paint();
@@ -909,34 +909,91 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
 }
 
 /* ================= barcode scanner ================= */
+/* Why it looks like this (found with a real photo of a dmBio package):
+   - ZXing-js reads EAN codes wrongly when the barcode is only about 2 camera pixels per bar width, and such a wrong number can still pass the EAN
+     check digit (6072101076189 and 8070167076189 both do, the real code is 4070765076189). iOS gives only 640x480 unless a size is asked for, so the camera is asked
+     for full HD, and a number is accepted only after it has been read 3 times. 2 times are enough when the bars are wide (2.5 camera pixels or more per
+     bar width: a sharp, close barcode) and with the browser's own BarcodeDetector.
+   - Only shop barcodes (EAN-13, EAN-8, UPC-A, UPC-E) are read. With all formats on, the QR code that dm prints next to the barcode was read as a "barcode".
+     Note: MultiFormatReader.decode(image, hints) forgets the hints after every call, so they are passed in every call.
+   - Voting cannot help when the same wrong number is read again and again (it happens at about 1.3 bar pixels), so the resolution matters most.
+   - ZXing's own camera loop looks every 500 ms; this loop looks about every 120 ms. */
 function scanBarcode(onCode) {
   const sh = openSheet('Scan barcode', `
     <video id="scan-v" playsinline muted autoplay></video>
     <p class="muted small" id="scan-msg">Point the camera at the barcode. Your browser will ask for camera permission. This only works on HTTPS.</p>
     <div class="row gap" style="flex-wrap:nowrap"><input id="scan-manual" type="text" inputmode="numeric" placeholder="or type the number" style="flex:1" aria-label="Barcode number"><button class="btn primary" id="scan-go">Look up</button></div>`);
   const video = $('#scan-v', sh.el), msg = $('#scan-msg', sh.el);
-  let stream = null, timer = null, reader = null, done = false;
-  const stop = () => { done = true; clearInterval(timer); if (reader && reader.reset) try { reader.reset(); } catch { /* nothing */ } if (stream) stream.getTracks().forEach((t) => t.stop()); };
+  let stream = null, timer = null, done = false;
+  const wait = (ms) => new Promise((r) => { timer = setTimeout(r, ms); });
+  const stop = () => { done = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); };
   sh.onClose = stop;
   const found = (code) => { if (done) return; stop(); sh.close(); onCode(String(code)); };
+  /* a number counts when it was read `need` times among the last 10 readings and no other number was read twice */
+  const reads = [];
+  const vote = (code, need) => {
+    reads.push(code); if (reads.length > 10) reads.shift();
+    const count = (c) => reads.filter((x) => x === c).length;
+    if (count(code) >= need && !reads.some((x) => x !== code && count(x) >= 2)) found(code);
+  };
   $('#scan-go', sh.el).onclick = () => { const v = $('#scan-manual', sh.el).value.replace(/\s/g, ''); if (/^\d{6,14}$/.test(v)) found(v); else msg.textContent = 'Barcodes have 8–14 digits.'; };
+  const HELP = 'Hold the phone 10–20 cm from the barcode, flat and steady, with good light.';
+  async function openCamera() {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    if (done) { stream.getTracks().forEach((t) => t.stop()); return false; }
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    try {   // sharp close-ups: continuous autofocus where the browser allows it (not on iPhone, where it is the default)
+      const track = stream.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.focusMode && caps.focusMode.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    } catch { /* the default focus is fine */ }
+    return true;
+  }
   (async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { video.hidden = true; msg.textContent = 'This browser cannot open the camera (HTTPS is required). Type the barcode number instead.'; return; }
     try {
+      const t0 = Date.now();
+      const slow = () => { if (!done && Date.now() - t0 > 10000) msg.textContent = 'Still looking. Move the phone a little closer or further away, add light, or type the number below.'; };
       if ('BarcodeDetector' in window) {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-        if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
-        video.srcObject = stream;
-        await video.play().catch(() => {});
+        if (!(await openCamera())) return;
+        msg.textContent = HELP;
         const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-        timer = setInterval(async () => { try { const r = await det.detect(video); if (r[0]) found(r[0].rawValue); } catch { /* next frame */ } }, 300);
+        while (!done) {
+          try { const r = await det.detect(video); if (r[0]) vote(r[0].rawValue, 2); } catch { /* next frame */ }
+          slow(); await wait(120);
+        }
       } else {
         msg.textContent = 'Loading scanner…';
         await loadScript('zxing.min.js');
         if (done) return;
-        reader = new window.ZXing.BrowserMultiFormatReader();
-        msg.textContent = 'Point the camera at the barcode.';
-        await reader.decodeFromConstraints({ video: { facingMode: 'environment' }, audio: false }, video, (res) => { if (res) found(res.getText()); });
+        const Z = window.ZXing;
+        const formats = [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E];
+        const hints = new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, formats]]);                                  // quick look: about 20 ms per HD frame
+        const hardHints = new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, formats], [Z.DecodeHintType.TRY_HARDER, true]]);   // thorough look: every row, about 250 ms, so only on every 3rd frame that fails
+        const reader = new Z.MultiFormatReader();   // decode(image, hints) must get the hints every time: it resets them on each call
+        if (!(await openCamera())) return;
+        msg.textContent = HELP;
+        const canvas = document.createElement('canvas'), g = canvas.getContext('2d', { willReadFrequently: true });
+        let misses = 0;
+        while (!done) {
+          const t1 = performance.now();
+          if (video.readyState >= 2 && video.videoWidth) {
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+            g.drawImage(video, 0, 0);
+            const bitmap = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
+            let r = null;
+            try { r = reader.decode(bitmap, hints); } catch {
+              if (++misses % 3 === 0) { try { r = reader.decode(bitmap, hardHints); } catch { /* no readable barcode in this frame */ } }
+            }
+            if (r) {
+              /* width of one bar in camera pixels: the two result points are the middles of the start and end guards, 92 bar widths apart */
+              const p = r.getResultPoints(), f = r.getBarcodeFormat();
+              const bar = p && p.length >= 2 && (f === Z.BarcodeFormat.EAN_13 || f === Z.BarcodeFormat.UPC_A) ? Math.hypot(p[1].getX() - p[0].getX(), p[1].getY() - p[0].getY()) / 92 : 0;
+              vote(r.getText(), bar >= 2.5 ? 2 : 3);
+            }
+          }
+          slow(); await wait(Math.max(30, 120 - (performance.now() - t1)));
+        }
       }
     } catch (err) {
       video.hidden = true;
