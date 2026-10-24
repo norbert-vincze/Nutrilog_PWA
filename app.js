@@ -21,7 +21,7 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '9 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '10 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -133,6 +133,7 @@ const S = {
 };
 let CAT = null, CIQ = [], CIQ_BY_ID = new Map();   // CIQ_BY_ID holds the CIQUAL ('c:') and the USDA ('usda:') foods; 'u:' is already taken by foods you create
 let USDA = [], USDA_ERR = '';
+let DMBIO = [], DM_ERR = '';   // dmBio products sold by dm Hungary (dmbio.json); ids 'dm:<dm article id>'
 let KEYS = [], UNITS = [], IDX = {}, NUT_N = 0;
 let saveTimer = null;
 
@@ -160,7 +161,7 @@ const L = {
   vitamin_b1_or_thiamin: ['Vitamin B1 (thiamin)', 'vit'], vitamin_b2_or_riboflavin: ['Vitamin B2 (riboflavin)', 'vit'],
   vitamin_b3_or_niacin: ['Vitamin B3 (niacin)', 'vit'], vitamin_b5_or_pantothenic_acid: ['Vitamin B5 (pantothenic acid)', 'vit'],
   vitamin_b6: ['Vitamin B6', 'vit'], vitamin_b9_or_folate: ['Vitamin B9 (folate)', 'vit'], vitamin_b12: ['Vitamin B12', 'vit'],
-  water: ['Water', 'oth'], protein_crude_n_x_6_25: ['Crude protein (N × 6.25)', 'oth'], starch: ['Starch', 'oth'],
+  water: ['Water', 'mac'], protein_crude_n_x_6_25: ['Crude protein (N × 6.25)', 'oth'], starch: ['Starch', 'oth'],
   fructose: ['Fructose', 'oth'], galactose: ['Galactose', 'oth'], glucose: ['Glucose', 'oth'], lactose: ['Lactose', 'oth'],
   maltose: ['Maltose', 'oth'], sucrose: ['Sucrose', 'oth'], polyols: ['Polyols', 'oth'], ash: ['Ash', 'oth'],
   alcohol: ['Alcohol', 'oth'], organic_acids: ['Organic acids', 'oth'],
@@ -296,6 +297,42 @@ function searchPool(pool, q, limit, usePhrases) {
 /* CIQUAL names differ from everyday English (almond milk = “almond drink”), so the phrase list only applies there. USDA names are plain US English. */
 const searchCiqual = (q, limit = 40) => searchPool(CIQ, q, limit, true);
 const searchUsda = (q, limit = 10) => searchPool(USDA, q, limit, false);
+/* dmBio names are Hungarian, so the word list (Hungarian -> English) is not used. A typed English word is also searched as the Hungarian word
+   it stands for (chocolate -> csokolad), and a typed Hungarian word also without its ending (csokolades -> csokolade -> csokolad). */
+let HU_OF = null;
+function huStems(tok) {
+  if (!HU_OF) { HU_OF = {}; for (const [hu, ens] of Object.entries(DICT)) for (const e of ens) { const w = norm(e); if (/^[a-z]+$/.test(w) && w !== hu) (HU_OF[w] = HU_OF[w] || []).push(hu); } }
+  return HU_OF[tok] || [];
+}
+/* Words of 1-3 letters only count at the start of a word (egg must not find meggy), longer ones anywhere (Hungarian compounds: tejcsokolade). */
+const dmHas = (nn, a) => (a.length >= 4 ? nn.includes(a) : new RegExp('(^|[^a-z0-9])' + a).test(nn));
+const DM_EN = { maple: ['juhar'], syrup: ['szirup'], drink: ['ital'], sauce: ['szosz'], soup: ['leves'], bar: ['szelet'], spread: ['krem'], baby: ['bebi', 'csecsemo'], cookie: ['keksz'], biscuit: ['keksz'] };
+function searchDm(q, limit = 10) {
+  if (!DMBIO.length) return [];
+  const digits = q.replace(/\s/g, '');
+  if (/^\d{6,}$/.test(digits)) { const v = codeVariants(digits); return DMBIO.filter((f) => v.includes(f.barcode)); }
+  const groups = tokensOf(q).map((t) => {
+    const alts = [t, ...huStems(t), ...(DM_EN[t] || [])];
+    if (t.length >= 5) alts.push(t.slice(0, -1));
+    if (t.length >= 6) alts.push(t.slice(0, -2));
+    return [...new Set(alts)];
+  });
+  const rank = (gs) => {
+    const out = [];
+    for (const f of DMBIO) {
+      if (!gs.every((g) => g.some((a) => dmHas(f._nn, a)))) continue;
+      const sc = scoreName(f._nn, gs.map((g) => g.filter((a) => dmHas(f._nn, a))), true);
+      if (sc) out.push([sc * 100 - f._nn.length, f]);
+    }
+    return out.sort((a, b) => b[0] - a[0]).slice(0, limit).map((x) => x[1]);
+  };
+  let res = groups.length ? rank(groups) : [];
+  if (!res.length && groups.length > 1) {   // drop the words that match nothing (an English word without a Hungarian partner) and search with the rest
+    const useful = groups.filter((g) => DMBIO.some((f) => g.some((a) => dmHas(f._nn, a))));
+    if (useful.length && useful.length < groups.length) res = rank(useful);
+  }
+  return res;
+}
 function searchLocal(q, onlyGrams) {
   const toks = tokensOf(q);
   const digits = q.replace(/\s/g, '');
@@ -311,7 +348,7 @@ function searchLocal(q, onlyGrams) {
 }
 
 /* ================= nutrition maths ================= */
-const getFood = (id) => (id.startsWith('c:') || id.startsWith('usda:') ? CIQ_BY_ID.get(id) : S.foods[id]);
+const getFood = (id) => (id.startsWith('c:') || id.startsWith('usda:') || id.startsWith('dm:') ? CIQ_BY_ID.get(id) : S.foods[id]);
 const isG = (f) => f.basis.unit === 'g';
 
 function cellOf(food, i) {
@@ -336,12 +373,19 @@ function vecOf(food) {
   food._vec = { lo, hi };
   return food._vec;
 }
-const energyEstimated = (f) => !!f._cells && !!f.estE;
+/* Which values are estimates, not label values: the energy of generic foods worked out from protein, carbohydrate and fat (estE),
+   and every dmBio value that is not on the dm label (f._lab = indexes of the label values; f.q = confidence of the estimate). */
+const CONF = { h: 'high', m: 'medium', l: 'low', v: 'very low', n: 'none' };
+const energyEstimated = (f) => !!f._cells && (!!f.estE || (!!f._lab && !f._lab.has(0) && !Number.isNaN(vecOf(f).lo[0])));
+function isEst(f, i, v) {
+  if (Number.isNaN(v.lo[i])) return false;
+  return i === 0 ? energyEstimated(f) : !!f._lab && !f._lab.has(i);
+}
 function invalidate() { for (const f of Object.values(S.foods)) delete f._vec; }
 
 function totalsFor(entries) {
-  const lo = new Float64Array(NUT_N), hi = new Float64Array(NUT_N), cnt = new Uint16Array(NUT_N);
-  const missing = Array.from({ length: NUT_N }, () => []);
+  const lo = new Float64Array(NUT_N), hi = new Float64Array(NUT_N), cnt = new Uint16Array(NUT_N), est = new Uint16Array(NUT_N);
+  const missing = Array.from({ length: NUT_N }, () => []), estNames = Array.from({ length: NUT_N }, () => []);
   let n = 0;
   for (const e of entries) {
     const f = getFood(e.f);
@@ -350,10 +394,13 @@ function totalsFor(entries) {
     const v = vecOf(f), k = e.a / f.basis.qty;
     for (let i = 0; i < NUT_N; i++) {
       if (Number.isNaN(v.lo[i])) missing[i].push(f.name);
-      else { lo[i] += v.lo[i] * k; hi[i] += v.hi[i] * k; cnt[i]++; }
+      else {
+        lo[i] += v.lo[i] * k; hi[i] += v.hi[i] * k; cnt[i]++;
+        if (isEst(f, i, v)) { est[i]++; estNames[i].push(f.q ? `${f.name} (${CONF[f.q]})` : f.name); }
+      }
     }
   }
-  return { lo, hi, cnt, n, missing };
+  return { lo, hi, cnt, est, n, missing, estNames };
 }
 const entriesOf = (day) => S.log.filter((e) => e.d === day && getFood(e.f));
 /* Time of an entry: the saved time (tm, "HH:MM", editable); entries from before this feature use the moment they were added (t). */
@@ -361,7 +408,8 @@ const timeOf = (e) => (validHm(e.tm) ? e.tm : Number.isFinite(e.t) ? hm(new Date
 const byTime = (a, b) => timeOf(a).localeCompare(timeOf(b)) || (a.t || 0) - (b.t || 0);
 const amountText = (e, f) => `${fmt(e.a)} ${f.basis.unit}`;
 const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (Number.isNaN(v.lo[i]) ? 0 : 1), 0); };
-const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'off' ? 'OFF' : 'custom');
+const trackedEst = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (isEst(f, i, v) ? 1 : 0), 0); };
+const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'dmbio' ? 'dmBio' : f.src === 'off' ? 'OFF' : 'custom');
 const kcalPer = (f) => vecOf(f).lo[0];
 
 /* ---- NOVA: how processed a food is (1 minimal … 4 ultra-processed) ----
@@ -580,6 +628,8 @@ function viewLog() {
   }
 
   const lostU = USDA_ERR ? S.log.filter((e) => e.d === S.day && e.f.startsWith('usda:')).length : 0;
+  const lostD = DM_ERR ? S.log.filter((e) => e.d === S.day && e.f.startsWith('dm:')).length : 0;
+  const dmWarn = lostD ? `<div class="banner">The dmBio food data could not be loaded (${esc(DM_ERR)}), so ${lostD} ${lostD === 1 ? 'entry is' : 'entries are'} hidden on this day. Check your internet connection and reload the app.</div>` : '';
   const usdaWarn = lostU ? `<div class="banner">The USDA food data could not be loaded (${esc(USDA_ERR)}), so ${lostU} ${lostU === 1 ? 'entry is' : 'entries are'} hidden on this day. Check your internet connection and reload the app.</div>` : '';
   const meals = MEALS.map((m) => {
     const list = es.filter((e) => e.m === m.id).sort(byTime);
@@ -620,7 +670,7 @@ function viewLog() {
       </div>
       <div class="mini"><span>Fibre <b>${fmt(g('fibres'))} g</b></span><span>Sugars <b>${fmt(g('sugars'))} g</b></span><span>Salt <b>${fmt(g('salt'))} g</b></span></div>
     </div>
-    ${usdaWarn}
+    ${usdaWarn}${dmWarn}
     ${estE ? '<div class="banner">~ means the energy was calculated from protein, carbohydrate and fat (generic food data, Atwater factors).</div>' : ''}
     ${nova}${empty}${meals}`;
 }
@@ -630,7 +680,8 @@ function viewNutr() {
   const es = entriesOf(S.day);
   if (!es.length) return '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
   const T = totalsFor(es);
-  const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>';
+  const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
+    + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, or dmBio values estimated from the ingredient list. Open a row to see which items and how confident the estimate is.</div>' : '');
   const out = GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
     if (!idxs.length) return '';
@@ -638,11 +689,13 @@ function viewNutr() {
       const cnt = T.cnt[i], n = T.n, lo = T.lo[i], hi = T.hi[i], unit = UNITS[i];
       const range = hi - lo > Math.max(lo * 0.1, 1e-9);
       const val = cnt === 0 ? '<span class="nval none">no data</span>'
-        : `<span class="nval">${cnt < n ? '≥ ' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}<em>${esc(unit)}</em></span>`;
+        : `<span class="nval">${cnt < n ? '≥ ' : ''}${T.est[i] ? '~' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}<em>${esc(unit)}</em></span>`;
       const cls = cnt === n ? 'full' : cnt === 0 ? 'none' : 'part';
       const miss = T.missing[i];
-      const detail = miss.length ? `<div class="ndetail">No data for: ${esc([...new Set(miss)].map(cap).join('; '))}</div>` : '';
-      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span></summary>${detail || '<div class="ndetail">Every item has data.</div>'}</details>`;
+      const estd = T.estNames[i];
+      const detail = (miss.length ? `<div class="ndetail">No data for: ${esc([...new Set(miss)].map(cap).join('; '))}</div>` : '<div class="ndetail">Every item has data.</div>')
+        + (estd.length ? `<div class="ndetail">Estimate, not a label value: ${esc([...new Set(estd)].map(cap).join('; '))}</div>` : '');
+      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span></summary>${detail}</details>`;
     }).join('');
     const list = `<div class="nlist">${rows}</div>`;
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>`
@@ -734,7 +787,7 @@ function viewData() {
       <p class="muted small" style="margin:6px 0 14px">Your data lives only on this device, in this browser. Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
       <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
     <div class="card"><div class="card-t">For analysis</div>
-      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x.</p>
+      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day).</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
@@ -746,9 +799,10 @@ function viewData() {
     <div class="card"><div class="card-t">Sources &amp; licences</div>
       <p class="small" style="margin:8px 0">Generic foods: Anses. 2020. Ciqual French food composition table. <a href="https://doi.org/10.5281/zenodo.4770202" target="_blank" rel="noopener">doi.org/10.5281/zenodo.4770202</a> (CC BY 4.0).</p>
       <p class="small" style="margin:8px 0">Generic foods (second source): U.S. Department of Agriculture, Agricultural Research Service. FoodData Central: Foundation Foods (April 2026) and SR Legacy (April 2018). <a href="https://fdc.nal.usda.gov" target="_blank" rel="noopener">fdc.nal.usda.gov</a> (U.S. public domain).</p>
-      <p class="small" style="margin:8px 0">Packaged products: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
+      <p class="small" style="margin:8px 0">Packaged products (built in): dmBio products of dm Hungary, from the product pages on <a href="https://www.dm.hu" target="_blank" rel="noopener">dm.hu</a>. Energy and macronutrients come from dm’s nutrition tables (corrected where they were inconsistent). All other values are estimates calculated from the ingredient list with CIQUAL 2020 (dmBio estimate v3, 24 Oct 2026); the product page shows how confident each estimate is.</p>
+      <p class="small" style="margin:8px 0">Packaged products (online): <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
-      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}</p></div>
+      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}</p></div>
   </div>`;
 }
 
@@ -759,7 +813,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button></div>
     <div id="res" aria-live="polite"></div>`);
   const q = $('#q', sh.el), res = $('#res', sh.el);
-  let off = null, offMsg = '', notFound = false, huOnly = false, usdaLimit = 10;
+  let off = null, offMsg = '', notFound = false, huOnly = false, usdaLimit = 10, dmLimit = 10;
   const list = (arr, kind) => `<div class="rows">${arr.map((f) => foodRow(f, `data-pick="${esc(f.id)}" data-kind="${kind}"`)).join('')}</div>`;
   function paint() {
     const text = q.value.trim();
@@ -775,10 +829,12 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
       const loc = searchLocal(text, onlyGrams);
       const ciq = searchCiqual(text);
       const usAll = searchUsda(text, usdaLimit + 1), us = usAll.slice(0, usdaLimit);
+      const dmAll = searchDm(text, dmLimit + 1), dm = dmAll.slice(0, dmLimit);
       if (loc.length) html += `<h4>My foods &amp; saved products</h4>${list(loc, 'x')}`;
+      if (dm.length) html += `<h4>dmBio (dm.hu products)</h4>${list(dm, 'x')}${dmAll.length > dm.length ? '<button class="btn block" data-a="more-dm" style="margin-top:8px">Show more dmBio results</button>' : ''}`;
       if (ciq.length) html += `<h4>CIQUAL (generic foods)</h4>${list(ciq, 'x')}`;
       if (us.length) html += `<h4>USDA (generic foods, US)</h4>${list(us, 'x')}${usAll.length > us.length ? '<button class="btn block" data-a="more-usda" style="margin-top:8px">Show more USDA results</button>' : ''}`;
-      if (!loc.length && !ciq.length && !us.length) html += '<p class="muted">No local match. Try another word, or search Open Food Facts.</p>';
+      if (!loc.length && !dm.length && !ciq.length && !us.length) html += '<p class="muted">No local match. Try another word, or search Open Food Facts.</p>';
       if (/^\d{8,14}$/.test(text.replace(/\s/g, ''))) html += `<button class="btn block primary" data-a="code" style="margin-top:12px">Look up barcode: ${esc(text.replace(/\s/g, ''))}</button>`;
     }
     if (text) {
@@ -801,6 +857,9 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
       const variants = codeVariants(code);
       const mine = Object.values(S.foods).find((f) => f.barcode && variants.includes(f.barcode));
       if (mine) { off = null; paint(); pick(mine); return; }
+      /* so does a dmBio product: it is built into the app and needs no internet */
+      const dmHit = DMBIO.find((f) => variants.includes(f.barcode));
+      if (dmHit) { off = null; paint(); pick(dmHit); return; }
     }
     res.insertAdjacentHTML('afterbegin', '<p class="muted">Searching Open Food Facts…</p>');
     try {
@@ -826,7 +885,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     }
   }
   function pick(food) { onPick(food); }
-  q.addEventListener('input', () => { notFound = false; usdaLimit = 10; paint(); });
+  q.addEventListener('input', () => { notFound = false; usdaLimit = 10; dmLimit = 10; paint(); });
   sh.el.addEventListener('change', (e) => { if (e.target.id === 'huonly') huOnly = e.target.checked; });
   sh.el.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
@@ -836,6 +895,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
       if (b.dataset.kind === 'off' && food) food = keepOff(food);
       if (food) pick(food);
     } else if (b.dataset.a === 'more-usda') { usdaLimit += 30; paint(); }
+    else if (b.dataset.a === 'more-dm') { dmLimit += 30; paint(); }
     else if (b.dataset.a === 'off') runOff(null);
     else if (b.dataset.a === 'code') runOff(q.value.replace(/\s/g, ''));
     else if (b.dataset.a === 'scan') scanBarcode((code) => { q.value = code; paint(); runOff(code); });
@@ -895,7 +955,21 @@ function loadScript(src) {
 /* ================= amount sheet (new entry / edit entry) ================= */
 function portionsOf(f) { return [...(f.portions || []), ...(S.meta.portions[f.id] || [])]; }
 /* Which portion a new entry starts with: the serving of a packaged product, or a portion the person saved. USDA household measures only appear as buttons: a start of 100 g is clearer than "1 cup". */
-const startPortion = (f) => [...(f.src === 'usda' ? [] : f.portions || []), ...(S.meta.portions[f.id] || [])][0];
+const startPortion = (f) => [...(f.src === 'usda' || f.src === 'dmbio' ? [] : f.portions || []), ...(S.meta.portions[f.id] || [])][0];
+/* What a person should know before trusting a dmBio product: which values are from the dm label, which are estimated, how sure the estimate is. */
+function dmInfo(f) {
+  if (f.src !== 'dmbio') return '';
+  const lab = [...f._lab].sort((a, b) => a - b).map(labelOf);
+  const ml = f.portions.some((p) => /^100 ml$/.test(p.label)), dry = f.portions.some((p) => /prepared/.test(p.label));
+  return `<details class="fold"><summary>${f.q === 'n' ? 'No micronutrient estimate' : 'Estimated values · confidence ' + CONF[f.q]}</summary>
+    <p class="small" style="margin:0 0 8px">${lab.length ? `From the dm.hu label: ${esc(lab.join(', ').toLowerCase())}.` : 'dm.hu has no nutrition table for this product, so there are no label values.'}
+      ${f.q === 'n' ? ' No other nutrient is estimated.' : ` Every other value is an <b>estimate</b> from the ingredient list (CIQUAL 2020 raw ingredients). Confidence of the estimate: <b>${CONF[f.q]}</b>.`}
+      ${f.fortified ? ' The product may be <b>fortified</b> with vitamins or minerals. The estimate is made from the raw ingredients, so the estimated vitamin and mineral values can be <b>too low</b>.' : ''}</p>
+    ${ml ? '<p class="small muted" style="margin:0 0 8px">The values are per 100 g, not per 100 ml. The “100 ml” button enters the weight of 100 ml.</p>' : ''}
+    ${dry ? '<p class="small muted" style="margin:0 0 8px">The values are for 100 g of the dry product. The “prepared” buttons enter the grams of powder that are in that amount of the made-up soup or drink.</p>' : ''}
+    <p class="small" style="margin:0 0 8px"><a href="https://www.dm.hu/p/d/${esc(f.url)}" target="_blank" rel="noopener">Open on dm.hu</a></p>
+    ${f.info ? `<p class="hint" style="margin:0 0 12px">Note from the estimate file (Hungarian): ${esc(f.info)}</p>` : ''}</details>`;
+}
 function openAmount({ food, entry, meal, afterAdd }) {
   const unitG = isG(food);
   const start = entry ? entry.a : (S.meta.last[food.id] ?? (startPortion(food) ? startPortion(food).grams : unitG ? 100 : 1));
@@ -913,6 +987,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     </div>
     <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time, for example 13:45.</p>
     <div class="card" id="prev"></div>
+    ${dmInfo(food)}
     <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food._cells ? '' : '<button class="btn" id="editfood">Edit food</button>'}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
   const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
   const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
@@ -924,7 +999,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     const known = trackedKnown(food);
     $('#prev', sh.el).innerHTML = `<div class="card-t">${Number.isNaN(v.lo[0]) ? 'no energy data' : (energyEstimated(food) ? '~' : '') + fmt(v.lo[0] * k) + ' kcal'}</div>
       <div class="muted small" style="margin-top:4px">protein ${fmt(g('protein'))} g · carbohydrate ${fmt(g('carbohydrate'))} g · fat ${fmt(g('fat'))} g · fibre ${fmt(g('fibres'))} g</div>
-      <div class="small" style="margin-top:8px">Data for <b>${known}</b> of the ${TRACKED.length} tracked nutrients${known < TRACKED.length * 0.6 ? ' <span style="color:var(--warn)">(few — micronutrient totals will be incomplete)</span>' : ''}</div>`;
+      <div class="small" style="margin-top:8px">Data for <b>${known}</b> of the ${TRACKED.length} tracked nutrients${trackedEst(food) ? ` (<b>${trackedEst(food)}</b> of them estimated, not from a label)` : ''}${known < TRACKED.length * 0.6 ? ' <span style="color:var(--warn)">(few — micronutrient totals will be incomplete)</span>' : ''}</div>`;
   }
   amt.addEventListener('input', () => { amterr.hidden = true; amt.removeAttribute('aria-invalid'); prev(); });
   $('#chips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = String(b.dataset.v); amterr.hidden = true; prev(); } });
@@ -1130,18 +1205,22 @@ function exportJson() {
 }
 function exportEntries() {
   const rows = [...S.log].filter((e) => getFood(e.f)).sort((a, b) => a.d.localeCompare(b.d) || byTime(a, b));
-  const withMax = new Set();
+  const withMax = new Set(), withEst = new Set();
   const data = rows.map((e) => {
     const f = getFood(e.f), v = vecOf(f), k = e.a / f.basis.qty;
-    const lo = [], hi = [];
-    for (let i = 0; i < NUT_N; i++) { lo.push(Number.isNaN(v.lo[i]) ? '' : num6(v.lo[i] * k)); hi.push(Number.isNaN(v.hi[i]) ? '' : num6(v.hi[i] * k)); if (!Number.isNaN(v.lo[i]) && v.hi[i] - v.lo[i] > 1e-12) withMax.add(i); }
-    return { e, f, lo, hi };
+    const lo = [], hi = [], est = [];
+    for (let i = 0; i < NUT_N; i++) {
+      lo.push(Number.isNaN(v.lo[i]) ? '' : num6(v.lo[i] * k)); hi.push(Number.isNaN(v.hi[i]) ? '' : num6(v.hi[i] * k));
+      if (!Number.isNaN(v.lo[i]) && v.hi[i] - v.lo[i] > 1e-12) withMax.add(i);
+      est.push(isEst(f, i, v) ? 1 : 0); if (est[i]) withEst.add(i);
+    }
+    return { e, f, lo, hi, est };
   });
-  const mi = [...withMax].sort((a, b) => a - b);
-  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max')];
+  const mi = [...withMax].sort((a, b) => a - b), ei = [...withEst].sort((a, b) => a - b);
+  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
-  for (const { e, f, lo, hi } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || '', f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, ...lo, ...mi.map((i) => hi[i])]));
+  for (const { e, f, lo, hi, est } of data) {
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, f.src === 'dmbio' ? CONF[f.q] : '', ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -1151,10 +1230,11 @@ function exportDays() {
   const withMax = new Set();
   per.forEach(({ T }) => { for (let i = 0; i < NUT_N; i++) if (T.cnt[i] && T.hi[i] - T.lo[i] > 1e-9) withMax.add(i); });
   const mi = [...withMax].sort((a, b) => a - b);
-  const head = ['date', 'entries', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...KEYS.map((_, i) => KEYS[i] + '__n')];
+  const ei = KEYS.map((_, i) => i).filter((i) => per.some(({ T }) => T.est[i] > 0));
+  const head = ['date', 'entries', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est'), ...KEYS.map((_, i) => KEYS[i] + '__n')];
   const lines = [csvLine(head)];
   for (const { d, T } of per) {
-    lines.push(csvLine([d, T.n, ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...KEYS.map((_, i) => T.cnt[i])]));
+    lines.push(csvLine([d, T.n, ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...ei.map((i) => T.est[i]), ...KEYS.map((_, i) => T.cnt[i])]));
   }
   download(`nutrilog-daily-totals-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -1240,14 +1320,14 @@ function persistState() {
 
 /* ================= start ================= */
 async function loadCatalog() {
-  const [r, ru] = await Promise.all([fetch('ciqual.json'), fetch('usda.json').catch((e) => e)]);   // both files load at the same time
+  const [r, ru, rd] = await Promise.all([fetch('ciqual.json'), fetch('usda.json').catch((e) => e), fetch('dmbio.json').catch((e) => e)]);   // the three files load at the same time
   if (!r.ok) throw new Error('ciqual.json could not be loaded (HTTP ' + r.status + ').');
   CAT = await r.json();
   KEYS = CAT.nutrients.map((n) => n.key);
   UNITS = CAT.nutrients.map((n) => n.unit);
   NUT_N = KEYS.length;
   KEYS.forEach((k, i) => { IDX[k] = i; });
-  TRACKED = KEYS.map((_, i) => i).filter((i) => ['mac', 'fa', 'min', 'vit'].includes(groupOf(i)));
+  TRACKED = KEYS.map((_, i) => i).filter((i) => ['mac', 'fa', 'min', 'vit'].includes(groupOf(i)) && KEYS[i] !== 'water');   // water is shown with the macronutrients, but it is not a nutrient that has to be "known"
   CIQ = CAT.foods.map((f) => ({
     id: 'c:' + f.c, src: 'ciqual', name: f.n, group: [f.G, f.g].filter(Boolean).join(' › '),
     basis: { qty: 100, unit: 'g' }, portions: [], nova: null, estE: !!f.e, _cells: f.v, _nn: norm(f.n),
@@ -1264,6 +1344,18 @@ async function loadCatalog() {
     }));
     for (const f of USDA) CIQ_BY_ID.set(f.id, f);
   } catch (err) { USDA = []; USDA_ERR = (err && err.message) || 'unknown error'; }
+  /* dmBio (dm.hu products) is also optional: the app still starts without it */
+  try {
+    if (!rd || !rd.ok) throw new Error(rd && rd.status ? 'HTTP ' + rd.status : 'no connection');
+    const D = await rd.json();
+    if (!Array.isArray(D.keys) || D.keys.join() !== KEYS.join()) throw new Error('its nutrient list differs from ciqual.json');
+    DMBIO = D.foods.map((f) => ({
+      id: 'dm:' + f.c, src: 'dmbio', name: f.n, brand: '', group: f.q === 'n' ? 'no micronutrient estimate' : 'micronutrient estimate: ' + CONF[f.q], barcode: f.b,
+      basis: { qty: 100, unit: 'g' }, portions: (f.p || []).map(([label, grams]) => ({ label, grams })), nova: null, estE: false,
+      q: f.q, fortified: !!f.f, url: f.u, info: f.x || '', _lab: new Set(f.l), _cells: f.v, _nn: norm(f.n + ' dmbio'),
+    }));
+    for (const f of DMBIO) CIQ_BY_ID.set(f.id, f);
+  } catch (err) { DMBIO = []; DM_ERR = (err && err.message) || 'unknown error'; }
 }
 
 async function init() {
@@ -1280,7 +1372,7 @@ async function init() {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;
   }
 }
-window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, render, save };
+window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save };
 init();
 
 })();
