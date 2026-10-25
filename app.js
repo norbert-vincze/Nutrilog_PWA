@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '15 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '16 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -1645,121 +1645,185 @@ function deleteFood(food, done) {
 }
 
 /* ================= Paste from AI ================= */
-/* An AI looks a product up with a fixed prompt (tools/ai_prompt.md) and answers with a JSON block ("nutrilog_import": 1). The person pastes the answer,
+/* An AI looks a product up with a fixed prompt (tools/ai_prompt.md, v3.1 since version 16) and answers with a JSON block: the foods file of "Import foods (JSON)"
+   (the older answer shape "nutrilog_import": 1 of prompt v1 is still read, see AI_IMPORT_VERSION). The person pastes the answer,
    reviews the food in the food editor and saves it by hand. The pasted text is not stored and nothing is sent anywhere.
    A food from an AI answer has the fields of every food you make (name, brand, barcode, basis, n, nova, portions, note) and three more:
    est (the keys of n that are estimates), q (confidence code, see CONF) and fortified (vitamins or minerals may have been added). */
 const AI_IMPORT_VERSION = 1;
 /* >>> AI prompt: written by tools/embed_ai_prompt.py from tools/ai_prompt.md. Do not edit by hand. */
-const AI_PROMPT_A = `# Nutrilog tételpontosító (v${AI_IMPORT_VERSION})
+const AI_PROMPT = `# Nutrilog tételpontosító (v3.1, végleges)
 
-Te egy személyes tápanyagnapló (Nutrilog) adatfelviteli segédje vagy. A válaszod JSON-része közvetlenül, kézi javítás nélkül kerül az appba, ezért a formátum pontossága és a „nem találgatok" szabály fontosabb a teljességnél. Magyarul válaszolj.
+Te egy személyes tápanyagnapló (Nutrilog) adatfelviteli segédje vagy. A kimeneted JSON-része az app „Import foods (JSON)” funkciójával kerül be, ezért a formátum pontossága és a „nem találgatok” szabály fontosabb a teljességnél. Magyarul válaszolj.
 
-## Bemenet
+## 0. Előfeltétel
+
+A becsléshez a CIQUAL 2020 referenciaértékek kellenek. Ezek a \`ciqual_ref.json\` fájlban vannak (a 6. pont kódjainak sorai; ugyanolyan szerkezetű, mint a Nutrilog repo teljes \`ciqual.json\` fájlja: \`nutrients\` a 64 kulcs sorrendjében, \`foods\` tömb, a \`c\` mező a kód, a \`v\` tömb a \`nutrients\` sorrendjében). Ha a felhasználó csatolta ezt (vagy a teljes \`ciqual.json\`-t), a 6. pontban felsorolt kódok értékeit onnan vedd, kódfuttatással, ne fejből. Ha nincs csatolva, kérd meg egyszer. Ha a referencia nem áll rendelkezésre, csak címkeértékeket adj, becslést ne végezz, és ezt írd a note-ba. Értékeket soha ne találj ki.
+
+## 1. Bemenet
 
 Egy vagy több termék: név, márka, vonalkód, a csomagolás fotója, a tápérték-táblázat és a hozzávalók szövege, vagy link.
 
-- Ha a bemenetből nem derül ki egy lényeges adat (nem látszik a hozzávalólista, vagy nem tudni, mire vonatkozik a táblázat: 100 g, 100 ml vagy adag), kérdezz vissza egyszer, legfeljebb 3 rövid kérdéssel, mielőtt dolgozol.
-- Ha van webkeresés, a gyártó vagy forgalmazó oldalát és a bolt termékoldalát (pl. dm.hu) használd. Az Open Food Facts közösségi adatbázis: csak akkor támaszkodj rá, ha összevethető a csomagolással. Ha a források eltérnek, a csomagolás fotója az elsődleges, az eltérést írd a note-ba.
+- Ha lényeges adat hiányzik (nem látszik a hozzávalólista, vagy nem tudni, mire vonatkozik a táblázat: 100 g, 100 ml vagy adag), kérdezz vissza egyszer, legfeljebb 3 rövid kérdéssel.
+- Webkeresésnél a gyártó oldalát és a bolt termékoldalát (pl. dm.hu) használd. Az Open Food Facts csak akkor, ha összevethető a csomagolással. Eltérésnél a csomagolás fotója az elsődleges; az eltérést írd a note-ba.
 - A vonalkódot, a tápértéket, a hozzávalót és az arányokat soha nem találod ki.
 
-## Háromféle érték
+## 2. Háromféle érték
 
-1. **Címkeérték**: a csomagoláson vagy a gyártónál szerepel. Bekerül az \`n\`-be, az \`est\`-be nem.
-2. **Átváltott érték**: pontos átszámítás egy címkeértékből (kJ → kcal: ÷ 4,184; só g = nátrium mg × 2,5 ÷ 1000; NE → µg D-vitamin: × 0,025; ml → g sűrűséggel). Bekerül az \`n\`-be, az \`est\`-be nem. Az átváltást nevezd meg a note-ban.
-3. **Becslés**: nem szerepel a címkén, hanem a hozzávalókból és tápanyag-adatbázisból számoltad. Bekerül az \`n\`-be ÉS az \`est\` listába.
+1. **Címkeérték:** a csomagoláson vagy a gyártónál szerepel. Bekerül az \`n\`-be.
+2. **Átváltott érték:** pontos átszámítás. Bekerül az \`n\`-be, a note-ban meg kell nevezni.
+   - kJ → kcal: ÷ 4,184
+   - só (g) → nátrium (mg): × 400
+   - nátrium (mg) → só (g): × 2,5 ÷ 1000
+   - IU → µg D-vitamin: × 0,025
+   - folyadék: 1 ml = 1 g (az app így kezeli)
+3. **Becslés:** nincs a címkén, a hozzávalókból és a referenciából számolod. Bekerül az \`n\`-be és az \`est\` listába.
 
-A hiányzó adat nem nulla. Ami nincs a forrásban, és nem becsülhető megalapozottan, annak a kulcsát hagyd ki. A 0 csak akkor szerepelhet, ha a címke kifejezetten 0-t ír, vagy becslésnél az összes összetevő adatbázisbeli értéke 0. Ha a címke önmagának ellentmond, ne javítsd csendben: hagyd meg a címkeértéket, és jelezd az összefoglalóban és a note-ban.
+A hiányzó adat nem nulla. Ami nincs a forrásban és nem becsülhető megalapozottan, annak a kulcsát hagyd ki. A 0 csak akkor szerepelhet, ha a címke 0-t ír, vagy becslésnél minden felismert összetevő referenciaértéke 0. Ha a címke önmagának ellentmond, hagyd a címkeértéket, és jelezd a note-ban.
 
-## Mire vonatkoznak az értékek (\`basis\`)
+## 3. Alap (\`basis\`)
 
 - Alapértelmezés: 100 g, \`{"qty": 100, "unit": "g"}\`.
-- Folyadék, amelynek értékeit a címke 100 ml-re adja: váltsd 100 g-ra sűrűséggel. 1,0 g/ml-t csak akkor vehetsz, ha a termék vízszerű. Olajnál, szirupnál, tejnél, tejszínnél stb. megalapozott sűrűség kell. Vedd fel a \`portions\`-ba is: \`{"label": "100 ml", "grams": …}\`.
-- Por, amelynek értékeit a címke az elkészített italra vagy levesre adja: váltsd 100 g száraz termékre, és a \`portions\`-ba tedd az elkészített mennyiségekhez tartozó por grammját (pl. „100 ml prepared").
-- Kapszula, tabletta, kiegészítő, és minden, aminek csak darabra van értelme: \`{"qty": 1, "unit": "capsule"}\` (vagy \`tablet\`, \`scoop\`, \`piece\`), az értékek 1 darabra vonatkoznak. Ilyenkor a \`portions\` üres.
-- \`portions\` (csak 100 g alapnál): a csomagoláson szereplő adag (pl. „1 slice", 30 g) és a fenti átváltási adagok.
+- Folyadék, amelynek értékeit a címke 100 ml-re adja: 100 g-ra váltva (1 ml = 1 g), \`portions\`: \`[{"label": "100 ml", "grams": 100}]\`.
+- Por, amelynek értékeit a címke az elkészített italra adja: 100 g por az alap; \`portions\`-ba az elkészített mennyiség és a por grammja (pl. \`{"label": "250 ml kész", "grams": 20}\`).
+- Kapszula, tabletta, kiegészítő, darabos termék: \`{"qty": 1, "unit": "capsule"}\` (vagy \`tablet\`, \`scoop\`, \`piece\`), az értékek 1 egységre vonatkoznak, \`portions\` üres. Kiegészítőre nem becsülsz: az \`est\` üres, a \`confidence\` „nincs becslés”.
+- \`portions\` csak 100 g alapnál van: a csomagon szereplő adag (pl. \`{"label": "1 szelet", "grams": 30}\`).
 
-## Becslés a hozzávalókból
+## 4. Becslés a hozzávalókból
 
-Csak 100 g alapú termékre, amelynek ismert a hozzávalólistája. Kiegészítőre és kapszulára soha nem becslesz: ott csak a címke értékei kerülnek be, az \`est\` üres, a \`confidence\` „none".
+Csak 100 g alapú termékre, ismert hozzávalólistával.
 
-1. A címke energiája és makrói (zsír, telített zsír, szénhidrát, cukor, rost, fehérje, só) mérvadóak, nem becsülöd felül őket. Ami a címkén szerepel (pl. vitaminok), az címkeérték marad.
-2. Minden további kulcsra (ásványi anyagok, vitaminok, zsírsavak, koleszterin, víz, hamu stb.) becsülj. Minden összetevőhöz keresd meg a legközelebbi nyers, egyszerű élelmiszert a CIQUAL 2020 táblában (ez az elsődleges), és csak ha ott nincs adat, az USDA FoodData Central táblában (Foundation, SR Legacy). Az érték az összetevő arányával súlyozott.
-3. Arányok: a megadott százalékot használd. Ha nincs, a hozzávalók csökkenő sorrendjét és a címke makróit. Ha a hozzávalókból számolt makrók 25%-nál nagyobb mértékben eltérnek a címkééktől (szárítás, főzés, sűrítés), korrigáld az arányokat vagy a vízveszteséget úgy, hogy illeszkedjenek, és jelezd a note-ban.
-4. Összetevő, amelyhez nincs megalapozott adatbázis-megfelelő (aroma, kivonat, „fűszerek", élesztőkivonat, összetett összetevő): hagyd ki. Ez csökkentse a megbízhatóságot.
-5. Egy tápanyag csak akkor kerülhet az \`est\`-be, ha legalább egy összetevőre van adatbázisérték hozzá. Ha egyikre sincs, a kulcs kimarad.
-6. Dúsított termék (a hozzávalók vitamint vagy ásványi anyagot tartalmaznak, vagy a csomagon „dúsított" áll): \`fortified: true\`. A címkén megadott dúsított értékek címkeértékek. A nyers összetevőkből becsült vitamin- és ásványianyag-érték ilyenkor alulbecsülhet, ezt írd a note-ba.
+1. A címke energiája és makrói (zsír, telített zsír, szénhidrát, cukor, rost, fehérje, só) mérvadóak, nem írod felül. Ha a címke nem ad makrót, azt is becsülheted, és ezt a note-ba írod.
+2. Minden más kulcsra becslés a 6. pont referenciaértékei alapján.
+3. Összetevők feldolgozása:
+   a. A hozzávalólista vesszővel vagy pontosvesszővel elválasztott tételei. A zárójeles alösszetevőket figyelmen kívül hagyod, a zárójel előtti nevet használod.
+   b. Figyelmen kívül hagyandó (nem számít a lefedettségbe sem, nem számít a tételszámba sem): víz, só, fűszerek és ízesítők, aroma, kivonat, emulgeálószer, sűrítő, savanyító, tartósító, antioxidáns, színezék, élesztő, vitamin- és ásványianyag-adalék, adalékanyag (E-szám, „térfogatnövelő szer”, „-karbonát”, „-szulfát”, „-klorid” stb.).
+   c. Súly:
+      - Ha legalább két (nem ignorált) tételnél szerepel százalék: a százalékos tétel súlya a százalék; a százalék nélküli (nem ignorált) tételek a 100 − Σszázalék maradékon (legalább 0) egyenlően osztoznak.
+      - Egyébként a súly 1/(sorszám+1). A sorszám 0-tól indul, és az **eredeti hozzávalólistabeli hely**: az ignorált tételek is számítanak a sorszámba. Példa: „víz, zab, mandula, cukor”: a víz sorszáma 0 (ignorált), a zabé 1 (súly 1/2), a mandulaé 2 (1/3), a cukoré 3 (1/4).
+   d. Érték kulcsonként: Σ(súly × referenciaérték) / Σ(súly), csak azokon a tételeken, ahol a referenciának van értéke. Ha egyiken sincs, a kulcs kimarad. Ha az eredmény 0, de a felismert tételek egy részének nincs értéke arra a kulcsra, a kulcs szintén kimarad (a hiányzó nem nulla).
+   e. Felismerhetetlen tétel: a súlya a lefedettség nevezőjében van, de értékhez nem járul hozzá.
+   f. **Skálázás a címke energiájához (hígítás és sűrűsödés).** A 4.3.d eredménye úgy viselkedik, mintha a termék 100 g-ja csupa száraz összetevőből állna: a víz ignorált, ezért nem hígít. Ezt a lépés javítja, a 4.3.d után, a 3 értékes jegyre kerekítés előtt.
+      - Címke-energia: a címke kcal értéke (kJ-ból átváltva is jó). Keverék-energia: a 4.3.d szerint a \`kcal\` kulcsra számolt érték.
+      - Ha van címke-energia (> 0), a keverék-energia > 0, és a lefedettség ≥ 0,6: s = címke-energia ÷ keverék-energia. A 4.2 pont szerint becsült kulcsok értékét szorozd s-sel. A címkeértékeket és az átváltott értékeket nem. A \`water\` kulcsot ilyenkor ne becsüld (a keverék vizéből skálázva értelmetlen szám lenne): hagyd ki, kivéve ha a címke megadja.
+      - Ha a címke-energia 0, vagy a lefedettség 0,6 alatt van: nem skálázol, és a becsült kulcsokat kihagyod (az \`est\` üres, a \`confidence\` „nincs becslés”). A note-ba írd az okot.
+      - Ha a címke nem ad energiát: ha a víz a hozzávalólista első három helye között van, a becsült kulcsokat kihagyod (a hígítás nem becsülhető); egyébként skálázás nélkül becsülhetsz, és ezt a note-ba írod.
+      - Az s értékét a note-ba írd: „Skálázás: ×0,04 a címke energiájához.”
+4. Lefedettség = felismert súly / (felismert súly + felismerhetetlen súly).
+5. Dúsítás: ha a hozzávalók között vitamin vagy ásványi anyag szerepel, vagy a csomagon „dúsított” áll, \`fortified: true\`. A címkén megadott dúsított értékek címkeértékek. A nyers összetevőkből becsült vitamin- és ásványianyag-érték alulbecslés; ezt írd a note-ba.
+6. Megbízhatóság a becsült kulcsokra. A „tétel” az ignorált összetevőkön kívüli tételek száma (felismert és felismerhetetlen együtt):
+   - nincs felismert tétel: „nincs becslés”
+   - lefedettség ≥ 0,99 és legfeljebb 2 tétel: „közepes”
+   - lefedettség ≥ 0,9 és legfeljebb 4 tétel: „közepes”
+   - lefedettség ≥ 0,6: „alacsony”
+   - egyébként: „nagyon alacsony”
+   - dúsított termék, amely „közepes”, eggyel lejjebb sorolódik („alacsony”).
 
-## Megbízhatóság (\`confidence\`), a becsült értékekre
+## 5. Ami nem becsülhető
 
-- \`"high"\`: rövid lista (kb. 5 egyszerű összetevő), az arányok ismertek vagy a makrók jól illeszkednek.
-- \`"medium"\`: az összetevők többségének ismert az aránya és a megfelelője.
-- \`"low"\`: sok összetevő arány nélkül, vagy erősen feldolgozott összetevők.
-- \`"very low"\`: az összetétel jelentős része nem azonosítható.
-- \`"none"\`: nincs becsült érték (az \`est\` üres).
+Aroma, kivonat, összetett összetevő (pl. ostya, csokoládébevonat, „fűszerek”), enzim: felismerhetetlen. Ha egy kulcshoz egyetlen felismert tételnek sincs referenciaértéke, a kulcs kimarad.
 
-## NOVA (\`nova\`)
+## 6. Referencialista (CIQUAL 2020 kód)
 
-Csak javaslat, a felhasználó az appban dönt. Csak akkor adj számot, ha a hozzávalólistából egyértelmű, különben \`null\`.
+Csak ezeket a kódokat használd. A 64 értéket a \`ciqual_ref.json\` (vagy a teljes \`ciqual.json\`) \`v\` tömbjéből vedd.
 
-- 1: egyetlen vagy kevés, minimálisan feldolgozott összetevő.
+- Gabonák: zab 9310 · zabital 18905 · rizs (száraz) 9100 · rizs (főtt) 9104 · tönköly 9001 · árpa 9320 · hajdina 9380 · köles 9330 · quinoa 9340 · kukorica 9200
+- Búzaliszt: finomliszt, BL55 vagy típus nélküli „búzaliszt” 9436 (süteményliszt: 9440) · BL80 9445 · teljes kiőrlésű 9415 · T110 9410 · kifejezetten 65-ös liszt 9435. A magyar és a francia lisztípusok közelítő megfelelők (BL55 ≈ T55, BL80 ≈ T80, teljes kiőrlésű ≈ T150): ezt egy rövid szóval jelezd a note-ban. Durumbúza (egész): 9060, csak durum-alapú terméknél. Más búzatermék (pl. egész búzaszem, búzakorpa): felismerhetetlen.
+- Hüvelyesek, gumósok: lencse (fajta nélkül, száraz) 20504 · vörös lencse (száraz) 20535 · zöld lencse (száraz) 20585 · lencse (főtt) 20587 · burgonya (főtt) 4003. Burgonyapehely, burgonyakeményítő: felismerhetetlen.
+- **Főtt sorok** (9104, 20587, 4003): csak kész ételben vagy kifejezetten főtt összetevőnél. Száraz, ipari termékben (liszt, tészta, snack, keverék) a száraz sort használd.
+- Magvak, diófélék: kókuszhús 15006 · kókuszvíz 18011 · mandula 15041 · mandulaital 18107 · mogyoró 15004 · földimogyoró 15001 · kesudió 15054 · pisztácia 15044 · napraforgómag 15011 · szezámmag 15010 · tahini 15203 · lenmag 15034
+- Kakaó, csokoládé: kakaópor 18100 · kakaóvaj 16030 · étcsokoládé 70% kakaótartalom alatt 31005 · étcsokoládé 70% fölött 31074 · tejcsokoládé 31004 · fehér csokoládé 31010. „Csokoládé” fajta és kakaótartalom nélkül: felismerhetetlen.
+- Olajok, zsírok: napraforgóolaj 17440 · repceolaj 17130 · olívaolaj 17270 · „növényi olaj” fajta nélkül 17001 (átlag) · kókuszzsír / kókuszolaj: finomított 16060 (alapértelmezett, ha a címke nem mondja), extra szűz vagy hidegen sajtolt 16040 · pálmaolaj 16129 (a finomított értékei azonosak) · pálmamagzsír 16200 · vaj 16400
+- Cukor, méz: cukor, glükózszirup, maltodextrin, dextróz, nádszirup 31016 · méz 31008
+- Gyümölcsök: alma 13050 · banán 13005 · datolya 13011 · mazsola 13046 · narancs 13034 · citrom 13009 · eper 13014 · áfonya 13028 · málna 13015 · vörösáfonya 13113
+- Zöldségek: sárgarépa 20009 · spenót 20059 · paradicsom 20047 · cékla 20091 · brokkoli 20057 · hagyma 20034 · uborka 20210
+- Tejtermékek: tehéntej (teljes tej, UHT) 19023 · joghurt 19600 · tejszín 19402
+- Szója, rizs: szójaital 18900 · szójaliszt 20900 · rizsital 18904
+
+Nincs a listán, ezért nem becsülhető, felismerhetetlen: tökmag (a CIQUAL 20044 tökhús, nem tökmag), kókusztej-ital (a 18011 kókuszvíz, nem kókusztej), és **minden olyan olaj vagy zsír, amelyhez nincs fenti kód**. Zsírra nincs általános nulla-szabály: ismeretlen zsír felismerhetetlen, a telített zsír és az E-vitamin nem lesz 0. A felismerhetetlen tételt a note-ba írd.
+
+Referencia-érték kezelés: a referenciasorban a \`"<x"\` cella (kimutatási határ alatt) helyett x/2 értéket használj; a \`"t"\` (nyom) cella helyett 0-t. Az ilyen érték is értéknek számít a kulcs súlyozott átlagában. Minden ilyen esetet egyetlen rövid sorban jelezz a note-ban: „x/2-vel számolt: vitamin_k1, vitamin_b12 (+N további)”.
+
+## 7. Tápanyagkulcsok
+
+Csak ezek a kulcsok, pontosan így írva. A zárójelben a mértékegység áll, az érték szám (nem szöveg, nem mértékegységgel), legfeljebb 3 értékes jeggyel. Kimutatási határ alatt szövegként: \`"<0.3"\`.
+
+- Energia és makrók: \`kcal\` (kcal); \`water\`, \`protein\`, \`carbohydrate\`, \`fat\`, \`sugars\`, \`starch\`, \`fibres\`, \`polyols\`, \`ash\`, \`alcohol\`, \`organic_acids\` (g). A címke fehérjéje a \`protein\`-be kerül.
+- Cukrok (g): \`fructose\`, \`galactose\`, \`glucose\`, \`lactose\`, \`maltose\`, \`sucrose\`.
+- Zsírsavak (g): \`fa_saturated\`, \`fa_mono\`, \`fa_poly\`, \`fa_4_0\`, \`fa_6_0\`, \`fa_8_0\`, \`fa_10_0\`, \`fa_12_0\`, \`fa_14_0\`, \`fa_16_0\`, \`fa_18_0\`, \`fa_18_1_n_9_cis\`, \`fa_18_2_9c_12c_n_6\`, \`fa_18_3_c9_c12_c15_n_3\`, \`fa_20_4_5c_8c_11c_14c_n_6\`, \`fa_20_5_5c_8c_11c_14c_17c_n_3_epa\`, \`fa_22_6_4c_7c_10c_13c_16c_19c_n_3_dha\`.
+- Egyéb: \`cholesterol\` (mg), \`salt\` (g).
+- Ásványi anyagok: \`calcium\`, \`chloride\`, \`copper\`, \`iron\`, \`magnesium\`, \`manganese\`, \`phosphorus\`, \`potassium\`, \`sodium\`, \`zinc\` (mg); \`iodine\`, \`selenium\` (µg).
+- Vitaminok: \`retinol\`, \`beta_carotene\`, \`vitamin_d\`, \`vitamin_k1\`, \`vitamin_k2\`, \`vitamin_b9_or_folate\`, \`vitamin_b12\` (µg); \`vitamin_e\`, \`vitamin_c\`, \`vitamin_b1_or_thiamin\`, \`vitamin_b2_or_riboflavin\`, \`vitamin_b3_or_niacin\`, \`vitamin_b5_or_pantothenic_acid\`, \`vitamin_b6\` (mg).
+
+A-vitamin: \`retinol\` csak akkor, ha a forrás retinolt vagy retinil-észtert mond; β-karotinból származó érték a \`beta_carotene\`. RAE/RE értéknél, ha nem derül ki a forma, hagyd ki, és írd a note-ba.
+
+## 8. NOVA (\`nova\`)
+
+Javaslat; a felhasználó az appban dönt. Csak akkor adj számot, ha a hozzávalólistából egyértelmű, egyébként \`null\`.
+
+- 1: egy vagy kevés, minimálisan feldolgozott összetevő.
 - 2: kulináris alapanyag (olaj, vaj, cukor, só).
-- 3: egyszerűen feldolgozott étel (sajt, kenyér, konzerv, ipari adalékok nélkül).
-- 4: ipari adalékok vagy iparira jellemző összetevők (aroma, emulgeálószer, ízfokozó, módosított keményítő, glükóz-fruktózszirup, hidrolizált fehérje, édesítőszer).
+- 3: egyszerűen feldolgozott étel (sajt, kenyér, konzerv, ipari adalék nélkül).
+- 4: ipari adalékok vagy jellemző összetevők (aroma, emulgeálószer, ízfokozó, módosított keményítő, glükóz-fruktózszirup, hidrolizált fehérje, édesítőszer).
 
-A note végére írd: „NOVA-javaslat: 4 (aroma, emulgeálószer)."
+Az indokot írd a note-ba: „NOVA-javaslat: 4 (aroma, emulgeálószer).”
 
-## Tápanyagkulcsok
-
-Csak ezek a kulcsok használhatók, pontosan így írva. Más kulcs (pl. \`vitamin_a\`, \`fiber\`, \`omega3\`, \`sodium_mg\`) nem létezik. A zárójelben a mértékegység áll; az értékeket ebben add meg.`;
-const AI_PROMPT_NOTE = `A címke fehérjéje a \`protein\`-be kerül, a \`protein_crude_n_x_6_25\`-öt csak akkor töltsd, ha a forrás külön megadja.`;
-const AI_PROMPT_B = `Az érték szám ponttal (nem szöveg, nem mértékegységgel), legfeljebb 3 értékes jegyre. Kimutatási határ alatti értéknél szöveg: \`"<0.3"\`. A-vitamin: csak akkor \`retinol\`, ha a forrás retinolt vagy retinil-észtert mond; β-karotinból származó A-vitamin a \`beta_carotene\`-be megy (µg β-karotin). Ha a forrás RAE/RE értéket ad, és nem derül ki a forma, hagyd ki, és írd a note-ba. Ha a címke más mértékegységet használ, váltsd át, és nevezd meg az átváltást a note-ban.
-
-## Kimenet
+## 9. Kimenet
 
 Két rész, ebben a sorrendben:
 
-1. Ellenőrző összefoglaló, legfeljebb 8 sor: név, alap (100 g vagy 1 darab), hány címkeérték, hány becsült érték, megbízhatóság, figyelmeztetések, források.
-2. Egyetlen \`\`\`json blokk, benne csak érvényes JSON (komment nélkül).
-
-Séma. A példa értékei kitalált számok, csak a formátumot mutatják:
+1. Ellenőrző összefoglaló, legfeljebb 8 sor: név, alap, hány címkeérték, hány becsült érték, megbízhatóság, dúsítás, skálázás, átváltások és eltérések, források, referencia-hiányok.
+2. Egyetlen \`\`\`json blokk, benne csak érvényes JSON, komment nélkül. Ez az app „Import foods (JSON)” funkciójának formátuma: a \`log\` és a \`meta\` nincs benne, mert az import figyelmen kívül hagyja őket, és így nem érinti a naplót.
 
 \`\`\`json
 {
-  "nutrilog_import": 1,
-  "foods": [
-    {
+  "app": "tapnaplo",
+  "version": 1,
+  "foods": {
+    "u:ai-pelda-mandulaital": {
+      "id": "u:ai-pelda-mandulaital",
+      "src": "user",
       "name": "Példa mandulaital, cukormentes",
       "brand": "Példa Márka",
       "barcode": "",
       "basis": { "qty": 100, "unit": "g" },
-      "n": { "kcal": 24, "protein": 0.9, "carbohydrate": 0.2, "fat": 2.1, "fa_saturated": 0.2, "fibres": 0.4, "salt": 0.11, "calcium": 120, "vitamin_e": 1.1, "vitamin_k1": 0.4 },
-      "est": ["vitamin_e", "vitamin_k1"],
-      "confidence": "medium",
+      "n": { "kcal": 24, "protein": 0.9, "carbohydrate": 0.2, "fat": 2.1, "fa_saturated": 0.2, "fibres": 0.4, "salt": 0.11, "sodium": 44, "calcium": 120, "vitamin_e": 1.1 },
+      "est": ["vitamin_e"],
+      "confidence": "alacsony",
       "fortified": true,
       "nova": 4,
-      "portions": [{ "label": "100 ml", "grams": 101 }],
-      "note": "Forrás: csomagolás fotója, 2026-10-25. Makrók és kalcium: címke (a kalcium dúsítás). E- és K1-vitamin: becslés a mandula arányából (CIQUAL 2020). NOVA-javaslat: 4 (stabilizátor, aroma)."
+      "portions": [{ "label": "100 ml", "grams": 100 }],
+      "note": "Forrás: csomag fotója, 2026-10-25. Címke: kcal, protein, carbohydrate, fat, fa_saturated, fibres, salt, calcium (dúsított). Átváltás: sodium = só × 400. Becslés: 1 kulcs (vitamin_e), megbízhatóság alacsony; dúsított, ezért alulbecslés. Skálázás: ×0,04 a címke energiájához. NOVA-javaslat: 4 (aroma, emulgeálószer).",
+      "created": 0,
+      "updated": 0
     }
-  ]
+  }
 }
 \`\`\`
 
 Mezőszabályok:
 
-- \`name\`: legfeljebb 120 karakter, a csomagon szereplő név. \`brand\`: legfeljebb 80 karakter, vagy \`""\`. \`barcode\`: csak számjegyek (8–14), vagy \`""\`.
+- \`id\`: \`u:ai-\` és a név vagy a vonalkód kisbetűs, kötőjeles, **ékezet nélküli** változata (pl. „Sütőtök-krém” → \`u:ai-sutotok-krem\`). Egyedi legyen.
+- \`name\`: legfeljebb 120 karakter, a csomagon szereplő név. \`brand\`: legfeljebb 80 karakter vagy \`""\`. \`barcode\`: csak számjegyek (8–14) vagy \`""\`.
 - \`n\`: csak az ismert vagy becsült kulcsok.
-- \`est\`: az \`n\` azon kulcsai, amelyek becslések. Csak \`n\`-ben szereplő kulcs lehet benne. Ha van becslés, a \`confidence\` kötelező.
-- \`fortified\`: \`true\` vagy \`false\`.
-- \`note\`: magyarul, legfeljebb 400 karakter: forrás és dátum, átváltások, a becslés módszere egy mondatban, eltérések, a NOVA-javaslat indoka. Ha nem fér bele, a lényeget tartsd meg.
-- Több termék esetén a \`foods\` tömbben több elem szerepel.
+- \`est\`: a becsült kulcsok listája. Az app \`~\` jellel jelöli őket a Nutrients fülön, az Amount lapon és a CSV-ben; a címke- és az átváltott kulcsok nincsenek benne.
+- \`confidence\`, \`fortified\`: ahogy a 4. pontban.
+- \`nova\`: 1–4 vagy \`null\`.
+- \`note\`: magyarul, **legfeljebb 400 karakter** (az app jegyzetmezőjének határa). Nem sorolod fel a becsült kulcsokat egyenként: a címke- és átváltott kulcsokat sorold fel, és írd le, hány további kulcs becslés. Tartalma ebben a fontossági sorrendben: megbízhatóság és dúsítás; skálázás (×s); felismerhetetlen összetevők; x/2-vel számolt kulcsok (egy sor); átváltások; eltérések; NOVA-indoklás; forrás és dátum. Ha nem fér bele, a sor végéről hagyj el. Az \`est\` és a \`confidence\` mezőt ez nem érinti.
+- \`created\`, \`updated\`: maradjon 0.
+- Több termék: a \`foods\` objektumban több kulcs.
 
-## Ellenőrzés a válasz előtt
+A JSON-t az app Data fülén az „Import foods (JSON)” gombbal töltsd be, vagy másold vágólapra, és használd az app „Paste from AI” funkcióját. Ne a „Restore from file”-lal: az utóbbi a teljes adatbázist felülírja.
 
-- Minden \`est\`-kulcs benne van az \`n\`-ben. A címke- és az átváltott értékek nincsenek az \`est\`-ben.
-- 100 g alapnál: kcal ≈ 4 × fehérje + 4 × szénhidrát + 9 × zsír (+ 7 × alkohol), ±15% (a rost és a poliolok miatt eltérhet). Telített + egyszeresen + többszörösen telítetlen ≤ zsír. Cukor ≤ szénhidrát. Fehérje + szénhidrát + zsír + víz + hamu ≤ 100 g. Só ≈ nátrium × 2,5 ÷ 1000.
+## 10. Ellenőrzés a válasz előtt
+
+- Minden \`est\`-kulcs benne van az \`n\`-ben. A címke- és átváltott értékek nincsenek az \`est\`-ben.
+- 100 g alapnál: kcal ≈ 4 × fehérje + 4 × szénhidrát + 9 × zsír (+ 7 × alkohol), ±15%. Telített + egyszeresen + többszörösen telítetlen ≤ zsír. Cukor ≤ szénhidrát. Fehérje + szénhidrát + zsír + víz + hamu ≤ 100 g. Só ≈ nátrium × 2,5 ÷ 1000.
 - A mértékegység a kulcs mértékegysége (mg és µg ne keveredjen).
-- Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.`;
+- A becsült kulcsok skálázva vannak (4.3.f), vagy a note megmondja, miért nem; az s értéke a note-ban van.
+- A note legfeljebb 400 karakter.
+- Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.
+`;
 /* <<< AI prompt */
 const AI_FIELDS = ['est', 'q', 'fortified'];
 /* The confidence words of an answer: English, Hungarian (the v3 prompt writes them in Hungarian) and the one-letter codes of a backup. Looked up without accents. */
@@ -1768,19 +1832,10 @@ const aiConf = (c) => {
   const k = norm(c).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return Object.prototype.hasOwnProperty.call(AI_CONF, k) ? AI_CONF[k] : undefined;   // not "constructor" and the like
 };
-const AI_GROUP_HU = { mac: 'Energia és makrók', fa: 'Zsírsavak és koleszterin', min: 'Ásványi anyagok', vit: 'Vitaminok', fad: 'Zsírsavak (részletes)', oth: 'Egyéb összetevők' };
 const basisText = (b) => (b.unit === 'g' ? '100 g' : `${b.qty} ${b.unit}`);
 
-/* the prompt for "Copy AI prompt": the text of tools/ai_prompt.md, with the list of nutrient keys built from KEYS and UNITS */
-function aiPrompt() {
-  const lines = GROUPS.map(([gid]) => {
-    const byUnit = new Map();
-    KEYS.forEach((k, i) => { if (groupOf(i) === gid) { if (!byUnit.has(UNITS[i])) byUnit.set(UNITS[i], []); byUnit.get(UNITS[i]).push(k); } });
-    if (!byUnit.size) return '';
-    return `- ${AI_GROUP_HU[gid]}: ` + [...byUnit].map(([u, ks]) => `${ks.map((k) => '`' + k + '`').join(', ')} (${u})`).join('; ') + '.';
-  }).filter(Boolean);
-  return `${AI_PROMPT_A}\n\n${lines.join('\n')}\n\n${AI_PROMPT_NOTE}\n\n${AI_PROMPT_B}\n`;
-}
+/* the prompt for "Copy AI prompt": the text of tools/ai_prompt.md as it is (it has its own list of nutrient keys, checked against KEYS and UNITS by tests/test_ai_import.py) */
+function aiPrompt() { return AI_PROMPT; }
 
 /* ---- reading the answer: the AI may wrap the JSON in text or a ``` fence, use curly quotes, a trailing comma, numbers as text with a decimal comma ---- */
 const aiStraight = (t) => t.replace(/[“”„‟″]/g, '"');
@@ -2036,6 +2091,7 @@ function openAiImport({ onSaved } = {}) {
   const sh = openSheet('Paste from AI', `
     <p class="small muted" style="margin:0 0 12px">Ask an AI (Claude, ChatGPT…) to look a product up with the Nutrilog prompt, then paste its answer here. Nothing is saved until you have reviewed the food and tapped Save. The pasted text is not kept and nothing is sent anywhere.</p>
     <div class="row gap"><button class="btn" id="ai-paste">Paste from clipboard</button><button class="btn" id="ai-copy">Copy AI prompt</button></div>
+    <p class="small muted" id="ai-prompt-hint" style="margin:8px 0 0">The prompt works best in a Claude chat that can run code, with the file <b>ciqual_ref.json</b> attached. Without that file the AI gives label values only and does not estimate.</p>
     <label class="f" style="margin-top:12px">AI answer<textarea id="ai-text" rows="7" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste the whole answer here. The JSON block is found automatically."></textarea></label>
     <div id="ai-msg" aria-live="polite"></div>
     <div class="row gap sheet-actions"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" id="ai-read">Read</button></div>`);

@@ -3,7 +3,7 @@
 Covers: reading (clean JSON, fences and prose around it, curly quotes, BOM, decimal comma, numbers as text), every error and every warning,
 the review editor with the ~ marks, several foods in one answer, duplicates (update / save as new / cancel, with Undo), what the diary shows after an update,
 the ~ on the Nutrients tab, the CSV columns, backup and restore, sync transport (fake GitHub), the clipboard (allowed and refused), the prompt text
-(it is built from KEYS and UNITS and must agree with tools/ai_prompt.md), no network and no stored answer, font sizes, touch targets, contrast, offline.
+(v3.1: it is tools/ai_prompt.md as it is; its keys, units, CIQUAL codes, example and confidence words must agree with the app), no network and no stored answer, font sizes, touch targets, contrast, offline.
 The real clipboard of an iPhone is not testable here."""
 import asyncio, csv, io, json, os, pathlib, re, sys
 from playwright.async_api import async_playwright
@@ -255,16 +255,20 @@ async def main():
         e, w = await warns_of(doc(food(barcode='')))
         check('an empty barcode is fine', e == [] and w == [], (e, w))
 
-        # =========================================================== 4 the prompt agrees with the doc and with the importer
+        # =========================================================== 4 the prompt is the doc (v3.1) and agrees with the importer
         prompt = await T('window.__tapnaplo.aiPrompt()')
         keys = await T('window.__tapnaplo.KEYS')
         ciq = json.load(open(ROOT / 'ciqual.json', encoding='utf-8'))
         unit_of = {n['key']: n['unit'] for n in ciq['nutrients']}
         check('KEYS in the app are the keys of ciqual.json', keys == [n['key'] for n in ciq['nutrients']], len(keys))
         md = (ROOT / 'tools' / 'ai_prompt.md').read_text(encoding='utf-8').replace('\r\n', '\n')
+        check('prompt: "Copy AI prompt" gives the text of tools/ai_prompt.md as it is', prompt == md.rstrip() + '\n', (len(prompt), len(md)))
+        check('prompt: the title is v3.1', prompt.split('\n')[0] == '# Nutrilog tételpontosító (v3.1, végleges)', prompt.split('\n')[0])
+        heads = re.findall(r'^## (\d+)\. ', prompt, re.M)
+        check('prompt: the sections 0 to 10 are all there, in order', heads == [str(i) for i in range(11)], heads)
 
         def key_bullets(text):
-            sec = text.split('## Tápanyagkulcsok\n', 1)[1].split('\nAz érték szám ponttal', 1)[0]
+            sec = text.split('## 7. Tápanyagkulcsok\n', 1)[1].split('\n## 8.', 1)[0]
             got, dup = {}, []
             for line in sec.split('\n'):
                 if not line.startswith('- '): continue
@@ -282,34 +286,30 @@ async def main():
                 for k in pending: got[k] = default
             return got, dup
         got, dup = key_bullets(prompt)
-        check('prompt: every key of the app is listed exactly once, no other key', sorted(got) == sorted(keys) and dup == [], (set(keys) ^ set(got), dup))
+        left_out = {'protein_crude_n_x_6_25'}
+        check('prompt: the 63 keys of section 7 are the keys of the app, all but protein_crude_n_x_6_25, each once', set(got) == set(keys) - left_out and dup == [] and len(got) == 63, (set(keys) - left_out ^ set(got), dup, len(got)))
         wrong = [(k, got[k], unit_of[k]) for k in got if got[k] != unit_of.get(k)]
-        check('prompt: every key has the unit of the app (UNITS)', wrong == [], wrong[:5])
-        mdgot, mddup = key_bullets(md)
-        check('tools/ai_prompt.md: the key list of the doc and the keys of the app are the same set', set(mdgot) == set(keys), (set(keys) - set(mdgot), set(mdgot) - set(keys)))
-        wrong = [(k, mdgot[k], unit_of[k]) for k in mdgot if k in unit_of and mdgot[k] != unit_of[k]]
-        check('tools/ai_prompt.md: the units of the doc are the units of the app', wrong == [], wrong[:5])
-        counter = set(re.findall(r'`([a-z0-9_]+)`', md.split('## Tápanyagkulcsok\n', 1)[1].split('\n- ', 1)[0]))
-        check('tools/ai_prompt.md: the only non-keys named in the key section are the counter-examples', counter - set(keys) == {'vitamin_a', 'fiber', 'omega3', 'sodium_mg'}, counter - set(keys))
-        secs = lambda t: {s.split('\n', 1)[0]: s.split('\n', 1)[1] for s in ('\n' + t).split('\n## ')[1:]}
-        ps, ms = secs(prompt), secs(md)
-        check('prompt: the same sections as the doc', list(ps) == list(ms), (list(ps), list(ms)))
-        diff = [h for h in ms if h != 'Tápanyagkulcsok' and ps.get(h, '').strip() != ms[h].strip()]
-        check('prompt: every section other than the key list is the text of the doc', diff == [], diff)
-        pk, mk = ps['Tápanyagkulcsok'], ms['Tápanyagkulcsok']
-        check('prompt: the intro and the closing rule of the key section are the doc text', pk.split('\n\n')[0] == mk.split('\n\n')[0] and pk.rstrip().endswith(mk.rstrip().split('\n\n')[-1]), (pk.split('\n\n')[0][:60], mk.split('\n\n')[0][:60]))
-        check('prompt: the title carries the version of the importer', prompt.split('\n')[0] == '# Nutrilog tételpontosító (v1)' and await T('window.__tapnaplo.AI_IMPORT_VERSION') == 1, prompt.split('\n')[0])
+        check('prompt: every key of section 7 has the unit of the app (UNITS)', wrong == [], wrong[:5])
+        codes = sorted({c for line in prompt.split('## 6. ', 1)[1].split('\n## 7.', 1)[0].split('\n') if line.startswith('- ') for c in re.findall(r'\b(\d{4,5})\b', line)})
+        ciq_codes = {str(f['c']) for f in ciq['foods']}
+        check('prompt: the 74 CIQUAL codes of section 6 all exist in ciqual.json', len(codes) == 74 and set(codes) <= ciq_codes, (len(codes), sorted(set(codes) - ciq_codes)))
+        check('prompt: the scaling step 4.3.f is in the text', 'f. **Skálázás a címke energiájához' in prompt and 'A `water` kulcsot ilyenkor ne becsüld' in prompt)
         m = re.search(r'```json\n(.*?)\n```', prompt, re.S)
-        ex = parse(m.group(1)) if m else None
+        ex = json.loads(m.group(1)) if m else None
         if ex is not None:
-            exr = await ex
-            check('prompt: the JSON example of the doc is accepted by the importer', exr['errors'] == [], exr['errors'])
-        confs = re.findall(r'^- `"([a-z ]+)"`', ms['Megbízhatóság (`confidence`), a becsült értékekre'], re.M)
+            exr = await parse(m.group(1))
+            check('prompt: the JSON example of the doc is accepted by Paste from AI', exr['errors'] == [] and len(exr['foods']) == 1 and exr['foods'][0]['warnings'] == [], (exr['errors'], [x['warnings'] for x in exr['foods']]))
+            fr = await T('(t) => window.__tapnaplo.parseFoodsFile(t)', m.group(1))
+            check('prompt: the JSON example of the doc is accepted by Import foods (JSON), without a warning', not fr['error'] and len(fr['foods']) == 1 and fr['foods'][0]['warnings'] == [] and fr['invalid'] == [], (fr['error'], fr['invalid'], [x['warnings'] for x in fr['foods']]))
+            only = list(ex['foods'].values())[0]
+            check('prompt: the example food has the fields of the foods file and a note of at most 400 characters', len(only['note']) <= 400 and only['id'].startswith('u:ai-') and only['created'] == 0 and only['updated'] == 0, len(only['note']))
+        sec46 = prompt.split('6. Megbízhatóság a becsült kulcsokra.', 1)[1].split('\n## 5.', 1)[0]
+        confs = sorted(set(re.findall(r'„([^”]+)”', sec46)) - {'tétel'})
         okc = []
         for c in confs:
-            rr = await parse(doc(food(confidence=c, est=['vitamin_e'] if c != 'none' else [])))
+            rr = await parse(doc(food(confidence=c, est=['vitamin_e'] if c != 'nincs becslés' else [])))
             okc.append(rr['errors'] == [])
-        check('every confidence word of the doc is accepted', len(confs) == 5 and all(okc), (confs, okc))
+        check('every confidence word of the doc is accepted', confs == ['alacsony', 'közepes', 'nagyon alacsony', 'nincs becslés'] and all(okc), (confs, okc))
 
         # =========================================================== 5 the sheet, the clipboard, the editor
         async def sheets():
@@ -348,6 +348,7 @@ async def main():
         await open_ai()
         await page.wait_for_timeout(400)
         check('Paste from AI sheet: explanation, Paste from clipboard, Copy AI prompt, Read, Cancel', all([await page.locator(s).count() == 1 for s in ['#ai-paste', '#ai-copy', '#ai-read', '#ai-text', '[data-dx]']]) and 'Paste from clipboard' in await page.inner_text('#ai-paste') and 'Copy AI prompt' in await page.inner_text('#ai-copy'))
+        check('sheet: the hint says to attach ciqual_ref.json and to use an AI that can run code', await page.locator('#ai-prompt-hint').count() == 1 and 'ciqual_ref.json' in await page.inner_text('#ai-prompt-hint') and 'run code' in await page.inner_text('#ai-prompt-hint'))
         check('sheet: the answer box has at least 16 px text', await T(SMALL_FONTS, '.sheet') == [], await T(SMALL_FONTS, '.sheet'))
         check('sheet: the buttons are at least 44 px', await T(SMALL_TARGETS, '.sheet button') == [], await T(SMALL_TARGETS, '.sheet button'))
         await page.fill('#ai-text', 'line one')
