@@ -244,8 +244,12 @@ async def main():
         await expect_warn('salt and sodium do not match', doc(food(n={'salt': 1.0, 'sodium': 100}, est=[], confidence='none')), r'salt')
         e, w = await warns_of(doc(food(n={'salt': 1.0, 'sodium': 400}, est=[], confidence='none')))
         check('salt and sodium that match (sodium x 2.5): no warning', e == [] and w == [], (e, w))
+        rr = await parse(doc(food(note='x' * 1300)))
+        check('note over 1200 characters: warning, and the note is not cut', rr['errors'] == [] and len(rr['foods'][0]['food']['note']) == 1300 and any(re.search(r'note', s, re.I) for s in rr['foods'][0]['warnings']), (len(rr['foods'][0]['food']['note']), rr['foods'][0]['warnings']))
+        rr = await parse(doc(food(note='x' * 1200)))
+        check('note of exactly 1200 characters: loads without a note warning', rr['errors'] == [] and len(rr['foods'][0]['food']['note']) == 1200 and not any(re.search(r'note', s, re.I) for s in rr['foods'][0]['warnings']), (len(rr['foods'][0]['food']['note']), rr['foods'][0]['warnings']))
         rr = await parse(doc(food(note='x' * 500)))
-        check('note over 400 characters: warning, and the note is not cut', rr['errors'] == [] and len(rr['foods'][0]['food']['note']) == 500 and any(re.search(r'note', s, re.I) for s in rr['foods'][0]['warnings']), (len(rr['foods'][0]['food']['note']), rr['foods'][0]['warnings']))
+        check('note of 500 characters (over the old limit of 400): loads without a note warning', rr['errors'] == [] and len(rr['foods'][0]['food']['note']) == 500 and not any(re.search(r'note', s, re.I) for s in rr['foods'][0]['warnings']), (len(rr['foods'][0]['food']['note']), rr['foods'][0]['warnings']))
         await expect_warn('name over 120 characters', doc(food(name='N' * 130)), r'name')
         rr = await parse(doc(food(name='N' * 130)))
         check('the long name is not cut either', len(rr['foods'][0]['food']['name']) == 130, len(rr['foods'][0]['food']['name']))
@@ -302,7 +306,7 @@ async def main():
             fr = await T('(t) => window.__tapnaplo.parseFoodsFile(t)', m.group(1))
             check('prompt: the JSON example of the doc is accepted by Import foods (JSON), without a warning', not fr['error'] and len(fr['foods']) == 1 and fr['foods'][0]['warnings'] == [] and fr['invalid'] == [], (fr['error'], fr['invalid'], [x['warnings'] for x in fr['foods']]))
             only = list(ex['foods'].values())[0]
-            check('prompt: the example food has the fields of the foods file and a note of at most 400 characters', len(only['note']) <= 400 and only['id'].startswith('u:ai-') and only['created'] == 0 and only['updated'] == 0, len(only['note']))
+            check('prompt: the example food has the fields of the foods file and a note of at most 1200 characters', len(only['note']) <= 1200 and only['id'].startswith('u:ai-') and only['created'] == 0 and only['updated'] == 0, len(only['note']))
         sec46 = prompt.split('6. Megbízhatóság a becsült kulcsokra.', 1)[1].split('\n## 5.', 1)[0]
         confs = sorted(set(re.findall(r'„([^”]+)”', sec46)) - {'tétel'})
         okc = []
@@ -384,6 +388,7 @@ async def main():
         check('values are in the fields (comma and dot forms)', await page.input_value('[data-k=kcal]') == '45' and await page.input_value('[data-k=vitamin_e]') == '1.1' and await page.input_value('[data-k=calcium]') == '120')
         check('Estimates fold is open for an import with estimates; confidence Medium; fortified ticked', await T("document.querySelector('#estfold').open") and await page.input_value('#fconf') == 'm' and await page.is_checked('#ffort'))
         check('NOVA 4, portion 100 ml and the note are in the form', await page.input_value('#fnova') == '4' and '100 ml' in await T("document.querySelector('#ports').innerHTML") and 'Fortified oat drink' in await page.input_value('#fnote'))
+        check('the note field of the editor takes 1200 characters', await page.get_attribute('#fnote', 'maxlength') == '1200')
         # the ~ marks
         mk = lambda k: T("(k) => { const b = document.querySelector('#nuts [data-est=\"' + k + '\"]'); const r = b.getBoundingClientRect(); return { hidden: b.hidden, pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label'), row: b.parentElement.className, w: Math.round(r.width), h: Math.round(r.height) }; }", k)
         v = await mk('vitamin_e'); c = await mk('calcium')

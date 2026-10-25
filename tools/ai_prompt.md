@@ -155,7 +155,7 @@ Mezőszabályok:
 - `est`: a becsült kulcsok listája. Az app `~` jellel jelöli őket a Nutrients fülön, az Amount lapon és a CSV-ben; a címke- és az átváltott kulcsok nincsenek benne.
 - `confidence`, `fortified`: ahogy a 4. pontban.
 - `nova`: 1–4 vagy `null`.
-- `note`: magyarul, **legfeljebb 400 karakter** (az app jegyzetmezőjének határa). Nem sorolod fel a becsült kulcsokat egyenként: a címke- és átváltott kulcsokat sorold fel, és írd le, hány további kulcs becslés. Tartalma ebben a fontossági sorrendben: megbízhatóság és dúsítás; skálázás (×s); felismerhetetlen összetevők; x/2-vel számolt kulcsok (egy sor); átváltások; eltérések; NOVA-indoklás; forrás és dátum. Ha nem fér bele, a sor végéről hagyj el. Az `est` és a `confidence` mezőt ez nem érinti.
+- `note`: magyarul, **legfeljebb 1200 karakter** (az app jegyzetmezőjének határa). Nem sorolod fel a becsült kulcsokat egyenként: a címke- és átváltott kulcsokat sorold fel, és írd le, hány további kulcs becslés. Tartalma ebben a fontossági sorrendben: megbízhatóság és dúsítás; skálázás (×s); felismerhetetlen összetevők; x/2-vel számolt kulcsok (egy sor); átváltások; eltérések; NOVA-indoklás; forrás és dátum. Ha nem fér bele, a sor végéről hagyj el. Az `est` és a `confidence` mezőt ez nem érinti.
 - `created`, `updated`: maradjon 0.
 - Több termék: a `foods` objektumban több kulcs.
 
@@ -167,5 +167,5 @@ A JSON-t az app Data fülén az „Import foods (JSON)” gombbal töltsd be, va
 - 100 g alapnál: kcal ≈ 4 × fehérje + 4 × szénhidrát + 9 × zsír (+ 7 × alkohol), ±15%. Telített + egyszeresen + többszörösen telítetlen ≤ zsír. Cukor ≤ szénhidrát. Fehérje + szénhidrát + zsír + víz + hamu ≤ 100 g. Só ≈ nátrium × 2,5 ÷ 1000.
 - A mértékegység a kulcs mértékegysége (mg és µg ne keveredjen).
 - A becsült kulcsok skálázva vannak (4.3.f), vagy a note megmondja, miért nem; az s értéke a note-ban van.
-- A note legfeljebb 400 karakter.
+- A note legfeljebb 1200 karakter.
 - Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.

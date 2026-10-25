@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '16 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '17 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -1564,7 +1564,7 @@ function openFoodEditor(food, opts = {}) {
       <p class="hint" style="margin:0 0 10px">1 = unprocessed or minimally processed, 2 = culinary ingredient (oil, butter, sugar, salt), 3 = processed food (bread, canned vegetables), 4 = ultra-processed (soft drinks, packaged snacks). Leave it unset if you are not sure.</p>
       <label class="f">NOVA group<select id="fnova"><option value="">Not set</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label></details>
     <div id="portwrap"><h4>Portions (in grams)</h4><div id="ports">${portionRows(f0.portions || [])}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
-    <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="400">${esc(f0.note || '')}</textarea></label>
+    <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="1200">${esc(f0.note || '')}</textarea></label>
     <div class="row gap sheet-actions">${isNew ? '' : '<button class="btn danger" id="fdel">Delete</button>'}<span style="flex:1"></span><button class="btn primary" id="fok">Save</button></div>`);
   const radios = $$('input[name=basis]', sh.el), unit = $('#funit', sh.el);
   const syncBasis = () => { const u = radios.find((r) => r.checked).value === 'u'; unit.hidden = !u; unit.disabled = !u; $('#portwrap', sh.el).hidden = u; };
@@ -1809,7 +1809,7 @@ Mezőszabályok:
 - \`est\`: a becsült kulcsok listája. Az app \`~\` jellel jelöli őket a Nutrients fülön, az Amount lapon és a CSV-ben; a címke- és az átváltott kulcsok nincsenek benne.
 - \`confidence\`, \`fortified\`: ahogy a 4. pontban.
 - \`nova\`: 1–4 vagy \`null\`.
-- \`note\`: magyarul, **legfeljebb 400 karakter** (az app jegyzetmezőjének határa). Nem sorolod fel a becsült kulcsokat egyenként: a címke- és átváltott kulcsokat sorold fel, és írd le, hány további kulcs becslés. Tartalma ebben a fontossági sorrendben: megbízhatóság és dúsítás; skálázás (×s); felismerhetetlen összetevők; x/2-vel számolt kulcsok (egy sor); átváltások; eltérések; NOVA-indoklás; forrás és dátum. Ha nem fér bele, a sor végéről hagyj el. Az \`est\` és a \`confidence\` mezőt ez nem érinti.
+- \`note\`: magyarul, **legfeljebb 1200 karakter** (az app jegyzetmezőjének határa). Nem sorolod fel a becsült kulcsokat egyenként: a címke- és átváltott kulcsokat sorold fel, és írd le, hány további kulcs becslés. Tartalma ebben a fontossági sorrendben: megbízhatóság és dúsítás; skálázás (×s); felismerhetetlen összetevők; x/2-vel számolt kulcsok (egy sor); átváltások; eltérések; NOVA-indoklás; forrás és dátum. Ha nem fér bele, a sor végéről hagyj el. Az \`est\` és a \`confidence\` mezőt ez nem érinti.
 - \`created\`, \`updated\`: maradjon 0.
 - Több termék: a \`foods\` objektumban több kulcs.
 
@@ -1821,7 +1821,7 @@ A JSON-t az app Data fülén az „Import foods (JSON)” gombbal töltsd be, va
 - 100 g alapnál: kcal ≈ 4 × fehérje + 4 × szénhidrát + 9 × zsír (+ 7 × alkohol), ±15%. Telített + egyszeresen + többszörösen telítetlen ≤ zsír. Cukor ≤ szénhidrát. Fehérje + szénhidrát + zsír + víz + hamu ≤ 100 g. Só ≈ nátrium × 2,5 ÷ 1000.
 - A mértékegység a kulcs mértékegysége (mg és µg ne keveredjen).
 - A becsült kulcsok skálázva vannak (4.3.f), vagy a note megmondja, miért nem; az s értéke a note-ban van.
-- A note legfeljebb 400 karakter.
+- A note legfeljebb 1200 karakter.
 - Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.
 `;
 /* <<< AI prompt */
@@ -1979,7 +1979,7 @@ function aiFood(raw, k, count, out) {
   }
 
   const note = str(raw.note);
-  if (note.length > 400) warn(`The note is ${note.length} characters long (the prompt asks for 400 at most). It is kept in full.`);
+  if (note.length > 1200) warn(`The note is ${note.length} characters long (the prompt asks for 1200 at most). It is kept in full.`);
   if (name.length > 120) warn(`The name is ${name.length} characters long (120 at most is expected). It is kept in full.`);
   if (brand.length > 80) warn(`The brand is ${brand.length} characters long (80 at most is expected). It is kept in full.`);
   if (barcode && !/^\d{8,14}$/.test(barcode)) warn(`The barcode “${barcode}” does not have 8 to 14 digits. Check it on the package.`);
