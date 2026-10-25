@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '17 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '18 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -361,6 +361,10 @@ function searchLocal(q, onlyGrams) {
 /* ================= nutrition maths ================= */
 const getFood = (id) => (id.startsWith('c:') || id.startsWith('usda:') || id.startsWith('dm:') ? CIQ_BY_ID.get(id) : S.foods[id]);
 const isG = (f) => f.basis.unit === 'g';
+/* Display unit (version 18). A drink whose label says "per 100 ml" is stored per 100 g like every liquid (1 ml = 1 g, the maths does not change).
+   The flag `ml` (only ever true, only on a food measured per 100 g) changes what is shown: ml instead of g in the Amount sheet, the diary, the food list and the CSV. */
+const isMl = (f) => f.ml === true && f.basis.unit === 'g';
+const unitOf = (f) => (isMl(f) ? 'ml' : f.basis.unit);
 
 function cellOf(food, i) {
   if (food._cells) return food._cells[i];            // CIQUAL and USDA foods keep their numbers in an array
@@ -427,7 +431,7 @@ const entriesOf = (day) => S.log.filter((e) => e.d === day && getFood(e.f));
 /* Time of an entry: the saved time (tm, "HH:MM", editable); entries from before this feature use the moment they were added (t). */
 const timeOf = (e) => (validHm(e.tm) ? e.tm : Number.isFinite(e.t) ? hm(new Date(e.t)) : '');
 const byTime = (a, b) => timeOf(a).localeCompare(timeOf(b)) || (a.t || 0) - (b.t || 0);
-const amountText = (e, f) => `${fmt(e.a)} ${f.basis.unit}`;
+const amountText = (e, f) => `${fmt(e.a)} ${unitOf(f)}`;
 const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (Number.isNaN(v.lo[i]) ? 0 : 1), 0); };
 const trackedEst = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (isEst(f, i, v) ? 1 : 0), 0); };
 const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'dmbio' ? 'dmBio' : f.src === 'off' ? 'OFF' : 'custom');
@@ -1107,7 +1111,7 @@ function viewFoods() {
 }
 const foodRow = (f, attr) => `<button class="item" ${attr}>${avatar(f.name)}
   <span class="item-main"><span class="item-name">${esc(cap(f.name))}</span><span class="item-sub"><span class="tag">${srcTag(f)}</span>${esc(f.brand || f.group || '')}</span></span>
-  <span class="r"><b>${isG(f) ? (Number.isNaN(kcalPer(f)) ? 'no kcal' : (energyEstimated(f) ? '~' : '') + fmt(kcalPer(f)) + ' kcal') : '1 ' + esc(f.basis.unit)}</b>${isG(f) ? 'per 100 g · ' : ''}data ${trackedKnown(f)}/${TRACKED.length}</span></button>`;
+  <span class="r"><b>${isG(f) ? (Number.isNaN(kcalPer(f)) ? 'no kcal' : (energyEstimated(f) ? '~' : '') + fmt(kcalPer(f)) + ' kcal') : '1 ' + esc(f.basis.unit)}</b>${isG(f) ? 'per 100 ' + unitOf(f) + ' · ' : ''}data ${trackedKnown(f)}/${TRACKED.length}</span></button>`;
 function foodListHtml() {
   const toks = tokensOf(S.filter);
   const all = Object.values(S.foods).filter((f) => !toks.length || toks.every((t) => norm(f.name + ' ' + (f.brand || '')).includes(t)))
@@ -1385,13 +1389,13 @@ function ownInfo(f) {
     ${f.note ? `<p class="hint" style="margin:0 0 12px;overflow-wrap:anywhere">Note: ${esc(f.note)}</p>` : ''}</details>`;
 }
 function openAmount({ food, entry, meal, afterAdd }) {
-  const unitG = isG(food);
+  const unitG = isG(food), au = unitOf(food);   // au: the unit shown (g, ml, or the name of the piece)
   const start = entry ? entry.a : (S.meta.last[food.id] ?? (startPortion(food) ? startPortion(food).grams : unitG ? 100 : 1));
-  const chips = (unitG ? [...portionsOf(food).map((p) => [p.label, p.grams]), ...[10, 30, 50, 100, 200].map((g) => [g + ' g', g])] : [0.5, 1, 2, 3].map((x) => [x + ' ' + food.basis.unit, x]));
+  const chips = (unitG ? [...portionsOf(food).map((p) => [p.label, p.grams]), ...[10, 30, 50, 100, 200].map((g) => [g + ' ' + au, g])] : [0.5, 1, 2, 3].map((x) => [x + ' ' + au, x]));
   const startTime = (entry && timeOf(entry)) || hm(new Date());   // new entry: now; existing entry: the saved time
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
     <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
-    <label class="f">Amount (${esc(food.basis.unit)})<input type="text" inputmode="decimal" enterkeyhint="done" id="amt" value="${esc(String(start))}"></label>
+    <label class="f">Amount (${esc(au)})<input type="text" inputmode="decimal" enterkeyhint="done" id="amt" value="${esc(String(start))}"></label>
     <p class="note field-err" id="amterr" role="alert" hidden>Enter an amount greater than 0.</p>
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     ${unitG ? '<button class="chip-btn accent" id="saveportion" style="justify-self:start">+ Save as portion</button>' : ''}
@@ -1407,7 +1411,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function prev() {
     const a = val(), v = vecOf(food);
-    ok.textContent = (entry ? 'Save' : 'Add') + (Number.isNaN(a) ? '' : ' ' + fmt(a) + ' ' + food.basis.unit);
+    ok.textContent = (entry ? 'Save' : 'Add') + (Number.isNaN(a) ? '' : ' ' + fmt(a) + ' ' + au);
     if (Number.isNaN(a)) { $('#prev', sh.el).innerHTML = '<span class="muted">Enter a positive number.</span>'; return; }
     const k = a / food.basis.qty, g = (key) => v.lo[IDX[key]] * k;
     const known = trackedKnown(food);
@@ -1445,7 +1449,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     if (entry) { entry.a = a; entry.m = m; entry.tm = tmv; } else S.log.push({ id: uid(), d: S.day, m, f: food.id, a, t: Date.now(), tm: tmv });
     S.meta.last[food.id] = a;
     save(); sh.close(); render();
-    toast(entry ? `Updated: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit}` : `Added: ${cap(food.name)}, ${fmt(a)} ${food.basis.unit} to ${mealName}`);
+    toast(entry ? `Updated: ${cap(food.name)}, ${fmt(a)} ${au}` : `Added: ${cap(food.name)}, ${fmt(a)} ${au} to ${mealName}`);
     if (afterAdd) afterAdd();
   };
   const del = $('#del', sh.el);
@@ -1531,8 +1535,8 @@ function fieldError(input, msg, focus = true) {   // focus = false after waiting
   if (focus) input.focus();
   input.scrollIntoView({ block: 'center' });
 }
-function portionRows(list) {
-  return list.map((p) => `<div class="ing"><input type="text" class="pl" value="${esc(p.label)}" aria-label="Portion name" placeholder="e.g. 1 piece"><input type="text" inputmode="decimal" class="pg" value="${esc(String(p.grams))}" aria-label="Portion in grams" placeholder="g"><button class="icon-btn sm" data-rm aria-label="Remove">${IC.close}</button></div>`).join('');
+function portionRows(list, u = 'g') {
+  return list.map((p) => `<div class="ing"><input type="text" class="pl" value="${esc(p.label)}" aria-label="Portion name" placeholder="e.g. 1 piece"><input type="text" inputmode="decimal" class="pg" value="${esc(String(p.grams))}" aria-label="Portion in ${u === 'ml' ? 'ml' : 'grams'}" placeholder="${u}"><button class="icon-btn sm" data-rm aria-label="Remove">${IC.close}</button></div>`).join('');
 }
 function collectPortions(root) {
   return $$('#ports .ing', root).map((r) => ({ label: $('.pl', r).value.trim(), grams: num($('.pg', r).value) })).filter((p) => p.label && p.grams > 0);
@@ -1551,7 +1555,8 @@ function openFoodEditor(food, opts = {}) {
     <div class="grid2"><label class="f">Brand<input type="text" enterkeyhint="next" id="fbrand" value="${esc(f0.brand || '')}" maxlength="80"></label>
       <label class="f">Barcode<input type="text" inputmode="numeric" enterkeyhint="done" id="fcode" value="${esc(f0.barcode || '')}" maxlength="14"></label></div>
     <fieldset><legend class="muted small" style="margin-bottom:8px;font-weight:600">The values below are per</legend>
-      <div class="row gap"><label class="chk"><input type="radio" name="basis" value="g" ${perUnit ? '' : 'checked'}> 100 g</label>
+      <div class="row gap"><label class="chk"><input type="radio" name="basis" value="g" ${perUnit || isMl(f0) ? '' : 'checked'}> 100 g</label>
+      <label class="chk"><input type="radio" name="basis" value="ml" ${isMl(f0) ? 'checked' : ''}> 100 ml (counted as 100 g)</label>
       <label class="chk"><input type="radio" name="basis" value="u" ${perUnit ? 'checked' : ''}> 1 unit (capsule, tablet, piece)</label>
       <input type="text" enterkeyhint="done" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'hidden'}></div></fieldset>
     <details class="fold" id="estfold" ${estOpen ? 'open' : ''}><summary>Estimates (optional)</summary>
@@ -1563,11 +1568,17 @@ function openFoodEditor(food, opts = {}) {
     <details class="fold" ${f0.nova ? 'open' : ''}><summary>Food-processing group (NOVA, optional)</summary>
       <p class="hint" style="margin:0 0 10px">1 = unprocessed or minimally processed, 2 = culinary ingredient (oil, butter, sugar, salt), 3 = processed food (bread, canned vegetables), 4 = ultra-processed (soft drinks, packaged snacks). Leave it unset if you are not sure.</p>
       <label class="f">NOVA group<select id="fnova"><option value="">Not set</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label></details>
-    <div id="portwrap"><h4>Portions (in grams)</h4><div id="ports">${portionRows(f0.portions || [])}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
+    <div id="portwrap"><h4 id="porth">Portions (in ${isMl(f0) ? 'ml' : 'grams'})</h4><div id="ports">${portionRows(f0.portions || [], isMl(f0) ? 'ml' : 'g')}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
     <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="1200">${esc(f0.note || '')}</textarea></label>
     <div class="row gap sheet-actions">${isNew ? '' : '<button class="btn danger" id="fdel">Delete</button>'}<span style="flex:1"></span><button class="btn primary" id="fok">Save</button></div>`);
   const radios = $$('input[name=basis]', sh.el), unit = $('#funit', sh.el);
-  const syncBasis = () => { const u = radios.find((r) => r.checked).value === 'u'; unit.hidden = !u; unit.disabled = !u; $('#portwrap', sh.el).hidden = u; };
+  const pickedUnit = () => (radios.find((r) => r.checked).value === 'ml' ? 'ml' : 'g');   // the unit shown for a food per 100 g
+  const syncBasis = () => {
+    const u = radios.find((r) => r.checked).value === 'u', pu = pickedUnit();
+    unit.hidden = !u; unit.disabled = !u; $('#portwrap', sh.el).hidden = u;
+    $('#porth', sh.el).textContent = 'Portions (in ' + (pu === 'ml' ? 'ml' : 'grams') + ')';
+    $$('#ports .pg', sh.el).forEach((p) => { p.placeholder = pu; p.setAttribute('aria-label', 'Portion in ' + (pu === 'ml' ? 'ml' : 'grams')); });
+  };
   radios.forEach((r) => r.addEventListener('change', syncBasis)); syncBasis();
   /* Return on the keyboard: Name → Brand → Barcode, and the keyboard closes after the Barcode (the unit name closes it too) */
   const chain = ['#fname', '#fbrand', '#fcode'].map((q) => $(q, sh.el));
@@ -1592,7 +1603,7 @@ function openFoodEditor(food, opts = {}) {
   sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-est]'); if (b) { const k = b.dataset.est; if (estOn.has(k)) estOn.delete(k); else estOn.add(k); refreshEst(); } });
   sh.el.addEventListener('input', (e) => { if (e.target.dataset && e.target.dataset.k) refreshEst(); });
   refreshEst();
-  $('#addport', sh.el).onclick = () => $('#ports', sh.el).insertAdjacentHTML('beforeend', portionRows([{ label: '', grams: '' }]));
+  $('#addport', sh.el).onclick = () => $('#ports', sh.el).insertAdjacentHTML('beforeend', portionRows([{ label: '', grams: '' }], pickedUnit()));
   sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) b.closest('.ing').remove(); });
   sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
   $('#fok', sh.el).onclick = () => {
@@ -1604,7 +1615,7 @@ function openFoodEditor(food, opts = {}) {
       if (p.err) { fieldError(inp, 'Invalid number for ' + labelOf(IDX[inp.dataset.k]) + '. Use a positive number, or <x for a value below the detection limit.'); return; }
       if (!p.empty) n[inp.dataset.k] = p.v;
     }
-    const u = radios.find((r) => r.checked).value === 'u';
+    const u = radios.find((r) => r.checked).value === 'u', inMl = pickedUnit() === 'ml' && !u;
     const unitName = unit.value.trim() || 'unit';
     const estKeys = [...estOn].filter((k) => n[k] !== undefined).sort((a, b) => IDX[a] - IDX[b]);
     const conf = $('#fconf', sh.el).value;
@@ -1615,6 +1626,7 @@ function openFoodEditor(food, opts = {}) {
       nova: Number($('#fnova', sh.el).value) || null, portions: u ? [] : collectPortions(sh.el),
       note: $('#fnote', sh.el).value.trim(),
     };
+    if (inMl) fields.ml = true;
     if (estKeys.length) fields.est = estKeys;
     const q = estKeys.length ? conf : conf === 'n' ? 'n' : '';   // a confidence without any estimate only means something as “none”
     if (q) fields.q = q;
@@ -1825,14 +1837,14 @@ A JSON-t az app Data fülén az „Import foods (JSON)” gombbal töltsd be, va
 - Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.
 `;
 /* <<< AI prompt */
-const AI_FIELDS = ['est', 'q', 'fortified'];
+const AI_FIELDS = ['est', 'q', 'fortified', 'ml'];   // fields an update or an edit removes when the new data does not have them
 /* The confidence words of an answer: English, Hungarian (the v3 prompt writes them in Hungarian) and the one-letter codes of a backup. Looked up without accents. */
 const AI_CONF = { high: 'h', medium: 'm', low: 'l', 'very low': 'v', none: 'n', magas: 'h', kozepes: 'm', alacsony: 'l', 'nagyon alacsony': 'v', 'nincs becsles': 'n', nincs: 'n', h: 'h', m: 'm', l: 'l', v: 'v', n: 'n' };
 const aiConf = (c) => {
   const k = norm(c).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return Object.prototype.hasOwnProperty.call(AI_CONF, k) ? AI_CONF[k] : undefined;   // not "constructor" and the like
 };
-const basisText = (b) => (b.unit === 'g' ? '100 g' : `${b.qty} ${b.unit}`);
+const basisText = (b, ml) => (b.unit === 'g' ? (ml ? '100 ml' : '100 g') : `${b.qty} ${b.unit}`);
 
 /* the prompt for "Copy AI prompt": the text of tools/ai_prompt.md as it is (it has its own list of nutrient keys, checked against KEYS and UNITS by tests/test_ai_import.py) */
 function aiPrompt() { return AI_PROMPT; }
@@ -1959,6 +1971,14 @@ function aiFood(raw, k, count, out) {
   if (fo === true || fo === 1 || (typeof fo === 'string' && /^true$/i.test(fo.trim()))) fortified = true;
   else if (fo !== undefined && fo !== null && fo !== false && fo !== 0 && !(typeof fo === 'string' && /^false$/i.test(fo.trim()))) warn('"fortified" should be true or false. It was ignored.');
 
+  /* ml (version 18): only the display unit (ml instead of g). The prompt v3.1 gives a drink per 100 ml as 100 g with the portion {"label": "100 ml", "grams": 100};
+     that portion tells the unit, so a food without an explicit "ml" gets it from there. */
+  let ml = false;
+  const mo = raw.ml;
+  if (mo === true || mo === 1 || (typeof mo === 'string' && /^true$/i.test(mo.trim()))) ml = true;
+  else if (mo !== undefined && mo !== null && mo !== false && mo !== 0 && !(typeof mo === 'string' && /^false$/i.test(mo.trim()))) warn('"ml" should be true or false. It was ignored.');
+  if (ml && basis && basis.unit !== 'g') { ml = false; warn('"ml" is only for foods measured per 100 g. It was ignored.'); }
+
   let nova = null;
   if (raw.nova !== undefined && raw.nova !== null && raw.nova !== '') {
     const v = aiNum(raw.nova);
@@ -1978,6 +1998,8 @@ function aiFood(raw, k, count, out) {
     }
   }
 
+  if (!ml && raw.ml === undefined && basis && basis.unit === 'g' && portions.some((p) => p.grams === 100 && /^100\s*ml$/i.test(p.label))) ml = true;
+
   const note = str(raw.note);
   if (note.length > 1200) warn(`The note is ${note.length} characters long (the prompt asks for 1200 at most). It is kept in full.`);
   if (name.length > 120) warn(`The name is ${name.length} characters long (120 at most is expected). It is kept in full.`);
@@ -1990,6 +2012,7 @@ function aiFood(raw, k, count, out) {
   if (est.length) food.est = est;
   if (q) food.q = q;
   if (fortified) food.fortified = true;
+  if (ml) food.ml = true;
   out.foods.push({ food, warnings: warns });
 }
 /* text -> { errors: [messages], foods: [{ food, warnings }] }. Any error stops the import: nothing is loaded from an answer that has an error. */
@@ -2055,7 +2078,7 @@ function saveImportedFood(fields, done) {
   const d = openSheet('Already in your foods', `
     <p style="margin:0 0 8px"><b>${esc(cap(ex.name))}</b>${ex.brand ? ' · ' + esc(ex.brand) : ''} is already saved (${dup.why}).</p>
     <p class="small muted" style="margin:0 0 8px"><b>Update existing</b> replaces its values with the imported ones. The food stays the same, so ${used ? `the <b>${used === 1 ? '1 diary entry' : used + ' diary entries'}</b> that ${used === 1 ? 'uses' : 'use'} it will show the new values` : 'diary entries that use it later will show the new values'}. You can undo it. <b>Save as new</b> keeps both foods.</p>
-    ${blocked ? `<p class="note" role="alert">The saved food is measured per ${esc(basisText(ex.basis))}, the imported one per ${esc(basisText(fields.basis))}. The diary entries cannot be moved from one to the other, so use Save as new.</p>` : ''}
+    ${blocked ? `<p class="note" role="alert">The saved food is measured per ${esc(basisText(ex.basis, ex.ml))}, the imported one per ${esc(basisText(fields.basis, fields.ml))}. The diary entries cannot be moved from one to the other, so use Save as new.</p>` : ''}
     <div class="sheet-actions col">
       <button class="btn primary block" data-dup="update" ${blocked ? 'disabled' : ''}>Update existing</button>
       <button class="btn block" data-dup="new">Save as new</button>
@@ -2071,6 +2094,7 @@ function saveImportedFood(fields, done) {
       if (!m.barcode && ex.barcode) m.barcode = ex.barcode;                       // what the import does not say stays as it was
       if (!m.nova && ex.nova) m.nova = ex.nova;
       if (!m.note && ex.note) m.note = ex.note;
+      if (!m.ml && ex.ml && ex.basis.unit === 'g' && fields.basis.unit === 'g') m.ml = true;   // the unit you chose by hand stays
       if (!m.portions.length && ex.basis.unit === 'g' && ex.portions && ex.portions.length) m.portions = ex.portions;
       applyFoodFields(ex, m);
       if (ex.src === 'off') ex.edited = true;
@@ -2142,7 +2166,7 @@ function openAiList(items, { done }) {
   const row = ({ food, warnings }, i) => {
     const nAll = Object.keys(food.n).length, nEst = (food.est || []).length;
     return `<div class="card ai-row" data-i="${i}"><b>${esc(cap(food.name))}</b>
-      <div class="muted small">${esc(food.brand ? food.brand + ' · ' : '')}per ${esc(basisText(food.basis))} · ${nAll} ${nAll === 1 ? 'value' : 'values'}${nEst ? `, ${nEst} estimated${food.q ? ' (' + CONF[food.q] + ')' : ''}` : ''}</div>
+      <div class="muted small">${esc(food.brand ? food.brand + ' · ' : '')}per ${esc(basisText(food.basis, food.ml))} · ${nAll} ${nAll === 1 ? 'value' : 'values'}${nEst ? `, ${nEst} estimated${food.q ? ' (' + CONF[food.q] + ')' : ''}` : ''}</div>
       ${warnings.length ? `<ul class="note ai-warn">${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
       <div class="row gap" style="margin-top:10px">${saved[i] ? `<span class="tag ok">${saved[i]}</span>` : '<button class="btn" data-ai="review">Review</button><button class="btn primary" data-ai="save">Save</button>'}</div></div>`;
   };
@@ -2200,7 +2224,7 @@ function exportEntries() {
   const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', 'est_keys', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi, est } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, unitOf(f), novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -2521,7 +2545,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf };
 init();
 
 })();
