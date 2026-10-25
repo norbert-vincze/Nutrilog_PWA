@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '14 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '15 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -1126,10 +1126,12 @@ function viewData() {
       <div class="seg" role="group" aria-label="Theme">${THEMES.map(([v, l]) => `<button data-act="theme" data-v="${v}" aria-pressed="${v === tp}">${l}</button>`).join('')}</div></div>
     <div class="card"><div class="card-t">Backup</div>
       <p class="muted small" style="margin:6px 0 14px">${SY.cfg ? 'Your data lives on this device and, through Sync, in your private GitHub repository.' : 'Your data lives only on this device, in this browser.'} Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
-      <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
+      <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label><label class="btn" style="cursor:pointer">Import foods (JSON)<input type="file" id="importfoods" accept="application/json,.json" hidden></label></div>
+      <p class="muted small" style="margin:12px 0 0"><b>Restore from file</b> replaces everything in the app with the backup. <b>Import foods (JSON)</b> only adds foods to My foods from a file and never touches your diary.</p>
+      <div id="fimp-msg" aria-live="polite"></div></div>
     ${syncCard()}
     <div class="card"><div class="card-t">For analysis</div>
-      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is.</p>
+      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is. In the entries file, est_keys lists the estimated nutrients of that entry (separated by semicolons). In the daily totals file, est_share is the share of the day that is estimated, in percent: for every nutrient with data it takes the estimated part of the day’s amount, then averages those shares.</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
@@ -1377,7 +1379,7 @@ function ownInfo(f) {
   const names = [...estSet(f)].filter((i) => !Number.isNaN(v.lo[i])).sort((a, b) => a - b).map(labelOf);
   if (!names.length && !f.fortified) return '';
   const conf = f.q ? CONF[f.q] : 'not set';
-  return `<details class="fold"><summary>${names.length ? 'Estimated values · confidence ' + conf : 'May be fortified'}</summary>
+  return `<details class="fold"><summary>${names.length ? 'Estimated values: ' + names.length + ' · confidence ' + conf : 'May be fortified'}</summary>
     <p class="small" style="margin:0 0 8px">${names.length ? `<b>Estimates, not label values:</b> ${esc(names.join(', ').toLowerCase())}. Confidence of the estimate: <b>${conf}</b>. Every other value is from the label.` : ''}
       ${f.fortified ? ' The product may be <b>fortified</b> with vitamins or minerals. Vitamin and mineral values estimated from raw ingredients can be <b>too low</b>.' : ''}</p>
     ${f.note ? `<p class="hint" style="margin:0 0 12px;overflow-wrap:anywhere">Note: ${esc(f.note)}</p>` : ''}</details>`;
@@ -1760,7 +1762,12 @@ Mezőszabályok:
 - Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.`;
 /* <<< AI prompt */
 const AI_FIELDS = ['est', 'q', 'fortified'];
-const AI_CONF = { high: 'h', medium: 'm', low: 'l', 'very low': 'v', none: 'n' };
+/* The confidence words of an answer: English, Hungarian (the v3 prompt writes them in Hungarian) and the one-letter codes of a backup. Looked up without accents. */
+const AI_CONF = { high: 'h', medium: 'm', low: 'l', 'very low': 'v', none: 'n', magas: 'h', kozepes: 'm', alacsony: 'l', 'nagyon alacsony': 'v', 'nincs becsles': 'n', nincs: 'n', h: 'h', m: 'm', l: 'l', v: 'v', n: 'n' };
+const aiConf = (c) => {
+  const k = norm(c).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return Object.prototype.hasOwnProperty.call(AI_CONF, k) ? AI_CONF[k] : undefined;   // not "constructor" and the like
+};
 const AI_GROUP_HU = { mac: 'Energia és makrók', fa: 'Zsírsavak és koleszterin', min: 'Ásványi anyagok', vit: 'Vitaminok', fad: 'Zsírsavak (részletes)', oth: 'Egyéb összetevők' };
 const basisText = (b) => (b.unit === 'g' ? '100 g' : `${b.qty} ${b.unit}`);
 
@@ -1792,6 +1799,8 @@ function aiLoose(s) {
   try { return JSON.parse(s); } catch { /* try again without the commas before } and ] */ }
   try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch { return undefined; }
 }
+/* The shape of a Nutrilog file that holds foods: { "app": "tapnaplo", "foods": { "<id>": { … } } } (the v3 prompt answers like this, and so does a backup). */
+const isFoodsFile = (j) => !!j && typeof j === 'object' && j.app === 'tapnaplo' && !!j.foods && typeof j.foods === 'object' && !Array.isArray(j.foods);
 function aiFindJson(text) {
   const clean = String(text).replace(/[﻿​-‍⁠]/g, '').replace(/ /g, ' ');
   for (const t of [clean, aiStraight(clean)]) {   // a curly quote can be a real quote of the JSON, or only a quote inside a text: try both
@@ -1800,10 +1809,10 @@ function aiFindJson(text) {
       const e = aiBraceEnd(t, s);
       if (e < 0) continue;
       const j = aiLoose(t.slice(s, e));
-      if (j && typeof j === 'object' && !Array.isArray(j) && ('nutrilog_import' in j || Array.isArray(j.foods))) return { json: j, marker: true };
+      if (j && typeof j === 'object' && !Array.isArray(j) && ('nutrilog_import' in j || Array.isArray(j.foods) || isFoodsFile(j))) return { json: j, marker: true };
     }
   }
-  return { json: null, marker: /nutrilog_import/.test(clean) };
+  return { json: null, marker: /nutrilog_import|"tapnaplo"/.test(clean) };
 }
 function aiNum(x) {   // a number, or text such as "0,5"; NaN when it is neither
   if (typeof x === 'number') return Number.isFinite(x) ? x : NaN;
@@ -1883,10 +1892,10 @@ function aiFood(raw, k, count, out) {
     }
   }
   let q;
-  const c = raw.confidence;
+  const c = raw.confidence !== undefined && raw.confidence !== null && raw.confidence !== '' ? raw.confidence : raw.q;   // q = the letter a backup file uses
   if (c !== undefined && c !== null && c !== '') {
-    q = AI_CONF[String(c).trim().toLowerCase().replace(/[_-]+/g, ' ')];
-    if (!q) err('"confidence" must be high, medium, low, very low or none.');
+    q = aiConf(c);
+    if (!q) err('"confidence" must be high, medium, low, very low or none (in Hungarian: magas, közepes, alacsony, nagyon alacsony, nincs becslés).');
   } else if (est.length) err('"est" lists estimated values, so "confidence" is needed (high, medium, low, very low or none).');
   if (q === 'n' && est.length) warn('"confidence" is none, but "est" lists estimated values. Check which values are estimates.');
 
@@ -1939,7 +1948,16 @@ function parseAiImport(text) {
       : 'No JSON found. Paste the whole answer of the AI, including the block that starts with { and has "nutrilog_import" in it.');
     return out;
   }
-  const j = found.json, ver = typeof j.nutrilog_import === 'string' ? Number(j.nutrilog_import) : j.nutrilog_import;
+  const j = found.json;
+  if (j.nutrilog_import === undefined && isFoodsFile(j)) {   // the v3 answer: foods in an object, the id is the key. The ids are not used here: the food editor gives a new one, and duplicates are found by barcode or name.
+    if (Array.isArray(j.log)) { out.errors.push('This is a full backup, not the answer of an AI. Use “Restore from file” on the Data tab for a backup.'); return out; }
+    const list = Object.values(j.foods);
+    if (!list.length) { out.errors.push('“foods” is empty: there is nothing to read.'); return out; }
+    list.forEach((raw, k) => aiFood(raw, k, list.length, out));
+    if (out.errors.length) out.foods = [];
+    return out;
+  }
+  const ver = typeof j.nutrilog_import === 'string' ? Number(j.nutrilog_import) : j.nutrilog_import;
   if (j.nutrilog_import === undefined) out.errors.push('The JSON has no "nutrilog_import" field. Is it the answer to the Nutrilog prompt? Use “Copy AI prompt” and ask again.');
   else if (ver !== AI_IMPORT_VERSION) out.errors.push(`This answer is version ${JSON.stringify(j.nutrilog_import)} of the import format, but this app reads version ${AI_IMPORT_VERSION}. Use “Copy AI prompt” in this app and ask again (or update the app: Data → Reload app files).`);
   if (out.errors.length) return out;
@@ -2123,12 +2141,30 @@ function exportEntries() {
     return { e, f, lo, hi, est };
   });
   const mi = [...withMax].sort((a, b) => a - b), ei = [...withEst].sort((a, b) => a - b);
-  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
+  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', 'est_keys', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi, est } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
+}
+/* How much of a day is estimated, as one percentage (one decimal). Amounts of different nutrients cannot be added, so every tracked nutrient that has data and a total above 0
+   gets its own share (estimated part of the lower value / the whole), and the shares are averaged. Empty when no nutrient qualifies. */
+function estShare(entries) {
+  const tot = new Float64Array(NUT_N), est = new Float64Array(NUT_N);
+  for (const e of entries) {
+    const f = getFood(e.f);
+    if (!f) continue;
+    const v = vecOf(f), k = e.a / f.basis.qty;
+    for (const i of TRACKED) {
+      if (Number.isNaN(v.lo[i])) continue;
+      tot[i] += v.lo[i] * k;
+      if (isEst(f, i, v)) est[i] += v.lo[i] * k;
+    }
+  }
+  let sum = 0, c = 0;
+  for (const i of TRACKED) if (tot[i] > 0) { sum += est[i] / tot[i]; c++; }
+  return c ? Math.round(1000 * sum / c) / 10 : '';
 }
 function exportDays() {
   const days = [...new Set(S.log.filter((e) => getFood(e.f)).map((e) => e.d))].sort();
@@ -2137,10 +2173,10 @@ function exportDays() {
   per.forEach(({ T }) => { for (let i = 0; i < NUT_N; i++) if (T.cnt[i] && T.hi[i] - T.lo[i] > 1e-9) withMax.add(i); });
   const mi = [...withMax].sort((a, b) => a - b);
   const ei = KEYS.map((_, i) => i).filter((i) => per.some(({ T }) => T.est[i] > 0));
-  const head = ['date', 'entries', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est'), ...KEYS.map((_, i) => KEYS[i] + '__n')];
+  const head = ['date', 'entries', 'est_share', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est'), ...KEYS.map((_, i) => KEYS[i] + '__n')];
   const lines = [csvLine(head)];
   for (const { d, T } of per) {
-    lines.push(csvLine([d, T.n, ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...ei.map((i) => T.est[i]), ...KEYS.map((_, i) => T.cnt[i])]));
+    lines.push(csvLine([d, T.n, estShare(entriesOf(d)), ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...ei.map((i) => T.est[i]), ...KEYS.map((_, i) => T.cnt[i])]));
   }
   download(`nutrilog-daily-totals-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -2149,7 +2185,9 @@ function importJson(file) {
   rd.onload = () => {
     try {
       const j = JSON.parse(rd.result);
+      if (isFoodsFile(j) && !Array.isArray(j.log)) throw new Error('this file has foods but no diary. Use “Import foods (JSON)” to add its foods.');
       if (j.app !== 'tapnaplo' || !Array.isArray(j.log) || typeof j.foods !== 'object') throw new Error('this is not a Nutrilog backup file.');
+      Object.values(j.foods).forEach(normConfidence);
       const nE = j.log.length, nF = Object.keys(j.foods).length;
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
@@ -2160,6 +2198,140 @@ function importJson(file) {
         },
       });
     } catch (err) { toast('Could not restore: ' + err.message); }
+  };
+  rd.readAsText(file);
+}
+
+/* A foods file from the v3 prompt names the confidence in words ("confidence": "alacsony"). The app keeps a letter (q), so a restore turns the word into it. */
+function normConfidence(f) {
+  if (!f || typeof f !== 'object' || !('confidence' in f)) return;
+  if (!f.q) { const q = aiConf(f.confidence); if (q) f.q = q; }
+  delete f.confidence;
+}
+
+/* ================= Import foods (JSON) ================= */
+/* Adds the foods of a Nutrilog file to My foods. The file has the shape of a backup ({ "app": "tapnaplo", "foods": { "<id>": { … } } }), but only "foods" is read:
+   "log" and "meta" are ignored, so the diary is never touched. Only foods you made (ids starting with "u:") are imported. Every food is checked with the rules of
+   "Paste from AI" (aiFood). A food whose id is already there is never overwritten without asking: the person chooses Skip or Overwrite. */
+function parseFoodsFile(text) {
+  const out = { error: '', foods: [], invalid: [], other: [], total: 0 };
+  const raw = String(text).replace(/^﻿/, '');
+  let j;
+  try { j = JSON.parse(raw); } catch { j = aiFindJson(raw).json; }   // a pasted-into-a-file answer may still have a ``` fence or a sentence around it
+  if (!j || typeof j !== 'object' || Array.isArray(j) || j.app !== 'tapnaplo') { out.error = 'This is not a Nutrilog file. A file from this app or from the Nutrilog AI prompt has "app": "tapnaplo" at the top.'; return out; }
+  if (j.version !== undefined && Number(j.version) !== 1) { out.error = `This file is version ${JSON.stringify(j.version)} of the format, but this app reads version 1.`; return out; }
+  if (!j.foods || typeof j.foods !== 'object' || Array.isArray(j.foods)) { out.error = 'The file has no “foods” part, so there is nothing to import.'; return out; }
+  const entries = Object.entries(j.foods);
+  if (!entries.length) { out.error = 'The “foods” part of the file is empty.'; return out; }
+  out.total = entries.length;
+  const now = Date.now();
+  for (const [id, r] of entries) {
+    const isObj = r && typeof r === 'object' && !Array.isArray(r);
+    const shown = isObj && typeof r.name === 'string' && r.name.trim() ? r.name.trim() : id;
+    if (!id.startsWith('u:')) { out.other.push({ id, name: shown }); continue; }
+    if (!isObj) { out.invalid.push({ id, name: shown, reasons: ['It is not an object.'] }); continue; }
+    const one = { errors: [], foods: [] };
+    if (r.id !== undefined && String(r.id) !== id) one.errors.push(`Its "id" (${JSON.stringify(r.id)}) is not the same as its key (${JSON.stringify(id)}).`);
+    aiFood(r, 0, 1, one);
+    if (one.errors.length || !one.foods.length) { out.invalid.push({ id, name: shown, reasons: one.errors }); continue; }
+    const c = Number(r.created);
+    out.foods.push({ id, food: one.foods[0].food, warnings: one.foods[0].warnings, created: Number.isFinite(c) && c > 0 ? c : now });
+  }
+  return out;
+}
+/* Which of the importable foods are new, which have an id that is already there, and which of those cannot be overwritten
+   (the unit differs and diary entries use the food, so the amounts would change their meaning). */
+function planFoodsImport(parsed) {
+  const clash = [], fresh = [], blocked = [];
+  for (const x of parsed.foods) {
+    const ex = S.foods[x.id];
+    if (!ex) { fresh.push(x); continue; }
+    clash.push(x);
+    if (S.log.some((e) => e.f === x.id) && !(ex.basis.qty === x.food.basis.qty && ex.basis.unit === x.food.basis.unit)) blocked.push(x);
+  }
+  return { clash, fresh, blocked, like: fresh.filter((x) => findDuplicate(x.food)) };
+}
+function applyFoodsImport(parsed, overwrite) {
+  const plan = planFoodsImport(parsed), now = Date.now(), changes = [];
+  let added = 0, replaced = 0, kept = 0;
+  for (const x of parsed.foods) {
+    const ex = S.foods[x.id];
+    if (ex && !(overwrite && !plan.blocked.includes(x))) { kept++; continue; }
+    S.foods[x.id] = { id: x.id, src: 'user', created: ex && ex.created > 0 ? ex.created : x.created, ...JSON.parse(JSON.stringify(x.food)), updated: now };
+    changes.push({ id: x.id, before: ex });   // the old object is kept as it was, for Undo
+    if (ex) replaced++; else added++;
+  }
+  if (changes.length) { invalidate(); save(); }
+  return { added, replaced, kept, changes };
+}
+function undoFoodsImport(changes) {
+  const used = new Set(S.log.map((e) => e.f));
+  for (const c of changes) {
+    if (c.before) S.foods[c.id] = c.before;
+    else if (!used.has(c.id)) delete S.foods[c.id];   // a new food that a diary entry already uses stays, so no entry loses its food
+  }
+  invalidate(); save(); render();
+}
+function finishFoodsImport(parsed, res) {
+  const n = res.added + res.replaced, plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const parts = [n ? `Imported ${plural(n, 'food', 'foods')}` : 'Nothing imported'];
+  if (res.replaced) parts.push(`${res.replaced} overwritten`);
+  if (res.kept) parts.push(`${res.kept} kept as ${res.kept === 1 ? 'it was' : 'they were'}`);
+  if (parsed.invalid.length) parts.push(`${parsed.invalid.length} invalid skipped`);
+  if (parsed.other.length) parts.push(`${parsed.other.length} with other ids skipped`);
+  toast(parts.join(' · '), n ? () => undoFoodsImport(res.changes) : undefined);
+  if (S.tab === 'data' || S.tab === 'foods') render();
+}
+function openFoodsImportSheet(parsed, plan) {
+  const nf = (k) => `${k} ${k === 1 ? 'food' : 'foods'}`;
+  const list = (xs, max, f) => esc(xs.slice(0, max).map(f).join(', ')) + (xs.length > max ? ` and ${xs.length - max} more` : '');
+  const nm = (x) => cap(x.food ? x.food.name : x.name);
+  const html = [`<p style="margin:0 0 10px">The file has ${nf(parsed.total)}. ${nf(parsed.foods.length)} can be imported: ${plan.fresh.length} new${plan.clash.length ? ', ' + plan.clash.length + ' with an id that is already in My foods' : ''}.</p>`];
+  if (plan.clash.length) {
+    html.push(`<p class="small" style="margin:0 0 8px"><b>Already there:</b> ${list(plan.clash, 8, nm)}.</p>`);
+    html.push(`<p class="small muted" style="margin:0 0 8px"><b>Skip</b> keeps your versions and adds only the new foods. <b>Overwrite</b> replaces your versions with the ones from the file; the diary entries that use them then show the new values.${plan.blocked.length ? ` ${list(plan.blocked, 5, nm)} cannot be overwritten: the unit differs and diary entries use the food. ${plan.blocked.length === 1 ? 'It stays' : 'They stay'} as ${plan.blocked.length === 1 ? 'it is' : 'they are'}.` : ''}</p>`);
+  }
+  if (parsed.invalid.length) {
+    html.push(`<div class="note" role="status"><b>${parsed.invalid.length} ${parsed.invalid.length === 1 ? 'entry is' : 'entries are'} not valid and will be skipped:</b><ul>${parsed.invalid.slice(0, 5).map((x) => `<li>${esc(cap(x.name))}: ${esc(x.reasons[0] || 'not valid.')}</li>`).join('')}${parsed.invalid.length > 5 ? `<li>and ${parsed.invalid.length - 5} more</li>` : ''}</ul></div>`);
+  }
+  if (parsed.other.length) {
+    html.push(`<p class="small muted" style="margin:0 0 8px">${parsed.other.length} ${parsed.other.length === 1 ? 'entry has' : 'entries have'} an id that does not start with “u:” (saved Open Food Facts products, for example). Only foods you made are imported, so ${parsed.other.length === 1 ? 'it is' : 'they are'} left out.</p>`);
+  }
+  if (plan.like.length) {
+    html.push(`<div class="note" role="status"><b>Look like foods you already have</b> (same barcode, or same name and brand): ${list(plan.like, 5, nm)}. They are added as separate foods. Delete the extra ones in My foods if you do not want both.</div>`);
+  }
+  const warned = parsed.foods.filter((x) => x.warnings.length);
+  if (warned.length) {
+    html.push(`<div class="note" role="status"><b>Check these values after the import:</b><ul>${warned.slice(0, 5).map((x) => `<li>${esc(nm(x))}: ${esc(x.warnings[0])}</li>`).join('')}${warned.length > 5 ? `<li>and ${warned.length - 5} more</li>` : ''}</ul></div>`);
+  }
+  html.push(plan.clash.length
+    ? '<div class="sheet-actions col"><button class="btn primary block" data-fi="skip">Skip</button><button class="btn danger block" data-fi="over">Overwrite</button><button class="btn block" data-fi="cancel">Cancel</button></div>'
+    : `<div class="sheet-actions col"><button class="btn primary block" data-fi="skip">Import ${nf(parsed.foods.length)}</button><button class="btn block" data-fi="cancel">Cancel</button></div>`);
+  const d = openSheet('Import foods', html.join(''));
+  d.el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fi]');
+    if (!b) return;
+    d.close();
+    if (b.dataset.fi !== 'cancel') finishFoodsImport(parsed, applyFoodsImport(parsed, b.dataset.fi === 'over'));
+  });
+}
+function importFoods(file) {
+  const say = (html) => { const m = $('#fimp-msg'); if (m) m.innerHTML = html; };
+  const fail = (t) => say(`<p class="note field-err" role="alert">${esc(t)}</p>`);
+  say('');
+  const rd = new FileReader();
+  rd.onerror = () => fail('The file could not be read.');
+  rd.onload = () => {
+    const parsed = parseFoodsFile(rd.result);
+    if (parsed.error) { fail(parsed.error); return; }
+    if (!parsed.foods.length) {
+      const why = parsed.invalid.slice(0, 3).map((x) => `${cap(x.name)}: ${x.reasons[0] || 'not valid.'}`).join(' ');
+      fail(`No food could be imported. ${why || (parsed.other.length ? 'Only foods you made (ids starting with “u:”) are imported.' : '')}`.trim());
+      return;
+    }
+    const plan = planFoodsImport(parsed);
+    if (plan.clash.length || parsed.invalid.length || parsed.other.length || plan.like.length || parsed.foods.some((x) => x.warnings.length)) openFoodsImportSheet(parsed, plan);
+    else finishFoodsImport(parsed, applyFoodsImport(parsed, false));
   };
   rd.readAsText(file);
 }
@@ -2199,6 +2371,7 @@ document.addEventListener('toggle', (ev) => { if (ev.target.id === 'novafold') n
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value; render(); }
   if (ev.target.id === 'importfile' && ev.target.files[0]) { importJson(ev.target.files[0]); ev.target.value = ''; }
+  if (ev.target.id === 'importfoods' && ev.target.files[0]) { importFoods(ev.target.files[0]); ev.target.value = ''; }
 });
 document.addEventListener('input', (ev) => {
   if (ev.target.id === 'ffilter') { S.filter = ev.target.value; $('#flist').innerHTML = foodListHtml(); }
@@ -2292,7 +2465,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf };
 init();
 
 })();

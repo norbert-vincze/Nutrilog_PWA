@@ -87,7 +87,7 @@ Ezután a kezdőképernyőn ott lesz a Nutrilog ikonja (fekete négyzet, benne h
 3. Az „Amount” ablakban koppints az „**Estimated values · confidence …**” sorra. Megmutatja, mely értékek jönnek a dm.hu címkéjéről (energia, fehérje, szénhidrát, zsír, cukor, rost, telített zsír, só, néha több), és melyek **becslések** a hozzávalók listájából (CIQUAL-adatokkal). A „confidence” a becslés megbízhatósága: high, medium, low, very low vagy none. A „none” terméknél (például kávé, tea) semmi nincs becsülve, és a dm.hu-n sincs tápértéktáblázat hozzá.
 4. Folyékony vagy porból készülő terméknél külön gyorsgombok vannak. Az olajoknál és szirupoknál a „100 ml”, az „1 tbsp (15 ml)” és az „1 tsp (5 ml)” azt a **grammot** írja be, amennyit az adag nyom (az értékek 100 g-ra vonatkoznak). A leves- és tápszerpornál a „100 ml prepared” és a „0.5 l prepared” azt írja be, hány gramm por van a kész levesben vagy italban.
 5. Ha egy termék „fortified” (dúsított) lehet, az ablak figyelmeztet: a vitamin- és ásványianyag-becslés ilyenkor alacsonyabb lehet a valóságosnál.
-6. **Figyelem:** a dmBio-becslési projektből kapott `products_dmbio_nutrilog_v3.json` olyan, mint egy mentésfájl. **Ne töltsd vissza a „Restore from file” gombbal**, mert az felülírná a naplódat és a saját ételeidet. Erre nincs szükség: a 527 termék már benne van az appban.
+6. **Figyelem:** a dmBio-becslési projektből kapott `products_dmbio_nutrilog_v3.json` olyan, mint egy mentésfájl. **Ne töltsd vissza a „Restore from file” gombbal**, mert az felülírná a naplódat és a saját ételeidet. Erre nincs szükség: a 527 termék már benne van az appban. Az „Import foods (JSON)” gombra sincs szükség hozzá: az a `dm:` azonosítójú termékeket úgyis kihagyná, mert csak a saját ételeidet tölti be.
 
 **Csomagolt termék vonalkóddal:**
 1. Koppints a „**Scan**” gombra, és engedélyezd a kamerát.
@@ -132,6 +132,7 @@ Az adataid alapból csak a telefonodon vannak, a böngésző tárhelyén, a GitH
 2. A fájl a letöltések közé kerül. Másold át a felhőbe (Google Drive, iCloud) vagy küldd el magadnak e-mailben.
 3. Heti egy mentés elég. A mentésben benne vannak a naplóbejegyzések, a saját ételeid és a NOVA-besorolásaid is. Visszatöltés: Data fül, „Restore from file”.
 4. **Ne töltsd fel a mentésfájlt a GitHubra.** Az nyilvános lenne.
+5. Ha csak **ételeket** akarsz betölteni egy fájlból (például az AI-tól kapott `foods` fájlt), ne a „Restore from file” gombot használd, mert az mindent lecserél. Erre való az „Import foods (JSON)” gomb, lásd a 13. fejezetet.
 
 ## 9. Szinkron a telefon és a számítógép között (nem kötelező)
 
@@ -175,7 +176,7 @@ A szinkron a naplódat egy **privát** GitHub-repóba menti, és minden eszköz�
 
 ## 10. Elemzés Claude-dal
 
-A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `source` oszlop megmondja, honnan jön az étel (`ciqual`, `usda`, `off` vagy `user`), a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), a `nova` oszlop az étel NOVA-csoportja (1–4, üres, ha nincs besorolva), az `energy_estimated` oszlop azt mutatja, hogy a kalória számolt érték-e (1) vagy címkeadat (0), az `estimate_confidence` oszlop a becslés megbízhatósága (high, medium, low, very low, none): a dmBio termékeknél és azoknál a saját ételeidnél van kitöltve, amelyeknél becslést jelöltél (12. fejezet), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. A `__est` végű oszlopok azt jelölik, hogy az érték becslés: a tételes fájlban 1 = becsült, 0 = nem becsült, a napi összesítőben a becsült tételek száma. Ilyen oszlop csak azoknál a tápanyagoknál van, amelyek valamelyik tételnél tényleg becsültek (dmBio termék vagy `~` jelű érték egy saját ételben). Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
+A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `source` oszlop megmondja, honnan jön az étel (`ciqual`, `usda`, `off` vagy `user`), a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), a `nova` oszlop az étel NOVA-csoportja (1–4, üres, ha nincs besorolva), az `energy_estimated` oszlop azt mutatja, hogy a kalória számolt érték-e (1) vagy címkeadat (0), az `estimate_confidence` oszlop a becslés megbízhatósága (high, medium, low, very low, none): a dmBio termékeknél és azoknál a saját ételeidnél van kitöltve, amelyeknél becslést jelöltél (12. fejezet), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. A `__est` végű oszlopok azt jelölik, hogy az érték becslés: a tételes fájlban 1 = becsült, 0 = nem becsült, a napi összesítőben a becsült tételek száma. Ilyen oszlop csak azoknál a tápanyagoknál van, amelyek valamelyik tételnél tényleg becsültek (dmBio termék vagy `~` jelű érték egy saját ételben). Az „Entries (CSV)” `est_keys` oszlopa (az `estimate_confidence` után) felsorolja a tétel becsült tápanyagait, pontosvesszővel elválasztva (például `vitamin_e;zinc`). Ha a kalória is becsült, a `kcal` is ott áll. A „Daily totals (CSV)” `est_share` oszlopa (a `entries` után) azt mondja meg százalékban, hogy a nap értékeinek mekkora része becslés. Tápanyagonként kiszámolja, hogy a nap mennyiségének hányadrésze jön becsült értékből, majd ezeknek a hányadoknak az átlagát veszi azokon a tápanyagokon, amelyekhez van adat és a napi összeg nagyobb nullánál (egy tizedesjegyre kerekítve). 0 azt jelenti, hogy minden érték címkeadat, üres cella azt, hogy aznap egyetlen tápanyagról sincs adat. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
 
 ## 11. Hogyan frissítesz egy új verzióra
 
@@ -208,7 +209,7 @@ Ez akkor jó, ha új terméket veszel fel, és a címkén csak néhány érték 
 **A becsült értékek jelzése.**
 - A becsült tápanyag neve előtt `~` jel áll, és mellette egy kék `~` gomb. A címkéről jövő értéknél a gomb szürke. A gombra koppintva ki-be kapcsolhatod, hogy az érték becslés-e. Ha törölsz egy értéket, a jel is eltűnik.
 - Az „**Estimates (optional)**” részben két mező van: az „**Estimate confidence**” azt mondja meg, mennyire megbízható a becslés (high, medium, low, very low, none), a „**May be fortified**” pedig azt, hogy a termék dúsított lehet (vitamint vagy ásványi anyagot adtak hozzá). Ha van becsült érték, a megbízhatóságot ki kell választani, különben az app a mező mellett szól.
-- Mentés után a becslések ugyanúgy látszanak, mint a dmBio termékeknél: a Nutrients fülön az érték előtt `~` áll, a tápanyag sorára koppintva az „Estimate, not a label value” sor megmondja, melyik étel becsült és mennyire megbízható. Az „Amount” ablakban az „**Estimated values · confidence …**” sorra koppintva látod, mely értékek becslések, a dúsítási figyelmeztetést és az AI megjegyzését (a „Notes” mező tartalmát). A CSV-ben az `estimate_confidence` és a `__est` oszlopok jelölik őket (10. fejezet).
+- Mentés után a becslések ugyanúgy látszanak, mint a dmBio termékeknél: a Nutrients fülön az érték előtt `~` áll, a tápanyag sorára koppintva az „Estimate, not a label value” sor megmondja, melyik étel becsült és mennyire megbízható. Az „Amount” ablakban az „**Estimated values: 3 · confidence low**” sorra koppintva (a szám a becsült értékek darabszáma) látod, mely értékek becslések, a dúsítási figyelmeztetést és az AI megjegyzését (a „Notes” mező tartalmát). A CSV-ben az `estimate_confidence` és a `__est` oszlopok jelölik őket (10. fejezet).
 
 **Több termék egyszerre.** Ha az AI-válaszban több termék van, az app a „**Review imported foods**” listát mutatja. Minden sornál két gomb van: a „**Review**” megnyitja a szerkesztőt (ott módosíthatsz, és a „Save” ment), a „**Save**” úgy menti az ételt, ahogy van. A kész sor mellett „Saved” felirat látszik. A „Done” gombbal zárod be a listát. Amit nem mentettél, az nem kerül sehová.
 
@@ -221,8 +222,35 @@ Ha a régi étel darabra (például „capsule”), az új grammra vonatkozik, �
 **Amit érdemes tudnod:**
 - Az AI hibázhat, vagy rossz forrásból dolgozhat. A `~` jelű értékek becslések, a címkeérték az, ami a csomagoláson áll. Mindig vesd össze a csomagolással.
 - A kalóriát az AI-nak a címkéről kell átvennie. Ha az app ezt írja: „Energy is … kcal, but protein, carbohydrate and fat add up to …”, nézd meg a címkét: gyakran a rost vagy a cukoralkohol okozza az eltérést, de lehet elírás is.
+- A „Paste from AI” kétféle választ ért: a régi `nutrilog_import` alakút, és az újabb, `"app": "tapnaplo"` és `"foods"` objektumot tartalmazó alakot, amelyben a `confidence` magyarul is állhat (`magas`, `közepes`, `alacsony`, `nagyon alacsony`, `nincs becslés`). Az utóbbinál az app a fájlban szereplő azonosítót nem használja, a mentéskor új azonosítót kap az étel. Ha a beillesztett szöveg egy teljes mentés (naplóval együtt), az app erre külön figyelmeztet, és a „Restore from file” gombot ajánlja.
 - Az „AI answer” mezőbe bármilyen, a prompttal kapott válasz jó. Ha az app azt írja, hogy „This answer is version … of the import format”, az AI egy másik prompt-változatot használt. Koppints újra a „Copy AI prompt” gombra, és az új utasítással kérd a választ.
 - A beillesztett szöveget az app nem menti el, csak az az étel marad meg, amit a „Save” gombbal elmentettél. A mentett étel a mentésfájlban és a szinkronban is ott van, a becslésekkel együtt.
+
+## 13. Ételek betöltése fájlból („Import foods (JSON)”)
+
+Ez akkor kell, ha egy fájlban **több kész étel** van (például az AI-tól vagy az artifactból kapott `foods` fájl), és ezeket egyszerre akarod betölteni, átnézés nélkül. A gomb **csak a My foods listához ad hozzá**, a naplódhoz nem nyúl. Egy tétel vagy a „Paste from AI” átnézéssel megy, ez a gyors, tömeges út.
+
+**Mit olvas a fájlból?** Egy JSON-fájlt, amelynek tetején `"app": "tapnaplo"` áll, és van benne egy `foods` rész. A fájlban lévő `log` (napló) és `meta` részt **figyelmen kívül hagyja**, ezért egy teljes mentésfájlból is csak az ételeket veszi át. Csak a **saját ételeket** tölti be, vagyis azokat, amelyeknek az azonosítója `u:`-val kezdődik (ilyen az AI-prompt `u:ai-…` azonosítója). Az elmentett Open Food Facts-termékeket és minden más forrást kihagy, és megszámolja őket.
+
+**Betöltés lépésről lépésre:**
+1. Tedd a fájlt a telefonodra (Fájlok app, iCloud, vagy küldd el magadnak). Egy AI-választ úgy kapsz fájlba, hogy a `json` blokk tartalmát elmented `.json` kiterjesztéssel. Ha csak szövegként van meg, egyszerűbb a „Paste from AI” (12. fejezet).
+2. Nyisd meg a **Data** fület, és a „Backup” kártyán koppints az „**Import foods (JSON)**” gombra. Ez a „Restore from file” mellett van.
+3. Válaszd ki a fájlt.
+4. Ha minden étel új és hibátlan, az app **rögtön betölti** őket, és alul megjelenik: „**Imported 3 foods**” egy „**Undo**” gombbal (6 másodpercig).
+5. Ha valami figyelmet kér, megnyílik az „**Import foods**” ablak. Ebben látod, hány étel jön be, melyek vannak már meg, melyik bejegyzés hibás, és milyen értékeket érdemes utána ellenőrizned. Az alján:
+   - „**Skip**”: a már meglévő ételeid maradnak, ahogy voltak, csak az új ételek kerülnek be. Ez az alapértelmezett, az első gomb.
+   - „**Overwrite**”: a meglévő ételeid értékei lecserélődnek a fájlban lévőkre. Az étel azonosítója nem változik, ezért **a naplóban a régi tételek is az új értékeket mutatják**.
+   - „**Cancel**”: semmi nem történik.
+6. Kész. Ha mégsem ezt akartad, koppints az „**Undo**” gombra: az új ételek eltűnnek, a felülírt ételek visszakapják a régi értékeiket.
+
+**Amit érdemes tudnod:**
+- Semmi nem íródik felül kérdés nélkül. Ha egy azonosító már megvan, az app megkérdezi, hogy a „Skip” vagy az „Overwrite” kell.
+- Ha egy meglévő étel darabra (például „capsule”), a fájlban lévő grammra vonatkozik (vagy fordítva), és a naplóban már használod, az „Overwrite” azt az ételt **nem** írja felül, mert a tételek mennyiségét nem lehet átvinni. Az ablak megmondja, melyikről van szó. Ilyenkor maradj a meglévő ételnél, vagy javítsd a fájlban az azonosítót.
+- Az érvénytelen bejegyzést (nincs neve, hiányzik az alapja, az egyik érték nem szám, a becsült kulcsnak nincs értéke) az app kihagyja, és megszámolja: „… 2 invalid skipped”. Az ablakban az első öt hiba okát látod. Ha egyetlen étel sem érvényes, a gomb alatt piros hibaüzenet áll („No food could be imported”), és semmi nem változik.
+- Ha a fájl nem Nutrilog-fájl, a gomb alatt ezt olvasod: „This is not a Nutrilog file…”. Ha a „Restore from file” gombbal próbálsz betölteni egy olyan fájlt, amelyben csak ételek vannak (napló nincs), az app ezt írja: „this file has foods but no diary” és az „Import foods (JSON)” gombot ajánlja.
+- Az app figyelmeztet, ha egy új étel vonalkódja vagy neve és márkája egyezik egy meglévő ételével: ezeket külön ételként adja hozzá, a felesleget a My foods listán törölheted.
+- A becsült értékek (`est`), a megbízhatóság (`confidence`) és a „dúsított” jelzés (`fortified`) bekerül az ételbe, és ugyanúgy látszik, mint a „Paste from AI” után: `~` jel a Nutrients fülön, az „Estimated values: N · confidence …” sor az „Amount” ablakban.
+- A fájl tartalmát az app nem küldi el sehova, és nem tárolja.
 
 ## Ha elakadsz
 
@@ -254,6 +282,9 @@ Ha a régi étel darabra (például „capsule”), az új grammra vonatkozik, �
 | „The answer has Nutrilog data, but it cannot be read as JSON” | A válasz vége hiányzik, mert az AI félbehagyta. Kérd, hogy küldje el újra csak a JSON blokkot. |
 | „This browser did not let the app read the clipboard” | Nem hiba. Nyomd hosszan az „AI answer” mezőt, válaszd a „Paste” menüpontot, majd koppints a „Read” gombra. |
 | „This answer is version … of the import format” | Az AI egy másik prompt-változattal dolgozott. A „Paste from AI” ablakban koppints a „Copy AI prompt” gombra, illeszd be az új utasítást, és kérd újra a választ. Ha az app a régebbi, Data fül → „Reload app files”. |
+| „This is not a Nutrilog file” az „Import foods (JSON)” gomb alatt | A fájl tetején nincs `"app": "tapnaplo"`. Ellenőrizd, hogy a teljes JSON-t mentetted el, és ne a magyarázó szöveget. |
+| „No food could be imported” az „Import foods (JSON)” gomb alatt | Egyetlen bejegyzés sem érvényes. Az üzenet az első okokat megmutatja (például hiányzó név vagy alap). Kérd az AI-t, hogy javítsa, és csak a JSON-t küldje el. Az azonosítónak `u:`-val kell kezdődnie. |
+| „Could not restore: this file has foods but no diary” | A fájlban csak ételek vannak. A „Restore from file” teljes mentéshez való. Ételek betöltéséhez használd az „Import foods (JSON)” gombot (13. fejezet). |
 | Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. Az app megerősítést kér, mielőtt felülírja az adataidat. |
 
 ## Amit érdemes tudnod

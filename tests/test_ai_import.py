@@ -478,7 +478,7 @@ async def main():
         await page.click('.entry >> nth=0'); await page.wait_for_selector('#amt')
         fold = await T("[...document.querySelectorAll('.sheet details')].map((d) => d.innerText)")
         al = [x for x in fold if 'Estimated values' in x]
-        check('Amount sheet: fold "Estimated values · confidence medium" for the estimated own food', len(al) == 1 and 'confidence medium' in al[0], fold[:3])
+        check('Amount sheet: fold "Estimated values: 1 · confidence medium" for the estimated own food', len(al) == 1 and 'Estimated values: 1' in al[0] and 'confidence medium' in al[0], fold[:3])
         await T("document.querySelectorAll('.sheet details').forEach((d) => d.open = true)")
         al = (await T("[...document.querySelectorAll('.sheet details')].map((d) => d.innerText)"))
         blk = [x for x in al if 'Estimated values' in x][0]
@@ -805,4 +805,5 @@ async def main():
         sys.exit(1 if problems else 0)
 
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())
