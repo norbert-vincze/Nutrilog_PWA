@@ -201,7 +201,7 @@ h4 { margin: 20px 0 6px; font-size: .78rem; text-transform: uppercase; letter-sp
 
 /* forms */
 label.f { display: grid; gap: 6px; font-size: .84rem; color: var(--muted); font-weight: 600; }
-input[type=text], input[type=search], input[type=number], input[type=date], input[type=time], select, textarea {
+input[type=text], input[type=password], input[type=search], input[type=number], input[type=date], input[type=time], select, textarea {
   width: 100%; border: 0; background: var(--surface); border-radius: 16px; padding: 0 16px; min-height: 52px; color: var(--ink); font-weight: 520;
   -webkit-appearance: none; appearance: none;
 }

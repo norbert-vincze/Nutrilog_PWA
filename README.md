@@ -125,18 +125,58 @@ A NOVA a feldolgozottság mértéke, nem az egészséges voltáé. A besorolás 
 
 ## 8. Mentsd rendszeresen az adataidat
 
-Az adataid csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon nincsenek. Ha törlöd a böngészőadatokat vagy telefont cserélsz, elvesznek. Az iPhone Safari ráadásul törölheti egy weboldal adatait, ha hét napig nem használod. A kezdőképernyőre tett appra ez nem vonatkozik, ezért iPhone-on mindig onnan indítsd.
+Az adataid alapból csak a telefonodon vannak, a böngésző tárhelyén, a GitHubon nincsenek. Ha törlöd a böngészőadatokat vagy telefont cserélsz, elvesznek. (A 9. fejezetben leírt szinkronnal az adataid egy privát GitHub-repóban is megvannak, de a fájlmentést akkor is érdemes megtartani.) Az iPhone Safari ráadásul törölheti egy weboldal adatait, ha hét napig nem használod. A kezdőképernyőre tett appra ez nem vonatkozik, ezért iPhone-on mindig onnan indítsd.
 
 1. Nyisd meg a **Data** fület. A „Storage” kártya megmondja, védi-e a böngésző az adataidat („Persistent”), vagy törölheti őket („Not persistent”). Koppints a „**Save backup (JSON)**” gombra.
 2. A fájl a letöltések közé kerül. Másold át a felhőbe (Google Drive, iCloud) vagy küldd el magadnak e-mailben.
 3. Heti egy mentés elég. A mentésben benne vannak a naplóbejegyzések, a saját ételeid és a NOVA-besorolásaid is. Visszatöltés: Data fül, „Restore from file”.
 4. **Ne töltsd fel a mentésfájlt a GitHubra.** Az nyilvános lenne.
 
-## 9. Elemzés Claude-dal
+## 9. Szinkron a telefon és a számítógép között (nem kötelező)
+
+A szinkron a naplódat egy **privát** GitHub-repóba menti, és minden eszközön ugyanazt mutatja: a telefonodon és a számítógép böngészőjében is. Ez nem helyettesíti a fájlmentést (8. fejezet), de megóv attól, hogy az adataid egyetlen készüléken éljenek. A repó csak a tiéd, az app oda írja az adataidat, és a GitHub megőrzi a változások történetét.
+
+**A) Egyszeri előkészítés: privát repó** (számítógépen egyszerűbb)
+1. Nyisd meg a <https://github.com/new> oldalt. Be kell lépned.
+2. A „**Repository name**” mezőbe írd: `nutrilog-data`.
+3. Válaszd a „**Private**” opciót. Ez nagyon fontos: a naplód nem lehet nyilvános. Az app meg is tagadja a csatlakozást egy nyilvános repóhoz.
+4. Pipáld be az „**Add a README file**” jelölőnégyzetet (így a repó nem üres).
+5. Kattints a „**Create repository**” gombra.
+
+**B) Egyszeri előkészítés: hozzáférési token.** A token egy hosszú jelszó, amellyel az app csak ebbe az egy repóba tud írni. Minden eszközödnek csinálj külön tokent, így ha elveszik a telefon, csak azt az egyet kell visszavonnod.
+1. Jobb felül kattints a **profilképedre**, majd a „**Settings**” menüpontra.
+2. A bal oldali menüben kattints a „**Developer settings**” pontra.
+3. A bal oldalon, a „Personal access tokens” alatt kattints a „**Fine-grained tokens**” pontra.
+4. Kattints a „**Generate new token**” gombra.
+5. „**Token name**”: például `nutrilog-telefon`.
+6. „**Expiration**”: válaszd a leghosszabbat, amit a GitHub felkínál. Ha a token lejár, a szinkron megáll, és az app szól: ilyenkor csinálj újat.
+7. „**Repository access**”: válaszd az „**Only select repositories**” opciót, majd a „Selected repositories” listából a `nutrilog-data` repót.
+8. „**Permissions**” → „Repository permissions” → „**Contents**” → állítsd „**Read and write**” értékre. Mást ne kapcsolj be.
+9. Kattints a „**Generate token**” gombra. A token (`github_pat_` kezdetű hosszú szöveg) **csak most látszik**: másold ki a vágólapra (telefonon hosszan nyomva: „Copy”).
+
+**C) Összekapcsolás az appban**
+1. Nyisd meg a **Data** fület, a „**Sync**” kártyán koppints a „**Set up sync**” gombra.
+2. „**Repository**”: írd be a GitHub-neved és a repó nevét, például `norbert-vincze/nutrilog-data`.
+3. „**Access token**”: illeszd be a vágólapról a tokent.
+4. Koppints a „**Connect**” gombra. Az app ellenőrzi, hogy a repó privát-e, aztán elküldi az adataidat. A kártyán a „Last sync” sor mutatja az eredményt.
+5. **Második eszköz** (például a számítógép): nyisd meg a böngészőben az app címét, csinálj ott egy új tokent (B lépések, a neve legyen mondjuk `nutrilog-szamitogep`), és ismételd meg a C 1–4 lépést. Az első szinkron letölti a naplódat.
+
+**Így működik**
+- A változtatásaid néhány másodperc múlva elmennek. Az app megnyitásakor, amikor visszatérsz hozzá, amikor visszajön az internet, és használat közben 5 percenként is szinkronizál. A „**Sync now**” gombbal kézzel is elindíthatod.
+- Ha két eszközön más-más bejegyzést adsz hozzá, mindkettő megmarad. Ha **ugyanazt** a bejegyzést módosítod két eszközön, a későbbi módosítás nyer. Ezért legyen az eszközeid órája automatikus időre állítva.
+- A törlés minden eszközön megtörténik. Az „Undo” gomb a szinkronban is visszahozza a bejegyzést.
+- Internet nélkül minden működik, a változások akkor mennek el, amikor újra van net. A kártya jelzi, ha vár még valami elküldésre.
+- A „Restore from file” szinkron mellett **minden eszközön** lecseréli az adataidat a mentésre (az app erre külön figyelmeztet).
+- A repóban fájlok vannak: `entries/ÉÉÉÉ-HH.json` (havonta egy, a naplóbejegyzéseiddel), `foods/` (saját ételek) és `meta.json` (saját adagok, NOVA-besorolások). Ezeket ne szerkeszd kézzel. A GitHubon a „History” gombbal visszanézheted a korábbi állapotokat.
+- A token csak azon az eszközön van, ahol beírtad. Nem része a mentésfájlnak, és nem kerül a repóba. **Ne küldd el senkinek, nekem se, és képernyőképen se mutasd meg.** Ha elveszik a telefon: GitHub → Settings → Developer settings → Fine-grained tokens → a token neve → „Delete”.
+- Leválasztás: Data fül → Sync → „**Disconnect**”. Ilyenkor az eszköz elfelejti a tokent, az adataid megmaradnak az eszközön és a repóban is.
+- A szinkron csak a naplót, a saját ételeket, az Open Food Facts-ból elmentett ételeket, a saját adagokat és a NOVA-besorolásokat viszi át. A téma (Appearance) és a legutóbbi mennyiségek eszközönként külön maradnak.
+
+## 10. Elemzés Claude-dal
 
 A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az összes tápanyagot. Az üres cella azt jelenti, hogy nincs adat. A `__max` végű oszlopok a „< x” értékek felső határát adják, a `__n` oszlopok pedig azt, hogy hány tételből van adat. Az „Entries (CSV)” ugyanezt tételenként mutatja: a `source` oszlop megmondja, honnan jön az étel (`ciqual`, `usda`, `off` vagy `user`), a `date` oszlop a nap, a `time` oszlop a tétel időpontja (óra:perc, 24 órás), a `nova` oszlop az étel NOVA-csoportja (1–4, üres, ha nincs besorolva), az `energy_estimated` oszlop azt mutatja, hogy a kalória számolt érték-e (1) vagy címkeadat (0), az `estimate_confidence` oszlop a dmBio termékek becslésének megbízhatósága (high, medium, low, very low, none), az étkezés oszlopában „Meal 1”, „Meal 2” stb. áll. A régebbi tételeknél, amelyekhez még nem mentettünk időpontot, az app a felvétel pillanatát írja. A `__est` végű oszlopok azt jelölik, hogy az érték becslés: a tételes fájlban 1 = becsült, 0 = nem becsült, a napi összesítőben a becsült tételek száma. Ilyen oszlop csak azoknál a tápanyagoknál van, amelyek valamelyik tételnél tényleg becsültek. Töltsd fel valamelyiket egy beszélgetésbe vagy projektbe.
 
-## 10. Hogyan frissítesz egy új verzióra
+## 11. Hogyan frissítesz egy új verzióra
 
 1. Csomagold ki az új zip-et.
 2. Nyisd meg a repót a GitHubon, kattints az „Add file” gombra, majd az „Upload files” menüpontra.
@@ -162,6 +202,12 @@ A Data fülön a „**Daily totals (CSV)**” minden naphoz tartalmazza az össz
 | „Open Food Facts does not have barcode…” | A termék nincs az adatbázisban. Használd a „Create food from label” gombot. |
 | „Open Food Facts is not available right now” | Az adatbázis szervere éppen nem válaszol. Próbáld újra egy perc múlva. |
 | „Could not reach Open Food Facts” | Ellenőrizd az internetet. Hiányos vagy hiányzó terméknél használd a „Create food” gombot. |
+| „GitHub does not accept the token” | A token lejárt, vagy rosszul másoltad. Csinálj újat (9. fejezet, B), majd Data fül → Sync → „Disconnect” → „Set up sync”. |
+| „the token needs the permission “Contents: Read and write”” | A tokenben a „Contents” nem „Read and write” értékű. Csinálj új tokent a B lépések szerint. |
+| „This repository is public” | Az app csak privát repóhoz kapcsolódik. Csinálj egy újat a „Private” opcióval (9. fejezet, A). |
+| „The file … is not a Nutrilog sync file” | A repóban van egy fájl az `entries/`, `foods/` mappában vagy `meta.json` néven, ami nem az appé. Használj külön, üres repót a Nutrilognak. |
+| A Sync kártyán „Offline: your changes stay on this device…” | Nem hiba: nincs internet vagy a GitHub nem érhető el. A változások megmaradnak, és elmennek, amikor újra van kapcsolat. |
+| „Another device keeps writing at the same time” | Két eszköz egyszerre szinkronizált. Várj egy percet, és koppints a „Sync now” gombra. |
 | Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. Az app megerősítést kér, mielőtt felülírja az adataidat. |
 
 ## Amit érdemes tudnod

@@ -21,7 +21,7 @@ const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '11 · 24 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '12 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -471,7 +471,314 @@ async function doSave() {
   await Store.set('log', S.log);
   await Store.set('foods', clean(S.foods));
   await Store.set('meta', S.meta);
+  if (syncStamp()) { await Store.set('sync', syncPersist()); syncSoon(); }   // note which records changed, so Sync knows what to send
   try { navigator.storage?.persist?.(); } catch { /* not critical */ }
+}
+
+/* ================= sync with a private GitHub repository ================= */
+/* The diary is kept in a private repository of your own. Every record has a time of its last change (u); when two devices
+   changed the same record, the later change wins; a deleted record stays behind as a marker (tombstone), so the deletion reaches the other devices too.
+   Records: 'e:<entry id>' diary entries, 'f:<food id>' foods you made or saved from Open Food Facts, 'p:<food id>' your own portion sizes,
+   'n:<food id>' NOVA groups you chose for CIQUAL, USDA and dmBio foods. They live in files of the repository:
+   entries/YYYY-MM.json, foods/0..7.json, meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
+   so the data records and the backup file are not changed by it. The token is never part of the backup. */
+const SY = { cfg: null, rec: {}, shas: {}, last: 0, born: 0, info: '', err: '', offline: false, stop: false, busy: false, again: false, timer: null, progress: '', applied: 0, sent: 0, viewStale: false, ranAt: 0, toasted: false };
+const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|meta)\.json$/;
+const SYNC_DELAY = 4000;
+const syncPersist = () => ({ cfg: SY.cfg, rec: SY.rec, shas: SY.shas, last: SY.last, born: SY.born, info: SY.info });
+
+function hashNum(str) {   // cyrb53, a small fast hash; it only tells "changed or not", it is not for secrets
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+const hashStr = (s) => hashNum(s).toString(36);
+/* the same JSON text for the same content: keys sorted, helper keys (starting with _) left out */
+function canon(v) {
+  return JSON.stringify(v, (k, x) => {
+    if (k && k[0] === '_') return undefined;
+    if (x && typeof x === 'object' && !Array.isArray(x)) { const o = {}; for (const kk of Object.keys(x).sort()) o[kk] = x[kk]; return o; }
+    return x;
+  });
+}
+/* everything that is synced, as key -> { v: value, s: file } */
+function syncRecords() {
+  const out = new Map();
+  for (const e of S.log) {
+    const m = /^\d{4}-\d{2}/.exec(e.d || '');
+    out.set('e:' + e.id, { v: e, s: `entries/${m ? m[0] : 'undated'}.json` });
+  }
+  for (const [id, f] of Object.entries(S.foods)) out.set('f:' + id, { v: f, s: `foods/${hashNum(id) % 8}.json` });
+  for (const [id, p] of Object.entries(S.meta.portions || {})) out.set('p:' + id, { v: p, s: 'meta.json' });
+  for (const [id, n] of Object.entries(S.meta.nova || {})) out.set('n:' + id, { v: n, s: 'meta.json' });
+  return out;
+}
+/* the time of a record that existed before it was ever synced: when it was made or last edited, so it never beats a real later change */
+const baselineU = (v) => (v && typeof v === 'object' ? Number(v.updated) || Number(v.t) || Number(v.created) || 1 : 1);
+/* Compare the data with what was noted last time. Changed or new record: new time (always later than the one known), pending. Gone record: tombstone.
+   Returns true when something changed. */
+function syncStamp() {
+  const cur = syncRecords(), now = Date.now(), legacy = !SY.born;
+  let changed = false;
+  for (const [k, { v, s }] of cur) {
+    const h = hashStr(canon(v)), r = SY.rec[k];
+    if (r && r.h === h) continue;
+    SY.rec[k] = { u: r ? Math.max(now, r.u + 1) : legacy ? baselineU(v) : now, h, s: r && r.s ? r.s : s, p: 1, sy: r ? r.sy : 0 };
+    changed = true;
+  }
+  for (const [k, r] of Object.entries(SY.rec)) {
+    if (r.h !== null && !cur.has(k)) { SY.rec[k] = { u: Math.max(now, r.u + 1), h: null, s: r.s, p: 1, sy: r.sy }; changed = true; }
+  }
+  if (!SY.born) { SY.born = now; changed = true; }
+  return changed;
+}
+/* when sync is switched on: what was never synced counts as old data, whatever the clock said while it was saved */
+function syncRebaseline() {
+  const cur = syncRecords();
+  for (const [k, r] of Object.entries(SY.rec)) if (!r.sy && r.h !== null && cur.has(k)) r.u = baselineU(cur.get(k).v);
+}
+function syncSoon(ms = SYNC_DELAY) {
+  if (!SY.cfg) return;
+  clearTimeout(SY.timer);
+  SY.timer = setTimeout(() => syncRun('change'), ms);
+}
+
+/* ---- GitHub ---- */
+async function ghFetch(cfg, path, opt = {}) {
+  try {
+    return await fetch('https://api.github.com' + path, {
+      method: opt.method || 'GET', cache: 'no-store',   // no-store: GitHub answers may otherwise be served from the browser cache for a minute
+      headers: { Authorization: 'Bearer ' + cfg.token, Accept: opt.accept || 'application/vnd.github+json', ...(opt.body ? { 'Content-Type': 'application/json' } : {}) },
+      body: opt.body ? JSON.stringify(opt.body) : undefined,
+    });
+  } catch { throw Object.assign(new Error('Could not reach GitHub.'), { net: true }); }
+}
+async function ghError(r) {
+  let detail = ''; try { detail = (await r.json()).message || ''; } catch { /* no details */ }
+  const rate = r.status === 429 || (r.status === 403 && (r.headers.get('x-ratelimit-remaining') === '0' || !!r.headers.get('retry-after') || /rate limit|abuse/i.test(detail)));
+  let msg;
+  if (r.status === 401) msg = 'GitHub does not accept the token. It may have expired or been copied wrongly. Create a new token and connect again.';
+  else if (rate) msg = 'GitHub is limiting requests for a while. Sync works again later.';
+  else if (r.status === 403) msg = 'GitHub refuses this: the token needs the permission “Contents: Read and write” for this repository.';
+  else if (r.status === 404) msg = 'GitHub cannot find the repository (or its branch), or the token has no access to it.';
+  else msg = `GitHub answered with an error (${r.status}).${detail ? ' ' + detail : ''}`;
+  return Object.assign(new Error(msg), { status: r.status, rate });
+}
+async function ghJson(cfg, path) {
+  const r = await ghFetch(cfg, path);
+  if (!r.ok) throw await ghError(r);
+  return r.json();
+}
+/* files of the repository: Map path -> sha. An empty repository has no branch yet (HTTP 409). */
+async function ghTree(cfg) {
+  const r = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch)}?recursive=1`);
+  if (r.status === 409) return { files: new Map(), empty: true };
+  if (!r.ok) throw await ghError(r);
+  const j = await r.json();
+  return { files: new Map((j.tree || []).filter((t) => t.type === 'blob').map((t) => [t.path, t.sha])), empty: false };
+}
+async function ghRaw(cfg, path) {
+  const r = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(cfg.branch)}`, { accept: 'application/vnd.github.raw+json' });
+  if (!r.ok) throw await ghError(r);
+  return r.text();
+}
+const b64enc = (s) => { const b = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(bin); };
+/* write one file. conflict = somebody changed it since we looked (HTTP 409 or 422): look again */
+async function ghPut(cfg, path, text, sha, empty) {
+  const body = { message: 'Nutrilog sync: ' + path, content: b64enc(text) };
+  if (sha) body.sha = sha;
+  if (!empty) body.branch = cfg.branch;
+  const r = await ghFetch(cfg, `/repos/${cfg.owner}/${cfg.repo}/contents/${path}`, { method: 'PUT', body });
+  if (r.status === 409 || r.status === 422) return { conflict: true };
+  if (!r.ok) throw await ghError(r);
+  const j = await r.json();
+  return { sha: j.content && j.content.sha };
+}
+async function mapLimit(list, n, fn) {
+  const out = new Array(list.length); let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (next < list.length) { const i = next++; out[i] = await fn(list[i]); } }));
+  return out;
+}
+
+/* ---- files <-> records ---- */
+function validRec(k, x) {
+  if (!/^[efpn]:./.test(k)) return false;
+  if (x === null) return true;
+  const id = k.slice(2);
+  if (k[0] === 'e') return typeof x === 'object' && !Array.isArray(x) && x.id === id && typeof x.d === 'string' && typeof x.f === 'string' && Number.isFinite(x.a);
+  if (k[0] === 'f') return typeof x === 'object' && !Array.isArray(x) && x.id === id;
+  if (k[0] === 'p') return Array.isArray(x);
+  return [1, 2, 3, 4].includes(x);
+}
+function parseShard(text, path) {
+  let j; try { j = JSON.parse(text); } catch { j = null; }
+  if (!j || j.app !== 'tapnaplo-sync' || !j.recs || typeof j.recs !== 'object') throw new Error(`The file ${path} in the repository is not a Nutrilog sync file. Use an empty repository for Nutrilog.`);
+  const out = new Map();
+  for (const [k, rr] of Object.entries(j.recs)) if (rr && Number.isFinite(rr.u) && 'x' in rr && validRec(k, rr.x)) out.set(k, { u: rr.u, x: rr.x });
+  return out;
+}
+const replaceObj = (o, x) => { for (const k of Object.keys(o)) if (k[0] !== '_') delete o[k]; Object.assign(o, x); };
+function syncApply(k, x) {
+  const id = k.slice(2);
+  if (k[0] === 'e') {
+    const i = S.log.findIndex((e) => e.id === id);
+    if (x === null) { if (i >= 0) S.log.splice(i, 1); } else if (i >= 0) replaceObj(S.log[i], x); else S.log.push(x);   // an entry that is open in a sheet is changed in place
+  } else if (k[0] === 'f') {
+    if (x === null) delete S.foods[id]; else if (S.foods[id]) replaceObj(S.foods[id], x); else S.foods[id] = x;
+  } else if (k[0] === 'p') {
+    S.meta.portions = S.meta.portions || {};
+    if (x === null) delete S.meta.portions[id]; else S.meta.portions[id] = x;
+  } else {
+    S.meta.nova = S.meta.nova || {};
+    if (x === null) delete S.meta.nova[id]; else S.meta.nova[id] = x;
+  }
+}
+/* remote: Map key -> { u, x, s }. The later change wins; with the same time the remote one (same on every device). Returns how many records were taken from the repository. */
+function syncMerge(remote) {
+  let applied = 0;
+  for (const [k, rr] of remote) {
+    const lr = SY.rec[k], rh = rr.x === null ? null : hashStr(canon(rr.x));
+    if (lr && lr.h === rh) { lr.sy = 1; lr.p = lr.u > rr.u ? 1 : 0; lr.u = Math.max(lr.u, rr.u); continue; }   // same content
+    if (lr && lr.u > rr.u) { lr.p = 1; continue; }                                                              // ours is newer: send it
+    syncApply(k, rr.x); applied++;
+    SY.rec[k] = { u: rr.u, h: rh, s: rr.s, p: 0, sy: 1 };
+  }
+  return applied;
+}
+/* One pass: look at the repository, take what is new, send what is ours. false = another device wrote at the same time, so look again. */
+async function syncRound() {
+  const cfg = SY.cfg;
+  const { files, empty } = await ghTree(cfg);
+  for (const p of Object.keys(SY.shas)) {
+    if (!files.has(p)) { delete SY.shas[p]; for (const r of Object.values(SY.rec)) if (r.s === p) r.p = 1; }   // file gone from the repository: send it again
+  }
+  const changed = [...files.keys()].filter((p) => SYNC_SHARD.test(p) && files.get(p) !== SY.shas[p]);
+  const texts = await mapLimit(changed, 4, (p) => ghRaw(cfg, p));
+  /* from here to the first write there is no waiting, so nothing can change in between */
+  const remote = new Map(), seen = new Map();
+  changed.forEach((p, i) => {
+    const ks = new Set();
+    for (const [k, rr] of parseShard(texts[i], p)) { ks.add(k); const old = remote.get(k); if (!old || old.u < rr.u) remote.set(k, { ...rr, s: p }); }
+    seen.set(p, ks);
+  });
+  syncStamp();
+  SY.applied += syncMerge(remote);
+  for (const [p, ks] of seen) for (const [k, r] of Object.entries(SY.rec)) if (r.s === p && !ks.has(k)) r.p = 1;   // the file lacks a record we have
+  const byPath = new Map();
+  for (const [k, r] of Object.entries(SY.rec)) { if (!byPath.has(r.s)) byPath.set(r.s, []); byPath.get(r.s).push(k); }
+  const dirty = [...byPath.keys()].filter((p) => byPath.get(p).some((k) => SY.rec[k].p));
+  for (const p of changed) if (!dirty.includes(p)) SY.shas[p] = files.get(p);
+  const cur = syncRecords();
+  let n = 0;
+  for (const p of dirty) {
+    const keys = byPath.get(p).sort(), stamp = {}, recs = {};
+    for (const k of keys) {
+      const r = SY.rec[k]; stamp[k] = r.u;
+      if (r.h === null) recs[k] = { u: r.u, x: null };
+      else if (cur.has(k)) recs[k] = { u: r.u, x: cur.get(k).v };
+    }
+    SY.progress = `Sending file ${++n} of ${dirty.length}…`; syncUi();
+    if (n > 1) await new Promise((res) => setTimeout(res, 700));   // GitHub asks for a short pause between writes
+    const text = JSON.stringify({ app: 'tapnaplo-sync', v: 1, recs }, (kk, x) => (kk && kk[0] === '_' ? undefined : x));
+    const res = await ghPut(cfg, p, text, files.get(p), empty && !files.size);
+    if (res.conflict) return false;
+    SY.shas[p] = res.sha;
+    for (const k of keys) { const r = SY.rec[k]; if (r && r.u === stamp[k]) { r.p = 0; r.sy = 1; SY.sent++; } }   // a record changed during the sending stays pending
+  }
+  return true;
+}
+async function syncRun(why) {
+  if (!SY.cfg) return;
+  if (SY.busy) { SY.again = true; return; }
+  if (SY.stop && why !== 'manual' && why !== 'connect') return;
+  if (!navigator.onLine) { SY.offline = true; syncUi(); return; }
+  Object.assign(SY, { busy: true, offline: false, stop: false, err: '', applied: 0, sent: 0 }); syncUi();
+  try {
+    for (let round = 0; ; round++) {
+      if (await syncRound()) break;
+      if (round >= 3) throw new Error('Another device keeps writing at the same time. Try again in a moment.');
+    }
+    SY.last = Date.now(); SY.info = `Received ${SY.applied}, sent ${SY.sent}.`;
+  } catch (e) {
+    if (e.net) SY.offline = true;
+    else { SY.err = e.message || 'Sync failed.'; if ([401, 403, 404].includes(e.status) && !e.rate) SY.stop = true; }
+  } finally {
+    SY.busy = false; SY.progress = ''; SY.ranAt = Date.now();
+    await Store.set('sync', syncPersist());
+    if (SY.applied) { invalidate(); S.log.sort((a, b) => (a.t || 0) - (b.t || 0)); save(); syncViewChanged(); }
+    syncUi();
+    if (SY.stop && !SY.toasted) { SY.toasted = true; toast('Sync stopped. Open Data → Sync to see why.'); }
+    if (SY.again) { SY.again = false; syncSoon(500); }
+  }
+}
+/* other devices changed something: draw the view again, or when a sheet is open, as soon as it is closed */
+function syncViewChanged() { if (sheets.length) SY.viewStale = true; else render(); }
+function syncStatusHtml() {
+  if (!SY.cfg) return '';
+  const pend = Object.values(SY.rec).filter((r) => r.p).length;
+  const waiting = pend ? ` ${pend === 1 ? '1 change is' : pend + ' changes are'} waiting to be sent.` : '';
+  if (SY.busy) return esc(SY.progress || 'Syncing…');
+  if (SY.err) return `<span class="note" role="alert" style="display:block;margin:0">${esc(SY.err)}</span>`;
+  const when = SY.last ? `Last sync: ${esc(new Date(SY.last).toLocaleString(LOC))}. ${esc(SY.info)}` : 'Not synced yet.';
+  return (SY.offline ? 'Offline: your changes stay on this device and are sent when you are online again. ' : '') + when + waiting;
+}
+function syncUi() {
+  const el = $('#sync-status'); if (el) el.innerHTML = syncStatusHtml();
+  const b = $('#sync-now'); if (b) b.disabled = SY.busy;
+}
+function syncCard() {
+  if (!SY.cfg) return `<div class="card"><div class="card-t">Sync</div>
+      <p class="muted small" style="margin:6px 0 14px">Use the same diary on your phone and your computer. Your data is saved in a private GitHub repository that only you can open, and the devices are merged automatically. Needs a free GitHub account. Keep making file backups as well.</p>
+      <button class="btn primary" data-act="sync-setup">Set up sync</button></div>`;
+  return `<div class="card"><div class="card-t">Sync</div>
+      <p class="muted small" style="margin:6px 0 10px">Connected to the private repository <b>${esc(SY.cfg.owner)}/${esc(SY.cfg.repo)}</b>. Changes are sent a few seconds after you make them, and new changes from other devices are fetched when you open the app.</p>
+      <div class="small" id="sync-status" aria-live="polite">${syncStatusHtml()}</div>
+      <div class="row gap" style="margin-top:14px"><button class="btn primary" id="sync-now" data-act="sync-now" ${SY.busy ? 'disabled' : ''}>Sync now</button><button class="btn" data-act="sync-off">Disconnect</button></div></div>`;
+}
+function openSyncSetup() {
+  const sh = openSheet('Set up sync', `
+    <p class="muted small" style="margin:0 0 12px">First create an empty <b>private</b> repository on GitHub and an access token that can only change that repository. The steps are in the guide (README). The token stays on this device and is never part of a backup file.</p>
+    <label class="f">Repository<input type="text" id="sy-repo" placeholder="your-name/nutrilog-data" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label class="f" style="margin-top:10px">Access token<input type="password" id="sy-token" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <div class="row gap" style="margin-top:14px"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>Connect</button></div>`);
+  const repo = $('#sy-repo', sh.el), tok = $('#sy-token', sh.el), ok = $('[data-ok]', sh.el);
+  sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
+  $('[data-dx]', sh.el).onclick = () => sh.close();
+  ok.onclick = async () => {
+    $$('.field-err', sh.el).forEach((x) => x.remove());
+    const name = repo.value.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+    const m = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/.exec(name);
+    if (!m) { fieldError(repo, 'Write it as name/repository, for example your-name/nutrilog-data.'); return; }
+    const token = tok.value.trim();
+    if (!token) { fieldError(tok, 'Paste the access token here.'); return; }
+    ok.disabled = true; ok.textContent = 'Connecting…';
+    const cfg = { owner: m[1], repo: m[2], branch: 'main', token };
+    try {
+      const j = await ghJson(cfg, `/repos/${cfg.owner}/${cfg.repo}`);
+      if (j.private !== true) { fieldError(repo, 'This repository is public: everyone could read your diary. Make it private in its GitHub settings, or create a new private one.', false); return; }
+      cfg.branch = j.default_branch || 'main';
+      Object.assign(SY, { cfg, shas: {}, stop: false, err: '', offline: false, toasted: false });
+      syncStamp(); syncRebaseline();
+      await Store.set('sync', syncPersist());
+      sh.close(); render(); syncRun('connect');
+    } catch (e) { fieldError(e.status === 401 ? tok : repo, e.net ? 'Could not reach GitHub. Check your internet connection.' : e.message, false); }
+    finally { ok.disabled = false; ok.textContent = 'Connect'; }
+  };
+  if (!TOUCH) setTimeout(() => repo.focus(), 60);
+}
+function syncOff() {
+  askConfirm({
+    title: 'Disconnect sync?', okLabel: 'Disconnect',
+    text: 'This device stops syncing and forgets the token. Your diary stays on this device and in the repository. To connect again you need a token.',
+    onOk: async () => {
+      clearTimeout(SY.timer);
+      Object.assign(SY, { cfg: null, shas: {}, err: '', offline: false, stop: false });
+      await Store.set('sync', syncPersist());
+      render(); toast('Sync is off');
+    },
+  });
 }
 
 /* ================= Open Food Facts ================= */
@@ -562,7 +869,7 @@ function openSheet(title, html) {
       sheets.splice(i, 1);
       wrap.remove();
       if (api.onClose) api.onClose();
-      if (!sheets.length) document.body.classList.remove('noscroll');
+      if (!sheets.length) { document.body.classList.remove('noscroll'); if (SY.viewStale) { SY.viewStale = false; render(); } }   // sync brought changes while the sheet was open
     },
   };
   wrap.addEventListener('click', (ev) => { if (ev.target === wrap || ev.target.closest('[data-x]')) api.close(); });
@@ -784,8 +1091,9 @@ function viewData() {
       <p class="muted small" style="margin:6px 0 12px">Auto follows your phone’s light or dark setting. Light and Dark stay as you pick them.</p>
       <div class="seg" role="group" aria-label="Theme">${THEMES.map(([v, l]) => `<button data-act="theme" data-v="${v}" aria-pressed="${v === tp}">${l}</button>`).join('')}</div></div>
     <div class="card"><div class="card-t">Backup</div>
-      <p class="muted small" style="margin:6px 0 14px">Your data lives only on this device, in this browser. Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
+      <p class="muted small" style="margin:6px 0 14px">${SY.cfg ? 'Your data lives on this device and, through Sync, in your private GitHub repository.' : 'Your data lives only on this device, in this browser.'} Back up regularly and before switching devices. Last backup: ${esc(b)}.</p>
       <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
+    ${syncCard()}
     <div class="card"><div class="card-t">For analysis</div>
       <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day).</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
@@ -1162,13 +1470,13 @@ function nutInputs(food) {
     <details class="fold more" ${moreHas ? 'open' : ''}><summary>More values (fatty acids, minerals, vitamins…)</summary>${groups}</details>`;
 }
 /* Show an error right under the field, open any folded group around it, and put the cursor there. */
-function fieldError(input, msg) {
+function fieldError(input, msg, focus = true) {   // focus = false after waiting for the network: focus() outside the tap leaves the field "focused" without a keyboard on iOS
   const host = input.closest('.nin, label.f') || input;
   $$('.field-err', host.parentNode).forEach((x) => x.remove());
   host.insertAdjacentHTML('afterend', `<p class="note field-err" role="alert">${esc(msg)}</p>`);
   input.setAttribute('aria-invalid', 'true');
   for (let d = input.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
-  input.focus();
+  if (focus) input.focus();
   input.scrollIntoView({ block: 'center' });
 }
 function portionRows(list) {
@@ -1304,7 +1612,7 @@ function importJson(file) {
       const nE = j.log.length, nF = Object.keys(j.foods).length;
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
-        text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.`,
+        text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
           S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {});
           invalidate(); save(); render(); toast('Restored');
@@ -1329,6 +1637,9 @@ document.addEventListener('click', (ev) => {
   else if (a === 'new-food') openFoodEditor(null);
   else if (a === 'edit-food') { const f = S.foods[t.dataset.id]; if (f) openFoodEditor(f); }
   else if (a === 'export-json') exportJson();
+  else if (a === 'sync-setup') openSyncSetup();
+  else if (a === 'sync-now') syncRun('manual');
+  else if (a === 'sync-off') syncOff();
   else if (a === 'nova-set') novaTap(t.dataset.id, Number(t.dataset.v));
   else if (a === 'theme') {
     setTheme(t.dataset.v);
@@ -1418,18 +1729,28 @@ async function loadCatalog() {
 async function init() {
   try {
     await Promise.all([Store.open(), loadCatalog()]);
-    const [log, foods, meta] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta')]);
+    const [log, foods, meta, sy] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
+    if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
+    if (syncStamp()) await Store.set('sync', syncPersist());   // changes made while the app was closed, and the first start with Sync built in
     render();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+    syncStart();
   } catch (err) {
     $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The app could not start.</div><p class="muted small" style="margin-top:6px">${esc(err.message)}</p><p class="muted small" style="margin-top:6px">If you opened the file straight from your computer, upload the files to a host (for example GitHub Pages) or start a local web server.</p></div>`;
   }
 }
-window.__tapnaplo = { S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save };
+/* Sync runs at start, when the app comes back to the front, when the network returns, every 5 minutes while it is in front, and a few seconds after each change */
+function syncStart() {
+  syncRun('start');   // does nothing while Sync is not connected; the listeners below are in place for when it gets connected
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - SY.ranAt > 20000) syncRun('front'); });
+  window.addEventListener('online', () => syncRun('online'));
+  setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
+}
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save };
 init();
 
 })();
