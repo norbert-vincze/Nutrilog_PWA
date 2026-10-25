@@ -73,6 +73,8 @@ body {
 body.noscroll { overflow: hidden; }
 h1, h2, h3, h4, p { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { font-size: max(16px, 1em); }   /* iOS zooms into any field whose text is smaller than 16 px; pinch zoom by hand stays possible */
+a, button, summary, label, select, [data-act], [data-pick], .btn, .chip-btn, .icon-btn { touch-action: manipulation; }   /* no double-tap zoom delay on buttons and links */
 button { cursor: pointer; -webkit-appearance: none; appearance: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .muted { color: var(--muted); }
@@ -244,8 +246,9 @@ details.fold[open] > summary::after { content: "－"; }
 .list-card { background: var(--surface); border-radius: 22px; padding: 6px 12px; }
 
 /* sheets */
-.sheet-wrap { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / .45); display: flex; align-items: flex-end; justify-content: center; }
-.sheet { width: min(560px, 100%); max-height: 93dvh; background: var(--sheet); border-radius: 28px 28px 0 0; display: flex; flex-direction: column; box-shadow: var(--shadow); position: relative; }
+.sheet-wrap { position: fixed; inset: 0; height: 100dvh; z-index: 20; background: rgb(0 0 0 / .45); display: flex; align-items: flex-end; justify-content: center; }
+body.kb .sheet-wrap { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100dvh); }   /* on-screen keyboard (set by fitSheets in app.js): the sheet is only as tall as the part of the screen that is still visible */
+.sheet { width: min(560px, 100%); max-height: calc(100% - env(safe-area-inset-top, 0px) - 8px); background: var(--sheet); border-radius: 28px 28px 0 0; display: flex; flex-direction: column; box-shadow: var(--shadow); position: relative; }
 .sheet::before { content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: var(--surface-2); }
 .sheet-h { display: flex; align-items: center; gap: 8px; padding: 26px max(20px, env(safe-area-inset-left, 0px)) 8px; }
 .sheet-h h2 { font-size: 1.4rem; font-weight: 740; letter-spacing: -.02em; flex: 1; }
@@ -253,6 +256,9 @@ details.fold[open] > summary::after { content: "－"; }
 @media (min-width: 700px) { .sheet-wrap { align-items: center; } .sheet { border-radius: 28px; } }
 .sheet-b > * + * { margin-top: 14px; }
 .sheet-b > h4 { margin-top: 22px; }
+/* the main buttons of a sheet stay at the bottom, above the keyboard; only the content above them scrolls */
+.has-actions .sheet-b { padding-bottom: 0; }
+.sheet-b > .sheet-actions { position: sticky; bottom: 0; z-index: 2; margin: 14px calc(-1 * max(20px, env(safe-area-inset-right, 0px))) 0 calc(-1 * max(20px, env(safe-area-inset-left, 0px))); padding: 12px max(20px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); background: var(--sheet); border-top: 1px solid var(--line); }
 video#scan-v { width: 100%; max-height: 50dvh; background: #000; border-radius: 22px; object-fit: cover; }
 
 #toast {

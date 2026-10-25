@@ -18,10 +18,21 @@ const parseYmd = (s) => { const [y, m, d] = s.split('-').map(Number); return new
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
 const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;                          // 14:05
 const validHm = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+/* The time field is plain text in 24-hour form (HH:MM). The phone's own time picker shows AM/PM when the phone is set to 12 hours, and a web page cannot change that. */
+function shapeHm(v) {   // while typing: only digits and one colon; the colon is added after two digits
+  v = String(v).replace(/[^\d:]/g, '');
+  const i = v.indexOf(':');
+  if (i >= 0) return v.slice(0, Math.min(i, 2)) + ':' + v.slice(i + 1).replace(/:/g, '').slice(0, 2);
+  return v.length > 2 ? v.slice(0, 2) + ':' + v.slice(2, 4) : v;
+}
+function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 08:30
+  const t = String(v).trim(), m = /^(\d{1,2}):(\d{2})$/.exec(t) || /^(\d{1,2})(\d{2})$/.exec(t);
+  return m ? m[1].padStart(2, '0') + ':' + m[2] : t;
+}
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '12 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '13 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -740,12 +751,14 @@ function syncCard() {
 function openSyncSetup() {
   const sh = openSheet('Set up sync', `
     <p class="muted small" style="margin:0 0 12px">First create an empty <b>private</b> repository on GitHub and an access token that can only change that repository. The steps are in the guide (README). The token stays on this device and is never part of a backup file.</p>
-    <label class="f">Repository<input type="text" id="sy-repo" placeholder="your-name/nutrilog-data" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
-    <label class="f" style="margin-top:10px">Access token<input type="password" id="sy-token" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
-    <div class="row gap" style="margin-top:14px"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>Connect</button></div>`);
+    <label class="f">Repository<input type="text" enterkeyhint="next" id="sy-repo" placeholder="your-name/nutrilog-data" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label class="f" style="margin-top:10px">Access token<input type="password" enterkeyhint="go" id="sy-token" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <div class="row gap sheet-actions"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>Connect</button></div>`);
   const repo = $('#sy-repo', sh.el), tok = $('#sy-token', sh.el), ok = $('[data-ok]', sh.el);
   sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
   $('[data-dx]', sh.el).onclick = () => sh.close();
+  repo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tok.focus(); } });
+  tok.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok.click(); } });
   ok.onclick = async () => {
     $$('.field-err', sh.el).forEach((x) => x.remove());
     const name = repo.value.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
@@ -861,6 +874,7 @@ function openSheet(title, html) {
   $('.sheet', wrap).setAttribute('aria-label', title);
   const body = $('.sheet-b', wrap);
   body.innerHTML = html;
+  if (body.querySelector(':scope > .sheet-actions')) wrap.classList.add('has-actions');   // the main buttons stay at the bottom, only the content above them scrolls
   const api = {
     el: body, wrap, onClose: null,
     close() {
@@ -869,16 +883,26 @@ function openSheet(title, html) {
       sheets.splice(i, 1);
       wrap.remove();
       if (api.onClose) api.onClose();
-      if (!sheets.length) { document.body.classList.remove('noscroll'); if (SY.viewStale) { SY.viewStale = false; render(); } }   // sync brought changes while the sheet was open
+      if (!sheets.length) { document.body.classList.remove('noscroll', 'kb'); if (SY.viewStale) { SY.viewStale = false; render(); } }   // sync brought changes while the sheet was open
     },
   };
   wrap.addEventListener('click', (ev) => { if (ev.target === wrap || ev.target.closest('[data-x]')) api.close(); });
   $('#sheets').append(wrap);
   sheets.push(api);
   document.body.classList.add('noscroll');
+  fitSheets();
   return api;
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheets.length) sheets[sheets.length - 1].close(); });
+/* On an iPhone the on-screen keyboard covers the page instead of making it shorter, so a bottom sheet would end up behind it.
+   While the keyboard is up (the visible part of the screen is clearly lower than the page), the sheets are only as tall as the visible part. Not while the page is pinch-zoomed. */
+function fitSheets() {
+  const vv = window.visualViewport;
+  const up = !!vv && vv.scale <= 1.01 && (window.innerHeight - vv.height > 80 || vv.offsetTop > 1) && sheets.length > 0;
+  if (up) { const r = document.documentElement.style; r.setProperty('--vvt', vv.offsetTop + 'px'); r.setProperty('--vvh', vv.height + 'px'); }
+  document.body.classList.toggle('kb', up);
+}
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', fitSheets); window.visualViewport.addEventListener('scroll', fitSheets); }
 
 let toastTimer = null;
 function toast(msg, undo) {
@@ -1068,7 +1092,7 @@ function refreshNova() {
 /* ---- My foods ---- */
 function viewFoods() {
   return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} Create food</button></div>
-    <input type="search" class="search" id="ffilter" placeholder="Search my foods" value="${esc(S.filter)}" aria-label="Search my foods">
+    <input type="search" class="search" enterkeyhint="search" id="ffilter" placeholder="Search my foods" value="${esc(S.filter)}" aria-label="Search my foods">
     <div id="flist" style="margin-top:12px">${foodListHtml()}</div>`;
 }
 const foodRow = (f, attr) => `<button class="item" ${attr}>${avatar(f.name)}
@@ -1117,7 +1141,7 @@ function viewData() {
 /* ================= food picker ================= */
 function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
   const sh = openSheet(title, `
-    <input id="q" type="search" class="search" inputmode="search" autocomplete="off" placeholder="Search: egg, tojás, bread, kenyér…" aria-label="Search foods">
+    <input id="q" type="search" class="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="Search: egg, tojás, bread, kenyér…" aria-label="Search foods">
     <div class="row gap"><button class="btn" data-a="scan">${IC.scan.replace('<svg', '<svg width="20" height="20"')} Scan barcode</button></div>
     <div id="res" aria-live="polite"></div>`);
   const q = $('#q', sh.el), res = $('#res', sh.el);
@@ -1342,18 +1366,18 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const startTime = (entry && timeOf(entry)) || hm(new Date());   // new entry: now; existing entry: the saved time
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
     <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
-    <label class="f">Amount (${esc(food.basis.unit)})<input type="text" inputmode="decimal" id="amt" value="${esc(String(start))}"></label>
+    <label class="f">Amount (${esc(food.basis.unit)})<input type="text" inputmode="decimal" enterkeyhint="done" id="amt" value="${esc(String(start))}"></label>
     <p class="note field-err" id="amterr" role="alert" hidden>Enter an amount greater than 0.</p>
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     ${unitG ? '<button class="chip-btn accent" id="saveportion" style="justify-self:start">+ Save as portion</button>' : ''}
     <div class="grid2">
       <label class="f">Meal<select id="meal">${MEALS.map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
-      <label class="f">Time<input type="time" id="tm" value="${startTime}"></label>
+      <label class="f">Time (24 h)<input type="text" id="tm" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" placeholder="HH:MM" value="${startTime}"></label>
     </div>
-    <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time, for example 13:45.</p>
+    <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time in 24-hour form, for example 13:45.</p>
     <div class="card" id="prev"></div>
     ${dmInfo(food)}
-    <div class="row gap">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food._cells ? '' : '<button class="btn" id="editfood">Edit food</button>'}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
+    <div class="row gap sheet-actions">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food._cells ? '' : '<button class="btn" id="editfood">Edit food</button>'}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
   const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
   const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function prev() {
@@ -1381,9 +1405,12 @@ function openAmount({ food, entry, meal, afterAdd }) {
     });
   };
   const tm = $('#tm', sh.el), tmerr = $('#tmerr', sh.el);
-  tm.addEventListener('input', () => { tmerr.hidden = true; tm.removeAttribute('aria-invalid'); });
+  tm.addEventListener('input', () => { tm.value = shapeHm(tm.value); tmerr.hidden = true; tm.removeAttribute('aria-invalid'); });
+  tm.addEventListener('blur', () => { tm.value = normHm(tm.value); });
+  tm.addEventListener('focus', () => setTimeout(() => { try { tm.setSelectionRange(0, tm.value.length); } catch { /* ignore */ } }, 40));
+  tm.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok.click(); } });
   ok.onclick = () => {
-    const a = val(), tmv = tm.value;
+    const a = val(), tmv = normHm(tm.value);
     const badTime = !validHm(tmv);
     if (badTime) { tmerr.hidden = false; tm.setAttribute('aria-invalid', 'true'); }   // no focus() on the time field: on iOS it can stay "focused" without opening the picker
     if (Number.isNaN(a)) { amterr.hidden = false; amt.setAttribute('aria-invalid', 'true'); amt.focus(); return; }
@@ -1416,15 +1443,15 @@ function openAmount({ food, entry, meal, afterAdd }) {
 
 /* In-app replacements for window.confirm and window.prompt: native dialogs freeze the page on some browsers and look foreign. */
 function askConfirm({ title, text, okLabel = 'OK', danger = false, onOk }) {
-  const d = openSheet(title, `<p>${esc(text)}</p><div class="row gap"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn ${danger ? 'danger' : 'primary'}" data-ok>${esc(okLabel)}</button></div>`);
+  const d = openSheet(title, `<p>${esc(text)}</p><div class="row gap sheet-actions"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn ${danger ? 'danger' : 'primary'}" data-ok>${esc(okLabel)}</button></div>`);
   $('[data-dx]', d.el).onclick = () => d.close();
   $('[data-ok]', d.el).onclick = () => { d.close(); onOk(); };
   return d;
 }
 function askText({ title, label, value = '', okLabel = 'Save', onOk }) {
-  const d = openSheet(title, `<label class="f">${esc(label)}<input type="text" id="ask-v" value="${esc(value)}" maxlength="40"></label>
+  const d = openSheet(title, `<label class="f">${esc(label)}<input type="text" enterkeyhint="done" id="ask-v" value="${esc(value)}" maxlength="40"></label>
     <p class="note field-err" id="ask-err" role="alert" hidden>Type a name first.</p>
-    <div class="row gap"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>${esc(okLabel)}</button></div>`);
+    <div class="row gap sheet-actions"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" data-ok>${esc(okLabel)}</button></div>`);
   const inp = $('#ask-v', d.el);
   const go = () => { const v = inp.value.trim().slice(0, 40); if (!v) { $('#ask-err', d.el).hidden = false; inp.focus(); return; } d.close(); onOk(v); };
   $('[data-dx]', d.el).onclick = () => d.close();
@@ -1491,13 +1518,13 @@ function openFoodEditor(food, opts = {}) {
   const f0 = food || { name: opts.name || '', brand: '', barcode: opts.barcode || '', basis: { qty: 100, unit: 'g' }, n: {}, nova: null, portions: [], note: '' };
   const perUnit = !isG(f0);
   const sh = openSheet(isNew ? 'Create food from label' : 'Edit food', `
-    <label class="f">Name<input type="text" id="fname" value="${esc(f0.name)}" maxlength="120" placeholder="e.g. Almond barista drink"></label>
-    <div class="grid2"><label class="f">Brand<input type="text" id="fbrand" value="${esc(f0.brand || '')}" maxlength="80"></label>
-      <label class="f">Barcode<input type="text" inputmode="numeric" id="fcode" value="${esc(f0.barcode || '')}" maxlength="14"></label></div>
+    <label class="f">Name<input type="text" enterkeyhint="next" id="fname" value="${esc(f0.name)}" maxlength="120" placeholder="e.g. Almond barista drink"></label>
+    <div class="grid2"><label class="f">Brand<input type="text" enterkeyhint="next" id="fbrand" value="${esc(f0.brand || '')}" maxlength="80"></label>
+      <label class="f">Barcode<input type="text" inputmode="numeric" enterkeyhint="done" id="fcode" value="${esc(f0.barcode || '')}" maxlength="14"></label></div>
     <fieldset><legend class="muted small" style="margin-bottom:8px;font-weight:600">The values below are per</legend>
       <div class="row gap"><label class="chk"><input type="radio" name="basis" value="g" ${perUnit ? '' : 'checked'}> 100 g</label>
       <label class="chk"><input type="radio" name="basis" value="u" ${perUnit ? 'checked' : ''}> 1 unit (capsule, tablet, piece)</label>
-      <input type="text" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'hidden'}></div></fieldset>
+      <input type="text" enterkeyhint="done" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'hidden'}></div></fieldset>
     <p class="muted small">Fill in what the label shows. An empty field means “no data”, a 0 is a real zero. Write &lt;0.3 for a value below a detection limit.</p>
     <div id="nuts">${nutInputs(f0)}</div>
     <details class="fold" ${f0.nova ? 'open' : ''}><summary>Food-processing group (NOVA, optional)</summary>
@@ -1505,10 +1532,14 @@ function openFoodEditor(food, opts = {}) {
       <label class="f">NOVA group<select id="fnova"><option value="">Not set</option>${[1, 2, 3, 4].map((n) => `<option value="${n}" ${f0.nova === n ? 'selected' : ''}>${n}${n === 4 ? ' (ultra-processed)' : ''}</option>`).join('')}</select></label></details>
     <div id="portwrap"><h4>Portions (in grams)</h4><div id="ports">${portionRows(f0.portions || [])}</div><button class="chip-btn" id="addport" style="margin-top:8px">+ Portion</button></div>
     <label class="f">Notes (source, confidence)<textarea id="fnote" maxlength="400">${esc(f0.note || '')}</textarea></label>
-    <div class="row gap">${isNew ? '' : '<button class="btn danger" id="fdel">Delete</button>'}<span style="flex:1"></span><button class="btn primary" id="fok">Save</button></div>`);
+    <div class="row gap sheet-actions">${isNew ? '' : '<button class="btn danger" id="fdel">Delete</button>'}<span style="flex:1"></span><button class="btn primary" id="fok">Save</button></div>`);
   const radios = $$('input[name=basis]', sh.el), unit = $('#funit', sh.el);
   const syncBasis = () => { const u = radios.find((r) => r.checked).value === 'u'; unit.hidden = !u; unit.disabled = !u; $('#portwrap', sh.el).hidden = u; };
   radios.forEach((r) => r.addEventListener('change', syncBasis)); syncBasis();
+  /* Return on the keyboard: Name → Brand → Barcode, and the keyboard closes after the Barcode (the unit name closes it too) */
+  const chain = ['#fname', '#fbrand', '#fcode'].map((q) => $(q, sh.el));
+  chain.forEach((el, i) => el.addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; e.preventDefault(); if (chain[i + 1]) chain[i + 1].focus(); else el.blur(); }));
+  unit.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); unit.blur(); } });
   $('#addport', sh.el).onclick = () => $('#ports', sh.el).insertAdjacentHTML('beforeend', portionRows([{ label: '', grams: '' }]));
   sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) b.closest('.ing').remove(); });
   sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
