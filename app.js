@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '13 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '14 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -385,14 +385,24 @@ function vecOf(food) {
   return food._vec;
 }
 /* Which values are estimates, not label values: the energy of generic foods worked out from protein, carbohydrate and fat (estE),
-   and every dmBio value that is not on the dm label (f._lab = indexes of the label values; f.q = confidence of the estimate). */
+   every dmBio value that is not on the dm label (f._lab = indexes of the label values; f.q = confidence of the estimate),
+   and in the foods you made yourself the values listed in f.est (f.q = confidence, f.fortified = vitamins or minerals may have been added).
+   Those three fields come from "Paste from AI" or from the Estimates part of the food editor; est only holds keys that also have a value in f.n.
+   f._est is a cache of the indexes (it starts with _, so it is never saved, synced or exported). */
 const CONF = { h: 'high', m: 'medium', l: 'low', v: 'very low', n: 'none' };
-const energyEstimated = (f) => !!f._cells && (!!f.estE || (!!f._lab && !f._lab.has(0) && !Number.isNaN(vecOf(f).lo[0])));
+function estSet(f) {
+  if (!f._est) f._est = new Set((Array.isArray(f.est) ? f.est : []).map((k) => IDX[k]).filter((i) => i !== undefined));
+  return f._est;
+}
+const energyEstimated = (f) => (f._cells
+  ? !!f.estE || (!!f._lab && !f._lab.has(0) && !Number.isNaN(vecOf(f).lo[0]))
+  : estSet(f).has(0) && !Number.isNaN(vecOf(f).lo[0]));
 function isEst(f, i, v) {
   if (Number.isNaN(v.lo[i])) return false;
-  return i === 0 ? energyEstimated(f) : !!f._lab && !f._lab.has(i);
+  if (i === 0) return energyEstimated(f);
+  return f._cells ? !!f._lab && !f._lab.has(i) : estSet(f).has(i);
 }
-function invalidate() { for (const f of Object.values(S.foods)) delete f._vec; }
+function invalidate() { for (const f of Object.values(S.foods)) { delete f._vec; delete f._est; } }
 
 function totalsFor(entries) {
   const lo = new Float64Array(NUT_N), hi = new Float64Array(NUT_N), cnt = new Uint16Array(NUT_N), est = new Uint16Array(NUT_N);
@@ -1002,7 +1012,7 @@ function viewLog() {
       <div class="mini"><span>Fibre <b>${fmt(g('fibres'))} g</b></span><span>Sugars <b>${fmt(g('sugars'))} g</b></span><span>Salt <b>${fmt(g('salt'))} g</b></span></div>
     </div>
     ${usdaWarn}${dmWarn}
-    ${estE ? '<div class="banner">~ means the energy was calculated from protein, carbohydrate and fat (generic food data, Atwater factors).</div>' : ''}
+    ${estE ? '<div class="banner">~ means the energy is an estimate, not a label value: calculated from protein, carbohydrate and fat (generic food data, Atwater factors), or marked as an estimate in a food you made.</div>' : ''}
     ${nova}${empty}${meals}`;
 }
 
@@ -1012,7 +1022,7 @@ function viewNutr() {
   if (!es.length) return '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
   const T = totalsFor(es);
   const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
-    + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, or dmBio values estimated from the ingredient list. Open a row to see which items and how confident the estimate is.</div>' : '');
+    + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, dmBio values estimated from the ingredient list, or values you marked as estimates in your own foods (for example from an AI answer). Open a row to see which items and how confident the estimate is.</div>' : '');
   const out = GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
     if (!idxs.length) return '';
@@ -1091,7 +1101,7 @@ function refreshNova() {
 
 /* ---- My foods ---- */
 function viewFoods() {
-  return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} Create food</button></div>
+  return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} Create food</button><button class="btn" data-act="ai-import">Paste from AI</button></div>
     <input type="search" class="search" enterkeyhint="search" id="ffilter" placeholder="Search my foods" value="${esc(S.filter)}" aria-label="Search my foods">
     <div id="flist" style="margin-top:12px">${foodListHtml()}</div>`;
 }
@@ -1119,7 +1129,7 @@ function viewData() {
       <div class="row gap"><button class="btn primary" data-act="export-json">Save backup (JSON)</button><label class="btn" style="cursor:pointer">Restore from file<input type="file" id="importfile" accept="application/json,.json" hidden></label></div></div>
     ${syncCard()}
     <div class="card"><div class="card-t">For analysis</div>
-      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day).</p>
+      <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is.</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
@@ -1177,7 +1187,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     }
     if (off) html += off.length ? list(off, 'off') : '<p class="muted">No results.</p>';
     if (offMsg) html += `<p class="note">${esc(offMsg)}</p>`;
-    html += `<div class="row gap" style="margin-top:16px"><button class="btn${notFound ? ' primary' : ''}" data-a="new">+ Create food from label</button></div>`;
+    html += `<div class="row gap" style="margin-top:16px"><button class="btn${notFound ? ' primary' : ''}" data-a="new">+ Create food from label</button><button class="btn" data-a="ai">Paste from AI</button></div>`;
     res.innerHTML = html;
   }
   async function runOff(code) {
@@ -1232,6 +1242,7 @@ function openPicker({ title = 'Log food', onlyGrams = false, onPick }) {
     else if (b.dataset.a === 'code') runOff(q.value.replace(/\s/g, ''));
     else if (b.dataset.a === 'scan') scanBarcode((code) => { q.value = code; paint(); runOff(code); });
     else if (b.dataset.a === 'new') openFoodEditor(null, { name: /\D/.test(q.value) ? q.value.trim() : '', barcode: /^\d{8,14}$/.test(q.value.trim()) ? q.value.trim() : '', after: (f) => pick(f) });
+    else if (b.dataset.a === 'ai') openAiImport({ onSaved: (f) => pick(f) });
   });
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const t = q.value.replace(/\s/g, ''); if (/^\d{8,14}$/.test(t)) runOff(t); } });
   paint();
@@ -1359,6 +1370,18 @@ function dmInfo(f) {
     <p class="small" style="margin:0 0 8px"><a href="https://www.dm.hu/p/d/${esc(f.url)}" target="_blank" rel="noopener">Open on dm.hu</a></p>
     ${f.info ? `<p class="hint" style="margin:0 0 12px">Note from the estimate file (Hungarian): ${esc(f.info)}</p>` : ''}</details>`;
 }
+/* The same kind of note for a food you made (or imported from an AI answer): which values are estimates, how sure the estimate is, the fortified warning and your note. */
+function ownInfo(f) {
+  if (f._cells || f.src === 'dmbio') return '';
+  const v = vecOf(f);
+  const names = [...estSet(f)].filter((i) => !Number.isNaN(v.lo[i])).sort((a, b) => a - b).map(labelOf);
+  if (!names.length && !f.fortified) return '';
+  const conf = f.q ? CONF[f.q] : 'not set';
+  return `<details class="fold"><summary>${names.length ? 'Estimated values · confidence ' + conf : 'May be fortified'}</summary>
+    <p class="small" style="margin:0 0 8px">${names.length ? `<b>Estimates, not label values:</b> ${esc(names.join(', ').toLowerCase())}. Confidence of the estimate: <b>${conf}</b>. Every other value is from the label.` : ''}
+      ${f.fortified ? ' The product may be <b>fortified</b> with vitamins or minerals. Vitamin and mineral values estimated from raw ingredients can be <b>too low</b>.' : ''}</p>
+    ${f.note ? `<p class="hint" style="margin:0 0 12px;overflow-wrap:anywhere">Note: ${esc(f.note)}</p>` : ''}</details>`;
+}
 function openAmount({ food, entry, meal, afterAdd }) {
   const unitG = isG(food);
   const start = entry ? entry.a : (S.meta.last[food.id] ?? (startPortion(food) ? startPortion(food).grams : unitG ? 100 : 1));
@@ -1376,7 +1399,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     </div>
     <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time in 24-hour form, for example 13:45.</p>
     <div class="card" id="prev"></div>
-    ${dmInfo(food)}
+    ${dmInfo(food)}${ownInfo(food)}
     <div class="row gap sheet-actions">${entry ? '<button class="btn danger" id="del">Delete</button>' : ''}${food._cells ? '' : '<button class="btn" id="editfood">Edit food</button>'}<span style="flex:1"></span><button class="btn primary" id="ok"></button></div>`);
   const amt = $('#amt', sh.el), ok = $('#ok', sh.el), amterr = $('#amterr', sh.el);
   const val = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
@@ -1480,7 +1503,7 @@ const ESSENTIAL = ['kcal', 'protein', 'carbohydrate', 'sugars', 'fat', 'fa_satur
 function nutField(food, i) {
   const cur = food && food.n ? food.n[KEYS[i]] : undefined;
   const shown = cur === undefined || cur === null ? '' : String(cur);
-  return `<div class="nin"><label for="n_${KEYS[i]}">${esc(labelOf(i))}</label><input type="text" inputmode="decimal" id="n_${KEYS[i]}" data-k="${KEYS[i]}" value="${esc(shown)}" placeholder="–"><span class="u">${esc(UNITS[i])}</span></div>`;
+  return `<div class="nin"><label for="n_${KEYS[i]}">${esc(labelOf(i))}</label><input type="text" inputmode="decimal" id="n_${KEYS[i]}" data-k="${KEYS[i]}" value="${esc(shown)}" placeholder="–"><span class="u">${esc(UNITS[i])}</span><button type="button" class="est-btn" data-est="${KEYS[i]}" aria-pressed="false" hidden>~</button></div>`;
 }
 function nutInputs(food) {
   const has = (i) => food && food.n && food.n[KEYS[i]] != null;
@@ -1513,11 +1536,15 @@ function collectPortions(root) {
   return $$('#ports .ing', root).map((r) => ({ label: $('.pl', r).value.trim(), grams: num($('.pg', r).value) })).filter((p) => p.label && p.grams > 0);
 }
 
+/* opts: name, barcode (start values), after(food) (called after saving),
+   prefill (a food from an AI answer, see parseAiImport: the editor opens filled in, the food counts as new), title, notice (HTML above the form) */
 function openFoodEditor(food, opts = {}) {
   const isNew = !food;
-  const f0 = food || { name: opts.name || '', brand: '', barcode: opts.barcode || '', basis: { qty: 100, unit: 'g' }, n: {}, nova: null, portions: [], note: '' };
+  const f0 = food || opts.prefill || { name: opts.name || '', brand: '', barcode: opts.barcode || '', basis: { qty: 100, unit: 'g' }, n: {}, nova: null, portions: [], note: '' };
   const perUnit = !isG(f0);
-  const sh = openSheet(isNew ? 'Create food from label' : 'Edit food', `
+  const estOpen = !!opts.prefill || !!(f0.est && f0.est.length) || !!f0.q || !!f0.fortified;
+  const sh = openSheet(opts.title || (isNew ? 'Create food from label' : 'Edit food'), `
+    ${opts.notice || ''}
     <label class="f">Name<input type="text" enterkeyhint="next" id="fname" value="${esc(f0.name)}" maxlength="120" placeholder="e.g. Almond barista drink"></label>
     <div class="grid2"><label class="f">Brand<input type="text" enterkeyhint="next" id="fbrand" value="${esc(f0.brand || '')}" maxlength="80"></label>
       <label class="f">Barcode<input type="text" inputmode="numeric" enterkeyhint="done" id="fcode" value="${esc(f0.barcode || '')}" maxlength="14"></label></div>
@@ -1525,6 +1552,10 @@ function openFoodEditor(food, opts = {}) {
       <div class="row gap"><label class="chk"><input type="radio" name="basis" value="g" ${perUnit ? '' : 'checked'}> 100 g</label>
       <label class="chk"><input type="radio" name="basis" value="u" ${perUnit ? 'checked' : ''}> 1 unit (capsule, tablet, piece)</label>
       <input type="text" enterkeyhint="done" id="funit" value="${esc(perUnit ? f0.basis.unit : 'capsule')}" style="width:140px" aria-label="Unit name" ${perUnit ? '' : 'hidden'}></div></fieldset>
+    <details class="fold" id="estfold" ${estOpen ? 'open' : ''}><summary>Estimates (optional)</summary>
+      <p class="hint" style="margin:0 0 10px">For values that are not on the label, for example worked out from the ingredient list. Tap the <b>~</b> next to a value below to mark it as an estimate. Estimates show a ~ in the totals and in the CSV.</p>
+      <label class="f">Estimate confidence<select id="fconf"><option value="">Not set</option>${Object.entries(CONF).map(([c, name]) => `<option value="${c}" ${f0.q === c ? 'selected' : ''}>${cap(name)}</option>`).join('')}</select></label>
+      <label class="chk tall"><input type="checkbox" id="ffort" ${f0.fortified ? 'checked' : ''}> May be fortified (vitamins or minerals added)</label></details>
     <p class="muted small">Fill in what the label shows. An empty field means “no data”, a 0 is a real zero. Write &lt;0.3 for a value below a detection limit.</p>
     <div id="nuts">${nutInputs(f0)}</div>
     <details class="fold" ${f0.nova ? 'open' : ''}><summary>Food-processing group (NOVA, optional)</summary>
@@ -1540,6 +1571,25 @@ function openFoodEditor(food, opts = {}) {
   const chain = ['#fname', '#fbrand', '#fcode'].map((q) => $(q, sh.el));
   chain.forEach((el, i) => el.addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; e.preventDefault(); if (chain[i + 1]) chain[i + 1].focus(); else el.blur(); }));
   unit.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); unit.blur(); } });
+  /* ~ buttons: a value can be marked as an estimate (not a label value). The mark goes when the field is emptied. Buttons show on filled fields while the Estimates part is open. */
+  const estOn = new Set((f0.est || []).filter((k) => IDX[k] !== undefined));
+  const estFold = $('#estfold', sh.el);
+  function refreshEst() {
+    for (const b of $$('[data-est]', sh.el)) {
+      const k = b.dataset.est, has = !parseInput($('#n_' + k, sh.el).value).empty;
+      if (!has) estOn.delete(k);
+      const on = estOn.has(k);
+      b.hidden = !(has && (on || estFold.open));
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', `${labelOf(IDX[k])}: ${on ? 'estimated value. Tap to mark it as a label value' : 'label value. Tap to mark it as an estimate'}`);
+      b.parentElement.classList.toggle('est', on);
+    }
+    $('#nuts', sh.el).classList.toggle('est-on', estFold.open || estOn.size > 0);
+  }
+  estFold.addEventListener('toggle', refreshEst);
+  sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-est]'); if (b) { const k = b.dataset.est; if (estOn.has(k)) estOn.delete(k); else estOn.add(k); refreshEst(); } });
+  sh.el.addEventListener('input', (e) => { if (e.target.dataset && e.target.dataset.k) refreshEst(); });
+  refreshEst();
   $('#addport', sh.el).onclick = () => $('#ports', sh.el).insertAdjacentHTML('beforeend', portionRows([{ label: '', grams: '' }]));
   sh.el.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) b.closest('.ing').remove(); });
   sh.el.addEventListener('input', (e) => { $$('.field-err', sh.el).forEach((x) => x.remove()); if (e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
@@ -1554,19 +1604,32 @@ function openFoodEditor(food, opts = {}) {
     }
     const u = radios.find((r) => r.checked).value === 'u';
     const unitName = unit.value.trim() || 'unit';
-    const out = food || { id: 'u:' + uid(), src: 'user', created: Date.now() };
-    Object.assign(out, {
+    const estKeys = [...estOn].filter((k) => n[k] !== undefined).sort((a, b) => IDX[a] - IDX[b]);
+    const conf = $('#fconf', sh.el).value;
+    if (estKeys.length && !conf) { estFold.open = true; fieldError($('#fconf', sh.el), 'Choose how confident the estimate is.'); return; }
+    const fields = {
       name, brand: $('#fbrand', sh.el).value.trim(), barcode: $('#fcode', sh.el).value.trim(),
       basis: u ? { qty: 1, unit: unitName } : { qty: 100, unit: 'g' }, n,
       nova: Number($('#fnova', sh.el).value) || null, portions: u ? [] : collectPortions(sh.el),
-      note: $('#fnote', sh.el).value.trim(), updated: Date.now(),
-    });
+      note: $('#fnote', sh.el).value.trim(),
+    };
+    if (estKeys.length) fields.est = estKeys;
+    const q = estKeys.length ? conf : conf === 'n' ? 'n' : '';   // a confidence without any estimate only means something as “none”
+    if (q) fields.q = q;
+    if ($('#ffort', sh.el).checked) fields.fortified = true;
+    const finish = (out, how) => {
+      sh.close();
+      if (S.tab === 'foods') render();
+      if (how !== 'updated') toast('Food saved');   // an update has its own message, with Undo
+      if (opts.after) opts.after(out, how);
+    };
+    if (opts.prefill && !food) { saveImportedFood(fields, finish); return; }   // asks first when the food is already there
+    const out = food || { id: 'u:' + uid(), src: 'user', created: Date.now() };
+    applyFoodFields(out, fields);
     if (food && food.src === 'off') out.edited = true;
     S.foods[out.id] = out;
-    invalidate(); save(); sh.close();
-    if (S.tab === 'foods') render();
-    toast('Food saved');
-    if (opts.after) opts.after(out);
+    invalidate(); save();
+    finish(out, 'saved');
   };
   const del = $('#fdel', sh.el);
   if (del) del.onclick = () => deleteFood(food, () => { sh.close(); render(); });
@@ -1577,6 +1640,453 @@ function deleteFood(food, done) {
   const copy = S.foods[food.id];
   delete S.foods[food.id]; invalidate(); save(); done();
   toast('Deleted: ' + cap(food.name), () => { S.foods[copy.id] = copy; invalidate(); save(); render(); });
+}
+
+/* ================= Paste from AI ================= */
+/* An AI looks a product up with a fixed prompt (tools/ai_prompt.md) and answers with a JSON block ("nutrilog_import": 1). The person pastes the answer,
+   reviews the food in the food editor and saves it by hand. The pasted text is not stored and nothing is sent anywhere.
+   A food from an AI answer has the fields of every food you make (name, brand, barcode, basis, n, nova, portions, note) and three more:
+   est (the keys of n that are estimates), q (confidence code, see CONF) and fortified (vitamins or minerals may have been added). */
+const AI_IMPORT_VERSION = 1;
+/* >>> AI prompt: written by tools/embed_ai_prompt.py from tools/ai_prompt.md. Do not edit by hand. */
+const AI_PROMPT_A = `# Nutrilog tételpontosító (v${AI_IMPORT_VERSION})
+
+Te egy személyes tápanyagnapló (Nutrilog) adatfelviteli segédje vagy. A válaszod JSON-része közvetlenül, kézi javítás nélkül kerül az appba, ezért a formátum pontossága és a „nem találgatok" szabály fontosabb a teljességnél. Magyarul válaszolj.
+
+## Bemenet
+
+Egy vagy több termék: név, márka, vonalkód, a csomagolás fotója, a tápérték-táblázat és a hozzávalók szövege, vagy link.
+
+- Ha a bemenetből nem derül ki egy lényeges adat (nem látszik a hozzávalólista, vagy nem tudni, mire vonatkozik a táblázat: 100 g, 100 ml vagy adag), kérdezz vissza egyszer, legfeljebb 3 rövid kérdéssel, mielőtt dolgozol.
+- Ha van webkeresés, a gyártó vagy forgalmazó oldalát és a bolt termékoldalát (pl. dm.hu) használd. Az Open Food Facts közösségi adatbázis: csak akkor támaszkodj rá, ha összevethető a csomagolással. Ha a források eltérnek, a csomagolás fotója az elsődleges, az eltérést írd a note-ba.
+- A vonalkódot, a tápértéket, a hozzávalót és az arányokat soha nem találod ki.
+
+## Háromféle érték
+
+1. **Címkeérték**: a csomagoláson vagy a gyártónál szerepel. Bekerül az \`n\`-be, az \`est\`-be nem.
+2. **Átváltott érték**: pontos átszámítás egy címkeértékből (kJ → kcal: ÷ 4,184; só g = nátrium mg × 2,5 ÷ 1000; NE → µg D-vitamin: × 0,025; ml → g sűrűséggel). Bekerül az \`n\`-be, az \`est\`-be nem. Az átváltást nevezd meg a note-ban.
+3. **Becslés**: nem szerepel a címkén, hanem a hozzávalókból és tápanyag-adatbázisból számoltad. Bekerül az \`n\`-be ÉS az \`est\` listába.
+
+A hiányzó adat nem nulla. Ami nincs a forrásban, és nem becsülhető megalapozottan, annak a kulcsát hagyd ki. A 0 csak akkor szerepelhet, ha a címke kifejezetten 0-t ír, vagy becslésnél az összes összetevő adatbázisbeli értéke 0. Ha a címke önmagának ellentmond, ne javítsd csendben: hagyd meg a címkeértéket, és jelezd az összefoglalóban és a note-ban.
+
+## Mire vonatkoznak az értékek (\`basis\`)
+
+- Alapértelmezés: 100 g, \`{"qty": 100, "unit": "g"}\`.
+- Folyadék, amelynek értékeit a címke 100 ml-re adja: váltsd 100 g-ra sűrűséggel. 1,0 g/ml-t csak akkor vehetsz, ha a termék vízszerű. Olajnál, szirupnál, tejnél, tejszínnél stb. megalapozott sűrűség kell. Vedd fel a \`portions\`-ba is: \`{"label": "100 ml", "grams": …}\`.
+- Por, amelynek értékeit a címke az elkészített italra vagy levesre adja: váltsd 100 g száraz termékre, és a \`portions\`-ba tedd az elkészített mennyiségekhez tartozó por grammját (pl. „100 ml prepared").
+- Kapszula, tabletta, kiegészítő, és minden, aminek csak darabra van értelme: \`{"qty": 1, "unit": "capsule"}\` (vagy \`tablet\`, \`scoop\`, \`piece\`), az értékek 1 darabra vonatkoznak. Ilyenkor a \`portions\` üres.
+- \`portions\` (csak 100 g alapnál): a csomagoláson szereplő adag (pl. „1 slice", 30 g) és a fenti átváltási adagok.
+
+## Becslés a hozzávalókból
+
+Csak 100 g alapú termékre, amelynek ismert a hozzávalólistája. Kiegészítőre és kapszulára soha nem becslesz: ott csak a címke értékei kerülnek be, az \`est\` üres, a \`confidence\` „none".
+
+1. A címke energiája és makrói (zsír, telített zsír, szénhidrát, cukor, rost, fehérje, só) mérvadóak, nem becsülöd felül őket. Ami a címkén szerepel (pl. vitaminok), az címkeérték marad.
+2. Minden további kulcsra (ásványi anyagok, vitaminok, zsírsavak, koleszterin, víz, hamu stb.) becsülj. Minden összetevőhöz keresd meg a legközelebbi nyers, egyszerű élelmiszert a CIQUAL 2020 táblában (ez az elsődleges), és csak ha ott nincs adat, az USDA FoodData Central táblában (Foundation, SR Legacy). Az érték az összetevő arányával súlyozott.
+3. Arányok: a megadott százalékot használd. Ha nincs, a hozzávalók csökkenő sorrendjét és a címke makróit. Ha a hozzávalókból számolt makrók 25%-nál nagyobb mértékben eltérnek a címkééktől (szárítás, főzés, sűrítés), korrigáld az arányokat vagy a vízveszteséget úgy, hogy illeszkedjenek, és jelezd a note-ban.
+4. Összetevő, amelyhez nincs megalapozott adatbázis-megfelelő (aroma, kivonat, „fűszerek", élesztőkivonat, összetett összetevő): hagyd ki. Ez csökkentse a megbízhatóságot.
+5. Egy tápanyag csak akkor kerülhet az \`est\`-be, ha legalább egy összetevőre van adatbázisérték hozzá. Ha egyikre sincs, a kulcs kimarad.
+6. Dúsított termék (a hozzávalók vitamint vagy ásványi anyagot tartalmaznak, vagy a csomagon „dúsított" áll): \`fortified: true\`. A címkén megadott dúsított értékek címkeértékek. A nyers összetevőkből becsült vitamin- és ásványianyag-érték ilyenkor alulbecsülhet, ezt írd a note-ba.
+
+## Megbízhatóság (\`confidence\`), a becsült értékekre
+
+- \`"high"\`: rövid lista (kb. 5 egyszerű összetevő), az arányok ismertek vagy a makrók jól illeszkednek.
+- \`"medium"\`: az összetevők többségének ismert az aránya és a megfelelője.
+- \`"low"\`: sok összetevő arány nélkül, vagy erősen feldolgozott összetevők.
+- \`"very low"\`: az összetétel jelentős része nem azonosítható.
+- \`"none"\`: nincs becsült érték (az \`est\` üres).
+
+## NOVA (\`nova\`)
+
+Csak javaslat, a felhasználó az appban dönt. Csak akkor adj számot, ha a hozzávalólistából egyértelmű, különben \`null\`.
+
+- 1: egyetlen vagy kevés, minimálisan feldolgozott összetevő.
+- 2: kulináris alapanyag (olaj, vaj, cukor, só).
+- 3: egyszerűen feldolgozott étel (sajt, kenyér, konzerv, ipari adalékok nélkül).
+- 4: ipari adalékok vagy iparira jellemző összetevők (aroma, emulgeálószer, ízfokozó, módosított keményítő, glükóz-fruktózszirup, hidrolizált fehérje, édesítőszer).
+
+A note végére írd: „NOVA-javaslat: 4 (aroma, emulgeálószer)."
+
+## Tápanyagkulcsok
+
+Csak ezek a kulcsok használhatók, pontosan így írva. Más kulcs (pl. \`vitamin_a\`, \`fiber\`, \`omega3\`, \`sodium_mg\`) nem létezik. A zárójelben a mértékegység áll; az értékeket ebben add meg.`;
+const AI_PROMPT_NOTE = `A címke fehérjéje a \`protein\`-be kerül, a \`protein_crude_n_x_6_25\`-öt csak akkor töltsd, ha a forrás külön megadja.`;
+const AI_PROMPT_B = `Az érték szám ponttal (nem szöveg, nem mértékegységgel), legfeljebb 3 értékes jegyre. Kimutatási határ alatti értéknél szöveg: \`"<0.3"\`. A-vitamin: csak akkor \`retinol\`, ha a forrás retinolt vagy retinil-észtert mond; β-karotinból származó A-vitamin a \`beta_carotene\`-be megy (µg β-karotin). Ha a forrás RAE/RE értéket ad, és nem derül ki a forma, hagyd ki, és írd a note-ba. Ha a címke más mértékegységet használ, váltsd át, és nevezd meg az átváltást a note-ban.
+
+## Kimenet
+
+Két rész, ebben a sorrendben:
+
+1. Ellenőrző összefoglaló, legfeljebb 8 sor: név, alap (100 g vagy 1 darab), hány címkeérték, hány becsült érték, megbízhatóság, figyelmeztetések, források.
+2. Egyetlen \`\`\`json blokk, benne csak érvényes JSON (komment nélkül).
+
+Séma. A példa értékei kitalált számok, csak a formátumot mutatják:
+
+\`\`\`json
+{
+  "nutrilog_import": 1,
+  "foods": [
+    {
+      "name": "Példa mandulaital, cukormentes",
+      "brand": "Példa Márka",
+      "barcode": "",
+      "basis": { "qty": 100, "unit": "g" },
+      "n": { "kcal": 24, "protein": 0.9, "carbohydrate": 0.2, "fat": 2.1, "fa_saturated": 0.2, "fibres": 0.4, "salt": 0.11, "calcium": 120, "vitamin_e": 1.1, "vitamin_k1": 0.4 },
+      "est": ["vitamin_e", "vitamin_k1"],
+      "confidence": "medium",
+      "fortified": true,
+      "nova": 4,
+      "portions": [{ "label": "100 ml", "grams": 101 }],
+      "note": "Forrás: csomagolás fotója, 2026-10-25. Makrók és kalcium: címke (a kalcium dúsítás). E- és K1-vitamin: becslés a mandula arányából (CIQUAL 2020). NOVA-javaslat: 4 (stabilizátor, aroma)."
+    }
+  ]
+}
+\`\`\`
+
+Mezőszabályok:
+
+- \`name\`: legfeljebb 120 karakter, a csomagon szereplő név. \`brand\`: legfeljebb 80 karakter, vagy \`""\`. \`barcode\`: csak számjegyek (8–14), vagy \`""\`.
+- \`n\`: csak az ismert vagy becsült kulcsok.
+- \`est\`: az \`n\` azon kulcsai, amelyek becslések. Csak \`n\`-ben szereplő kulcs lehet benne. Ha van becslés, a \`confidence\` kötelező.
+- \`fortified\`: \`true\` vagy \`false\`.
+- \`note\`: magyarul, legfeljebb 400 karakter: forrás és dátum, átváltások, a becslés módszere egy mondatban, eltérések, a NOVA-javaslat indoka. Ha nem fér bele, a lényeget tartsd meg.
+- Több termék esetén a \`foods\` tömbben több elem szerepel.
+
+## Ellenőrzés a válasz előtt
+
+- Minden \`est\`-kulcs benne van az \`n\`-ben. A címke- és az átváltott értékek nincsenek az \`est\`-ben.
+- 100 g alapnál: kcal ≈ 4 × fehérje + 4 × szénhidrát + 9 × zsír (+ 7 × alkohol), ±15% (a rost és a poliolok miatt eltérhet). Telített + egyszeresen + többszörösen telítetlen ≤ zsír. Cukor ≤ szénhidrát. Fehérje + szénhidrát + zsír + víz + hamu ≤ 100 g. Só ≈ nátrium × 2,5 ÷ 1000.
+- A mértékegység a kulcs mértékegysége (mg és µg ne keveredjen).
+- Ha valamelyik ellenőrzés nem jön ki, ne simítsd el: hagyd a címkeértéket, és írd az összefoglalóba és a note-ba.`;
+/* <<< AI prompt */
+const AI_FIELDS = ['est', 'q', 'fortified'];
+const AI_CONF = { high: 'h', medium: 'm', low: 'l', 'very low': 'v', none: 'n' };
+const AI_GROUP_HU = { mac: 'Energia és makrók', fa: 'Zsírsavak és koleszterin', min: 'Ásványi anyagok', vit: 'Vitaminok', fad: 'Zsírsavak (részletes)', oth: 'Egyéb összetevők' };
+const basisText = (b) => (b.unit === 'g' ? '100 g' : `${b.qty} ${b.unit}`);
+
+/* the prompt for "Copy AI prompt": the text of tools/ai_prompt.md, with the list of nutrient keys built from KEYS and UNITS */
+function aiPrompt() {
+  const lines = GROUPS.map(([gid]) => {
+    const byUnit = new Map();
+    KEYS.forEach((k, i) => { if (groupOf(i) === gid) { if (!byUnit.has(UNITS[i])) byUnit.set(UNITS[i], []); byUnit.get(UNITS[i]).push(k); } });
+    if (!byUnit.size) return '';
+    return `- ${AI_GROUP_HU[gid]}: ` + [...byUnit].map(([u, ks]) => `${ks.map((k) => '`' + k + '`').join(', ')} (${u})`).join('; ') + '.';
+  }).filter(Boolean);
+  return `${AI_PROMPT_A}\n\n${lines.join('\n')}\n\n${AI_PROMPT_NOTE}\n\n${AI_PROMPT_B}\n`;
+}
+
+/* ---- reading the answer: the AI may wrap the JSON in text or a ``` fence, use curly quotes, a trailing comma, numbers as text with a decimal comma ---- */
+const aiStraight = (t) => t.replace(/[“”„‟″]/g, '"');
+function aiBraceEnd(t, start) {   // the index after the } that closes the { at start (quotes respected); -1 when it never closes
+  let depth = 0, inStr = false;
+  for (let i = start; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; }
+    else if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+function aiLoose(s) {
+  try { return JSON.parse(s); } catch { /* try again without the commas before } and ] */ }
+  try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch { return undefined; }
+}
+function aiFindJson(text) {
+  const clean = String(text).replace(/[﻿​-‍⁠]/g, '').replace(/ /g, ' ');
+  for (const t of [clean, aiStraight(clean)]) {   // a curly quote can be a real quote of the JSON, or only a quote inside a text: try both
+    let tries = 0;
+    for (let s = t.indexOf('{'); s >= 0 && tries < 300; s = t.indexOf('{', s + 1), tries++) {
+      const e = aiBraceEnd(t, s);
+      if (e < 0) continue;
+      const j = aiLoose(t.slice(s, e));
+      if (j && typeof j === 'object' && !Array.isArray(j) && ('nutrilog_import' in j || Array.isArray(j.foods))) return { json: j, marker: true };
+    }
+  }
+  return { json: null, marker: /nutrilog_import/.test(clean) };
+}
+function aiNum(x) {   // a number, or text such as "0,5"; NaN when it is neither
+  if (typeof x === 'number') return Number.isFinite(x) ? x : NaN;
+  if (typeof x === 'string' && x.trim() !== '') return Number(x.trim().replace(',', '.'));
+  return NaN;
+}
+/* Warnings, not errors: the food can be loaded, but a value looks wrong. Only numbers are compared (a "<x" value is skipped). */
+function aiChecks(n, basis) {
+  const w = [], v = (k) => (typeof n[k] === 'number' ? n[k] : null);
+  const kcal = v('kcal'), pr = v('protein'), ch = v('carbohydrate'), fa = v('fat'), alc = v('alcohol') || 0;
+  if (kcal !== null && pr !== null && ch !== null && fa !== null) {
+    const calc = 4 * pr + 4 * ch + 9 * fa + 7 * alc, d = Math.abs(kcal - calc);
+    if (d >= 5 && d / Math.max(kcal, calc) > 0.2) w.push(`Energy is ${fmt(kcal)} kcal, but protein, carbohydrate and fat add up to about ${fmt(calc)} kcal (more than 20% apart). Fibre and polyols explain part of a gap, not all of it.`);
+  }
+  const sat = v('fa_saturated'), mono = v('fa_mono'), poly = v('fa_poly'), sug = v('sugars');
+  if (sat !== null && fa !== null && sat > fa) w.push(`Saturated fat (${fmt(sat)} g) is more than total fat (${fmt(fa)} g).`);
+  if (sug !== null && ch !== null && sug > ch) w.push(`Sugars (${fmt(sug)} g) are more than carbohydrate (${fmt(ch)} g).`);
+  if (fa !== null && [sat, mono, poly].filter((x) => x !== null).length >= 2) {
+    const sum = (sat || 0) + (mono || 0) + (poly || 0);
+    if (sum > fa * 1.05) w.push(`Saturated, monounsaturated and polyunsaturated fat add up to ${fmt(sum)} g, more than total fat (${fmt(fa)} g).`);
+  }
+  if (basis.unit === 'g') {
+    const sum = ['protein', 'carbohydrate', 'fat', 'water', 'ash'].reduce((a, k) => a + (v(k) || 0), 0);
+    if (sum > 105) w.push(`Protein, carbohydrate, fat, water and ash add up to ${fmt(sum)} g in 100 g.`);
+  }
+  const salt = v('salt'), na = v('sodium');
+  if (salt !== null && na !== null) {
+    const exp = na * 2.5 / 1000, d = Math.abs(salt - exp);
+    if (d >= 0.03 && d / Math.max(salt, exp) > 0.2) w.push(`Salt (${fmt(salt)} g) and sodium (${fmt(na)} mg) do not match: sodium × 2.5 would be ${fmt(exp)} g salt.`);
+  }
+  return w;
+}
+/* One food of the answer. Pushes errors to out.errors, or the checked food and its warnings to out.foods. */
+function aiFood(raw, k, count, out) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { out.errors.push(`Food ${k + 1} is not an object.`); return; }
+  const str = (v) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
+  const name = str(raw.name), errs = [], warns = [];
+  const label = count > 1 ? `Food ${k + 1}${name ? ' (' + name.slice(0, 40) + ')' : ''}: ` : '';
+  const err = (m) => errs.push(label + m), warn = (m) => warns.push(m);
+  if (!name) err('"name" is missing.');
+  const brand = str(raw.brand), barcode = str(raw.barcode).replace(/[\s-]/g, '');
+
+  let basis = null;
+  const b = raw.basis;
+  if (!b || typeof b !== 'object' || Array.isArray(b)) err('"basis" is missing. It says what the values are per, for example {"qty": 100, "unit": "g"} or {"qty": 1, "unit": "capsule"}.');
+  else {
+    const qty = aiNum(b.qty), unit = str(b.unit);
+    if (!(qty > 0) || !unit) err('"basis" needs a "qty" greater than 0 and a "unit", for example {"qty": 100, "unit": "g"}.');
+    else if (/^g(rams?)?$/i.test(unit)) { if (qty === 100) basis = { qty: 100, unit: 'g' }; else err(`The values must be per 100 g, but "basis" says ${qty} g. Convert them to 100 g.`); }
+    else if (qty !== 1) err(`"basis" must be 100 g or 1 piece, not ${qty} ${unit}. Convert the values to 100 g (ml with the density) or to 1 ${unit}.`);
+    else if (unit.length > 30) err('The unit name in "basis" is too long (30 characters at most).');
+    else basis = { qty: 1, unit };
+  }
+
+  const n = {}, unknown = [], given = new Set();
+  if (!raw.n || typeof raw.n !== 'object' || Array.isArray(raw.n)) err('"n" is missing. It lists the nutrient values.');
+  else {
+    for (const [key, v] of Object.entries(raw.n)) {
+      if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) continue;   // no value = no data
+      given.add(key);
+      if (IDX[key] === undefined) { unknown.push(key); continue; }
+      const p = parseInput(typeof v === 'number' || typeof v === 'string' ? String(v) : '?');
+      if (p.err || p.empty) err(`${key}: ${JSON.stringify(v)} is not a number of 0 or more (or <x for a value below a detection limit).`);
+      else n[key] = p.v;
+    }
+    if (unknown.length) warn(`Unknown nutrient keys were skipped: ${unknown.join(', ')}.`);
+    if (!Object.keys(n).length && !unknown.length) warn('The food has no nutrient values.');
+  }
+
+  const est = [];
+  if (raw.est !== undefined && raw.est !== null) {
+    if (!Array.isArray(raw.est)) err('"est" must be a list of nutrient keys, for example ["vitamin_e"].');
+    else for (const key of raw.est) {
+      if (typeof key !== 'string') err('"est" can only hold nutrient keys (text).');
+      else if (!given.has(key)) err(`"est" lists ${key}, but "n" has no value for it. Only values you give can be estimates.`);
+      else if (n[key] !== undefined && !est.includes(key)) est.push(key);
+    }
+  }
+  let q;
+  const c = raw.confidence;
+  if (c !== undefined && c !== null && c !== '') {
+    q = AI_CONF[String(c).trim().toLowerCase().replace(/[_-]+/g, ' ')];
+    if (!q) err('"confidence" must be high, medium, low, very low or none.');
+  } else if (est.length) err('"est" lists estimated values, so "confidence" is needed (high, medium, low, very low or none).');
+  if (q === 'n' && est.length) warn('"confidence" is none, but "est" lists estimated values. Check which values are estimates.');
+
+  let fortified = false;
+  const fo = raw.fortified;
+  if (fo === true || fo === 1 || (typeof fo === 'string' && /^true$/i.test(fo.trim()))) fortified = true;
+  else if (fo !== undefined && fo !== null && fo !== false && fo !== 0 && !(typeof fo === 'string' && /^false$/i.test(fo.trim()))) warn('"fortified" should be true or false. It was ignored.');
+
+  let nova = null;
+  if (raw.nova !== undefined && raw.nova !== null && raw.nova !== '') {
+    const v = aiNum(raw.nova);
+    if ([1, 2, 3, 4].includes(v)) nova = v; else err('"nova" must be 1, 2, 3, 4 or null.');
+  }
+
+  const portions = [];
+  if (raw.portions !== undefined && raw.portions !== null) {
+    if (!Array.isArray(raw.portions)) err('"portions" must be a list, for example [{"label": "1 slice", "grams": 30}].');
+    else {
+      raw.portions.forEach((p, i) => {
+        const ok = p && typeof p === 'object', l = ok ? str(p.label) : '', g = ok ? aiNum(p.grams) : NaN;
+        if (!l || !(g > 0)) err(`Portion ${i + 1} needs a "label" and "grams" greater than 0.`);
+        else portions.push({ label: l, grams: g });
+      });
+      if (basis && basis.unit !== 'g' && raw.portions.length) err('"portions" are only for foods measured per 100 g. Leave the list empty for a capsule or another single piece.');
+    }
+  }
+
+  const note = str(raw.note);
+  if (note.length > 400) warn(`The note is ${note.length} characters long (the prompt asks for 400 at most). It is kept in full.`);
+  if (name.length > 120) warn(`The name is ${name.length} characters long (120 at most is expected). It is kept in full.`);
+  if (brand.length > 80) warn(`The brand is ${brand.length} characters long (80 at most is expected). It is kept in full.`);
+  if (barcode && !/^\d{8,14}$/.test(barcode)) warn(`The barcode “${barcode}” does not have 8 to 14 digits. Check it on the package.`);
+  if (basis) warns.push(...aiChecks(n, basis));
+
+  if (errs.length) { out.errors.push(...errs); return; }
+  const food = { name, brand, barcode, basis, n, nova, portions, note };
+  if (est.length) food.est = est;
+  if (q) food.q = q;
+  if (fortified) food.fortified = true;
+  out.foods.push({ food, warnings: warns });
+}
+/* text -> { errors: [messages], foods: [{ food, warnings }] }. Any error stops the import: nothing is loaded from an answer that has an error. */
+function parseAiImport(text) {
+  const out = { errors: [], foods: [] };
+  if (!String(text).trim()) { out.errors.push('Paste the answer of the AI first.'); return out; }
+  const found = aiFindJson(text);
+  if (!found.json) {
+    out.errors.push(found.marker
+      ? 'The answer has Nutrilog data, but it cannot be read as JSON. Often its end is missing because the answer was cut off: ask the AI to send only the JSON block again.'
+      : 'No JSON found. Paste the whole answer of the AI, including the block that starts with { and has "nutrilog_import" in it.');
+    return out;
+  }
+  const j = found.json, ver = typeof j.nutrilog_import === 'string' ? Number(j.nutrilog_import) : j.nutrilog_import;
+  if (j.nutrilog_import === undefined) out.errors.push('The JSON has no "nutrilog_import" field. Is it the answer to the Nutrilog prompt? Use “Copy AI prompt” and ask again.');
+  else if (ver !== AI_IMPORT_VERSION) out.errors.push(`This answer is version ${JSON.stringify(j.nutrilog_import)} of the import format, but this app reads version ${AI_IMPORT_VERSION}. Use “Copy AI prompt” in this app and ask again (or update the app: Data → Reload app files).`);
+  if (out.errors.length) return out;
+  if (!Array.isArray(j.foods) || !j.foods.length) { out.errors.push('"foods" must be a list with at least one food.'); return out; }
+  j.foods.forEach((raw, k) => aiFood(raw, k, j.foods.length, out));
+  if (out.errors.length) out.foods = [];
+  return out;
+}
+
+/* ---- saving: the same food may already be there ---- */
+const nameKey = (s) => norm(s).replace(/[^a-z0-9]+/g, ' ').trim();
+function findDuplicate(f) {   // among the foods you made and the Open Food Facts products you saved: same barcode, or same name and brand
+  const foods = Object.values(S.foods);
+  if (/^\d{8,14}$/.test(f.barcode || '')) {
+    const v = codeVariants(f.barcode), hit = foods.find((x) => x.barcode && v.includes(x.barcode));
+    if (hit) return { food: hit, why: 'the same barcode' };
+  }
+  const key = nameKey(f.name) + '|' + nameKey(f.brand || '');
+  const hit = foods.find((x) => nameKey(x.name) + '|' + nameKey(x.brand || '') === key);
+  return hit ? { food: hit, why: 'the same name and brand' } : null;
+}
+function applyFoodFields(out, fields) {
+  Object.assign(out, JSON.parse(JSON.stringify(fields)), { updated: Date.now() });   // a copy, so the food shares nothing with the list or form it came from
+  for (const k of AI_FIELDS) if (!(k in fields)) delete out[k];   // an update must not keep the estimates of the old version
+}
+/* Save a food from an AI answer. When it is already there, ask: update the existing food, save a new one, or cancel (the caller stays open).
+   done(food, how) runs after saving; how is 'new' or 'updated'. */
+function saveImportedFood(fields, done) {
+  const dup = findDuplicate(fields);
+  const addNew = () => {
+    const out = { id: 'u:' + uid(), src: 'user', created: Date.now() };
+    applyFoodFields(out, fields);
+    S.foods[out.id] = out; invalidate(); save();
+    done(out, 'new');
+  };
+  if (!dup) { addNew(); return; }
+  const ex = dup.food, used = S.log.filter((e) => e.f === ex.id).length;
+  const sameBasis = ex.basis.qty === fields.basis.qty && ex.basis.unit === fields.basis.unit;
+  const blocked = used > 0 && !sameBasis;
+  const d = openSheet('Already in your foods', `
+    <p style="margin:0 0 8px"><b>${esc(cap(ex.name))}</b>${ex.brand ? ' · ' + esc(ex.brand) : ''} is already saved (${dup.why}).</p>
+    <p class="small muted" style="margin:0 0 8px"><b>Update existing</b> replaces its values with the imported ones. The food stays the same, so ${used ? `the <b>${used === 1 ? '1 diary entry' : used + ' diary entries'}</b> that ${used === 1 ? 'uses' : 'use'} it will show the new values` : 'diary entries that use it later will show the new values'}. You can undo it. <b>Save as new</b> keeps both foods.</p>
+    ${blocked ? `<p class="note" role="alert">The saved food is measured per ${esc(basisText(ex.basis))}, the imported one per ${esc(basisText(fields.basis))}. The diary entries cannot be moved from one to the other, so use Save as new.</p>` : ''}
+    <div class="sheet-actions col">
+      <button class="btn primary block" data-dup="update" ${blocked ? 'disabled' : ''}>Update existing</button>
+      <button class="btn block" data-dup="new">Save as new</button>
+      <button class="btn block" data-dup="cancel">Cancel</button></div>`);
+  d.el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dup]');
+    if (!b || b.disabled) return;
+    d.close();
+    if (b.dataset.dup === 'new') addNew();
+    else if (b.dataset.dup === 'update') {
+      const before = { ...ex };   // the Undo copy; the values are replaced, not changed in place
+      const m = { ...fields };
+      if (!m.barcode && ex.barcode) m.barcode = ex.barcode;                       // what the import does not say stays as it was
+      if (!m.nova && ex.nova) m.nova = ex.nova;
+      if (!m.note && ex.note) m.note = ex.note;
+      if (!m.portions.length && ex.basis.unit === 'g' && ex.portions && ex.portions.length) m.portions = ex.portions;
+      applyFoodFields(ex, m);
+      if (ex.src === 'off') ex.edited = true;
+      invalidate(); save();
+      toast('Updated: ' + cap(ex.name.length > 38 ? ex.name.slice(0, 37) + '…' : ex.name), () => { S.foods[before.id] = before; invalidate(); save(); render(); });
+      done(ex, 'updated');
+    }
+  });
+}
+
+/* ---- the screens ---- */
+function aiNotice(food, warnings) {
+  const nAll = Object.keys(food.n).length, nEst = (food.est || []).length;
+  return `<div class="banner" style="margin:0 0 12px"><b>From an AI answer, not saved yet.</b> ${nAll} ${nAll === 1 ? 'value' : 'values'}: ${nAll - nEst} from the label or converted, ${nEst} estimated${food.q ? ` (confidence ${CONF[food.q]})` : ''}. Compare them with the package, then tap Save.</div>`
+    + (warnings.length ? `<div class="note" role="status"><b>Check these:</b><ul>${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '');
+}
+function openAiImport({ onSaved } = {}) {
+  const sh = openSheet('Paste from AI', `
+    <p class="small muted" style="margin:0 0 12px">Ask an AI (Claude, ChatGPT…) to look a product up with the Nutrilog prompt, then paste its answer here. Nothing is saved until you have reviewed the food and tapped Save. The pasted text is not kept and nothing is sent anywhere.</p>
+    <div class="row gap"><button class="btn" id="ai-paste">Paste from clipboard</button><button class="btn" id="ai-copy">Copy AI prompt</button></div>
+    <label class="f" style="margin-top:12px">AI answer<textarea id="ai-text" rows="7" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste the whole answer here. The JSON block is found automatically."></textarea></label>
+    <div id="ai-msg" aria-live="polite"></div>
+    <div class="row gap sheet-actions"><button class="btn" data-dx>Cancel</button><span style="flex:1"></span><button class="btn primary" id="ai-read">Read</button></div>`);
+  const ta = $('#ai-text', sh.el), msg = $('#ai-msg', sh.el);
+  const say = (html) => { msg.innerHTML = html; };
+  const noteHtml = (t) => `<p class="note" role="alert">${t}</p>`;
+  $('[data-dx]', sh.el).onclick = () => sh.close();
+  ta.addEventListener('input', () => { ta.removeAttribute('aria-invalid'); say(''); });
+  function readNow() {
+    const r = parseAiImport(ta.value);
+    if (r.errors.length) {
+      ta.setAttribute('aria-invalid', 'true');
+      say(`<div class="note field-err" role="alert"><b>${r.errors.length > 1 ? 'This answer cannot be loaded yet:' : 'This answer cannot be loaded:'}</b><ul>${r.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>`);
+      return;
+    }
+    say(''); ta.removeAttribute('aria-invalid');
+    if (r.foods.length === 1) {
+      const { food, warnings } = r.foods[0];
+      openFoodEditor(null, { prefill: food, title: 'Review imported food', notice: aiNotice(food, warnings), after: (f) => { sh.close(); if (onSaved) onSaved(f); } });
+    } else openAiList(r.foods, { done: () => sh.close() });
+  }
+  $('#ai-read', sh.el).onclick = readNow;
+  $('#ai-paste', sh.el).onclick = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('no clipboard access');
+      const t = await navigator.clipboard.readText();
+      if (!t.trim()) { say(noteHtml('The clipboard is empty. Copy the answer of the AI first.')); return; }
+      ta.value = t; readNow();   // no focus() here: it runs after waiting, outside the tap
+    } catch {
+      say(noteHtml('This browser did not let the app read the clipboard (on an iPhone you have to tap the “Paste” bubble that appears). Press and hold in the box above, choose <b>Paste</b>, then tap <b>Read</b>.'));
+    }
+  };
+  $('#ai-copy', sh.el).onclick = async () => {
+    const text = aiPrompt();
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard access');
+      await navigator.clipboard.writeText(text);
+      say(''); toast('AI prompt copied');
+    } catch {
+      say(`${noteHtml('This browser did not allow copying. The prompt is in the box below: press and hold in it, choose <b>Select All</b>, then <b>Copy</b>.')}<label class="f">AI prompt<textarea id="ai-prompt-box" rows="6" readonly>${esc(text)}</textarea></label>`);
+    }
+  };
+  return sh;
+}
+/* several foods in one answer: a list; each one is reviewed (Review) or saved as it is (Save) by hand */
+function openAiList(items, { done }) {
+  const saved = items.map(() => '');   // '' = not yet, else 'Saved' or 'Updated'
+  const row = ({ food, warnings }, i) => {
+    const nAll = Object.keys(food.n).length, nEst = (food.est || []).length;
+    return `<div class="card ai-row" data-i="${i}"><b>${esc(cap(food.name))}</b>
+      <div class="muted small">${esc(food.brand ? food.brand + ' · ' : '')}per ${esc(basisText(food.basis))} · ${nAll} ${nAll === 1 ? 'value' : 'values'}${nEst ? `, ${nEst} estimated${food.q ? ' (' + CONF[food.q] + ')' : ''}` : ''}</div>
+      ${warnings.length ? `<ul class="note ai-warn">${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      <div class="row gap" style="margin-top:10px">${saved[i] ? `<span class="tag ok">${saved[i]}</span>` : '<button class="btn" data-ai="review">Review</button><button class="btn primary" data-ai="save">Save</button>'}</div></div>`;
+  };
+  const sh = openSheet('Review imported foods', `
+    <p class="small muted" style="margin:0 0 12px">${items.length} foods found. Nothing is saved yet. Tap <b>Review</b> to check and change a food, or <b>Save</b> to save it as it is.</p>
+    <div id="ai-rows" class="stack">${items.map(row).join('')}</div>
+    <div class="row gap sheet-actions"><span style="flex:1"></span><button class="btn primary" data-dx>Done</button></div>`);
+  const redraw = (i) => { const el = $(`.ai-row[data-i="${i}"]`, sh.el); if (el) el.outerHTML = row(items[i], i); };
+  const mark = (i) => (f, how) => { saved[i] = how === 'updated' ? 'Updated' : 'Saved'; redraw(i); if (how !== 'updated') toast('Food saved'); };
+  $('[data-dx]', sh.el).onclick = () => { sh.close(); done(); };
+  sh.el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ai]');
+    if (!b) return;
+    const i = Number(b.closest('.ai-row').dataset.i), { food, warnings } = items[i];
+    if (b.dataset.ai === 'review') openFoodEditor(null, { prefill: food, title: 'Review imported food', notice: aiNotice(food, warnings), after: (f, how) => { saved[i] = how === 'updated' ? 'Updated' : 'Saved'; redraw(i); } });
+    else saveImportedFood({ ...food }, mark(i));
+  });
+  return sh;
 }
 
 /* ================= export / import ================= */
@@ -1616,7 +2126,7 @@ function exportEntries() {
   const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi, est } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, f.src === 'dmbio' ? CONF[f.q] : '', ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, f.basis.unit, novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -1666,6 +2176,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
   else if (a === 'edit-entry') { const e = S.log.find((x) => x.id === t.dataset.id); if (e) openAmount({ food: getFood(e.f), entry: e }); }
   else if (a === 'new-food') openFoodEditor(null);
+  else if (a === 'ai-import') openAiImport({});
   else if (a === 'edit-food') { const f = S.foods[t.dataset.id]; if (f) openFoodEditor(f); }
   else if (a === 'export-json') exportJson();
   else if (a === 'sync-setup') openSyncSetup();
@@ -1781,7 +2292,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION };
 init();
 
 })();

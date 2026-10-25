@@ -464,4 +464,5 @@ async def main():
         print('\nPROBLEMS:', problems if problems else 'none')
         raise SystemExit(1 if problems else 0)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
