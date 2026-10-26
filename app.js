@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '21 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '22 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -959,15 +959,17 @@ function render() {
    Nutrients tab: "≥" when an item of the meal has no data for it (or the value is a range), so the number is a lower value; "~" when
    part of it is an estimate; "–" when no item has data. Missing data is never counted as zero. */
 const MEAL_SUM = [['P', 'protein', 'Protein'], ['C', 'carbohydrate', 'Carbohydrate'], ['F', 'fat', 'Fat'], ['Fib', 'fibres', 'Fibre'], ['Salt', 'salt', 'Salt']];
-function macroParts(list) {   // the five numbers of a list of entries: the short spans and the full words for screen readers
+const SALT_ALERT_G = 0.4;   // a diary entry with more salt than this (grams, as shown, rounded to 0.01) gets its Salt value in red (Norbert, version 22)
+function macroParts(list, flagSalt) {   // the five numbers of a list of entries: the short spans and the full words for screen readers; flagSalt marks a high Salt value (only used for one entry)
   const T = totalsFor(list);
   const vis = [], spoken = [];
   for (const [ab, key, name] of MEAL_SUM) {
     const i = IDX[key], cnt = T.cnt[i], lo = T.lo[i], unit = UNITS[i];
     if (cnt === 0) { vis.push(`<span class="ms"><b>${ab}</b> –</span>`); spoken.push(`${name}: no data`); continue; }
     const partial = cnt < T.n || T.hi[i] - lo > Math.max(lo * 0.1, 1e-9), est = T.est[i] > 0;
-    vis.push(`<span class="ms"><b>${ab}</b> ${partial ? '≥' : ''}${est ? '~' : ''}${fmt(lo)}<small>${esc(unit)}</small></span>`);
-    spoken.push(`${name}: ${partial ? 'at least ' : est ? 'about ' : ''}${fmt(lo)} ${unit}${partial && est ? ', partly estimated' : ''}`);
+    const hot = !!flagSalt && key === 'salt' && Math.round(lo * 100) / 100 > SALT_ALERT_G;   // the lower value is already above the limit, so the real value surely is
+    vis.push(`<span class="ms${hot ? ' hot' : ''}"><b>${ab}</b> ${partial ? '≥' : ''}${est ? '~' : ''}${fmt(lo)}<small>${esc(unit)}</small></span>`);
+    spoken.push(`${name}: ${partial ? 'at least ' : est ? 'about ' : ''}${fmt(lo)} ${unit}${partial && est ? ', partly estimated' : ''}${hot ? `, high: more than ${SALT_ALERT_G} g` : ''}`);
   }
   return { vis, spoken };
 }
@@ -977,7 +979,7 @@ function mealSumHtml(list, mealName) {
 }
 /* The same line under one diary entry (its own amount). Spans only: it sits inside the entry button. */
 function entrySumHtml(e) {
-  const { vis, spoken } = macroParts([e]);
+  const { vis, spoken } = macroParts([e], true);
   return `<span class="entry-ms"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">Nutrients. ${esc(spoken.join('; '))}.</span></span>`;
 }
 

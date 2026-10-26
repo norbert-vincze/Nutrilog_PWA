@@ -4,6 +4,7 @@ Under the header of every meal that has entries there is one line with the total
 Fib fibre, Salt. Same rules as the Nutrients tab: "≥" when an item of the meal has no data for it (a lower value), "~" when part of the
 value is an estimate, "–" when no item has data; missing data is never counted as zero. A meal without entries has no line. A screen reader
 gets the full words (hidden text). The numbers follow edits and other days do not leak in.
+Version 22 marks the Salt value of an entry in red when it is more than 0.4 g (SALT_ALERT_G; only entries, never the meal lines).
 Version 21 adds the same line (P C F Fib Salt) under every entry, for the entry's own amount (.entry-ms, spans inside the entry button, below the name).
 Covers: complete data, partial data (≥), nothing known (–), estimates (~, also ≥~), empty meal, other meals unaffected, other day, edit follows,
 delete follows, the spoken text, no sideways scroll at 390 px in the worst case, contrast in light and dark, the version number (19 or newer, same as the service worker cache), no page errors."""
@@ -153,6 +154,56 @@ async def main():
         await page.click('[data-act=day][data-n="-1"]'); await page.wait_for_timeout(300)
         check('another day: no entry lines either', await T("document.querySelectorAll('.entry-ms').length") == 0)
         await page.click('[data-act=day][data-n="1"]'); await page.wait_for_timeout(300)
+
+        # ---- version 22: the Salt value of an entry is red above 0.4 g ----
+        saltfoods = [own('u:s1', 'Salty', {'kcal': 100, 'protein': 5, 'salt': 1}), own('u:s2', 'Estimated salty', {'kcal': 100, 'salt': 0.5}, est=['salt'], q='l'),
+                     own('u:s3', 'Range salt', {'kcal': 100, 'salt': '<0.8'}), own('u:s4', 'No salt data', {'kcal': 100, 'protein': 5}), own('u:s5', 'Half and half', {'kcal': 100, 'salt': 0.5})]
+        await seed(saltfoods, [('s40', 'u:s1', 40, 'm1'), ('s41', 'u:s1', 41, 'm1'), ('s404', 'u:s1', 40.4, 'm1'), ('s30', 'u:s1', 30, 'm1'), ('sest', 'u:s2', 100, 'm2'),
+                               ('srange', 'u:s3', 100, 'm2'), ('snone', 'u:s4', 100, 'm2'), ('shalf', 'u:s5', 100, 'm2')])
+
+        async def salt_state(entry_id):
+            """[text of the Salt value, is it red, bold?, hot items in the entry] for one entry."""
+            return await T("""(id) => { const b = document.querySelector('.entry[data-id="' + id + '"]'); const all = [...b.querySelectorAll('.entry-ms .ms')]; const m = all.find((e) => e.querySelector('b').textContent === 'Salt');
+              const red = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim(); const probe = document.createElement('i'); probe.style.color = red; document.body.appendChild(probe); const redRgb = getComputedStyle(probe).color; probe.remove();
+              const cs = getComputedStyle(m); return [m.textContent.replace(/\\s+/g, ' ').trim(), cs.color === redRgb, parseInt(cs.fontWeight) >= 700, all.filter((e) => e.classList.contains('hot')).length, getComputedStyle(m.querySelector('b')).color === redRgb]; }""", entry_id)
+
+        r = await salt_state('s30')
+        check('0.3 g of salt: not red', r[0] == 'Salt 0.3g' and r[1] is False and r[3] == 0, r)
+        r = await salt_state('s40')
+        check('exactly 0.4 g: not red ("more than 0.4")', r[0] == 'Salt 0.4g' and r[1] is False and r[3] == 0, r)
+        r = await salt_state('s404')
+        check('0.404 g is shown as 0.4 g and is not red (the colour follows what is shown)', r[0] == 'Salt 0.4g' and r[1] is False, r)
+        r = await salt_state('s41')
+        check('0.41 g: red and bold, and only the Salt value', r[0] == 'Salt 0.41g' and r[1] is True and r[2] is True and r[3] == 1, r)
+        check('the label "Salt" itself keeps the normal colour', r[4] is False, r)
+        r = await salt_state('sest')
+        check('an estimated value above 0.4 g is red too (and keeps its ~)', r[0] == 'Salt ~0.5g' and r[1] is True, r)
+        r = await salt_state('srange')
+        check('a "<x" value is a lower value (≥0): not red, even when the upper bound is above 0.4 g', r[0].startswith('Salt ≥') and r[1] is False, r)
+        r = await salt_state('snone')
+        check('no salt data (–): not red', r[0] == 'Salt –' and r[1] is False and r[3] == 0, r)
+        check('no other nutrient of an entry is ever red', await T("[...document.querySelectorAll('.entry-ms .ms.hot')].every((e) => e.querySelector('b').textContent === 'Salt')"))
+        check('the meal line of meal 1 shows the sum without any red', await T("document.querySelectorAll('.meal-sum .ms.hot').length") == 0 and (await sums(0))[4] == 'Salt 1.51g', await sums(0))
+        spoken = await T("document.querySelector('.entry[data-id=s41] .entry-ms .sr-only').textContent")
+        check('screen readers are told it is high (not only the colour says so)', 'Salt: 0.41 g, high: more than 0.4 g' in spoken, spoken)
+        spoken = await T("document.querySelector('.entry[data-id=s30] .entry-ms .sr-only').textContent")
+        check('and nothing is said for a low value', 'high' not in spoken, spoken)
+        await page.click('.entry[data-id=s41]'); await page.wait_for_selector('#amt')
+        await page.fill('#amt', '20'); await page.click('.sheet-actions .btn.primary, .sheet-actions button.primary'); await page.wait_for_timeout(500)
+        r = await salt_state('s41')
+        check('editing the amount down to 20 g (0.2 g salt) takes the red away', r[0] == 'Salt 0.2g' and r[1] is False, r)
+        await page.click('.entry[data-id=s30]'); await page.wait_for_selector('#amt')
+        await page.fill('#amt', '50'); await page.click('.sheet-actions .btn.primary, .sheet-actions button.primary'); await page.wait_for_timeout(500)
+        r = await salt_state('s30')
+        check('and editing it up to 50 g (0.5 g salt) turns it red', r[0] == 'Salt 0.5g' and r[1] is True, r)
+        for theme in ('light', 'dark'):
+            await T("(t) => { document.documentElement.dataset.theme = t; }", theme)
+            bad = await T(CONTRAST_JS, '.entry-ms')
+            check(f'the red Salt value has at least 4.5:1 contrast ({theme})', bad == [] and await T("document.querySelectorAll('.entry-ms .ms.hot').length") >= 2, bad)
+            if SHOTS:
+                await page.evaluate("window.scrollTo(0, document.querySelector('.meal').getBoundingClientRect().top + window.scrollY - 20)")
+                await page.screenshot(path=os.path.join(SHOTS, f'salt_red_{theme}.png'))
+        await T("() => { document.documentElement.dataset.theme = 'light'; }")
 
         # ---- contrast in light and dark ----
         await seed(foods, [('e1', 'u:t1', 150, 'm1'), ('e2', 'u:t2', 100, 'm1')])
