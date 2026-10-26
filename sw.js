@@ -3,7 +3,7 @@
      Change the number of a cache only when its file changes (ciqual.json and usda.json share nutrilog-data-1, dmbio.json has nutrilog-dmbio-1).
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v20';   // keep in step with VERSION in app.js
+const CACHE = 'nutrilog-v21';   // keep in step with VERSION in app.js
 const DATA = { 'ciqual.json': 'nutrilog-data-1', 'usda.json': 'nutrilog-data-1', 'dmbio.json': 'nutrilog-dmbio-1' };
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js'];

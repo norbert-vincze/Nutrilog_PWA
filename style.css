@@ -170,6 +170,9 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
   width: calc(100% + 16px); margin: 0 -8px; display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: center;
   text-align: left; background: none; border: 0; border-radius: 18px; padding: 10px 8px;
 }
+.entry { row-gap: 2px; }
+.entry-ms { grid-column: 2 / -1; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.entry-ms .ms-row { gap: 1px 10px; }
 .entry:active, .item:active { background: var(--surface); }
 @media (hover: hover) { .entry:hover, .item:hover { background: var(--surface); } }
 .av { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 720; font-size: 1.05rem; flex: none; }

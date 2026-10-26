@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '20 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '21 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -955,11 +955,11 @@ function render() {
 }
 
 /* ---- Diary ---- */
-/* One line under the header of a meal with its totals in grams: P protein, C carbohydrate, F fat, Fib fibre, Salt. Same rules as the
+/* One line under the header of a meal (and, in entrySumHtml, under every entry for its own amount) with the totals in grams: P protein, C carbohydrate, F fat, Fib fibre, Salt. Same rules as the
    Nutrients tab: "≥" when an item of the meal has no data for it (or the value is a range), so the number is a lower value; "~" when
    part of it is an estimate; "–" when no item has data. Missing data is never counted as zero. */
 const MEAL_SUM = [['P', 'protein', 'Protein'], ['C', 'carbohydrate', 'Carbohydrate'], ['F', 'fat', 'Fat'], ['Fib', 'fibres', 'Fibre'], ['Salt', 'salt', 'Salt']];
-function mealSumHtml(list, mealName) {
+function macroParts(list) {   // the five numbers of a list of entries: the short spans and the full words for screen readers
   const T = totalsFor(list);
   const vis = [], spoken = [];
   for (const [ab, key, name] of MEAL_SUM) {
@@ -969,7 +969,16 @@ function mealSumHtml(list, mealName) {
     vis.push(`<span class="ms"><b>${ab}</b> ${partial ? '≥' : ''}${est ? '~' : ''}${fmt(lo)}<small>${esc(unit)}</small></span>`);
     spoken.push(`${name}: ${partial ? 'at least ' : est ? 'about ' : ''}${fmt(lo)} ${unit}${partial && est ? ', partly estimated' : ''}`);
   }
+  return { vis, spoken };
+}
+function mealSumHtml(list, mealName) {
+  const { vis, spoken } = macroParts(list);
   return `<div class="meal-sum"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">${esc(mealName)} totals. ${esc(spoken.join('; '))}.</span></div>`;
+}
+/* The same line under one diary entry (its own amount). Spans only: it sits inside the entry button. */
+function entrySumHtml(e) {
+  const { vis, spoken } = macroParts([e]);
+  return `<span class="entry-ms"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">Nutrients. ${esc(spoken.join('; '))}.</span></span>`;
 }
 
 function viewLog() {
@@ -1002,7 +1011,7 @@ function viewLog() {
       const kt = Number.isNaN(v) ? '–' : (energyEstimated(food) ? '~' : '') + fmt(v * k);
       return `<button class="entry" data-act="edit-entry" data-id="${e.id}">${avatar(food.name)}
         <span class="entry-main"><span class="entry-name">${esc(cap(food.name))}</span><span class="entry-sub">${timeOf(e) ? `<span class="entry-time">${timeOf(e)}</span> · ` : ''}${esc(amountText(e, food))} · ${esc(food.brand ? food.brand + ' · ' : '')}${srcTag(food)}</span></span>
-        <span class="entry-kcal">${kt}<small>kcal</small></span></button>`;
+        <span class="entry-kcal">${kt}<small>kcal</small></span>${entrySumHtml(e)}</button>`;
     }).join('');
     return `<section class="meal"><div class="meal-h"><h3>${m.name}</h3>${mkn ? `<span class="mk">${fmt(mk)} kcal</span>` : ''}
       <button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Log food in ${m.name}">${IC.plus}</button></div>
