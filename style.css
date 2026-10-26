@@ -103,6 +103,7 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .icon-btn.sm { width: 44px; height: 44px; border: 5px solid transparent; background-clip: padding-box; }   /* 34 px circle, 44 px touch area */
 .icon-btn.sm svg { width: 18px; height: 18px; }
 .icon-btn input[type=date] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.icon-btn:disabled { opacity: .35; cursor: default; }   /* the first or the last shared day: the arrow has nowhere to go */
 .chip-btn { border: 0; background: var(--surface); border-radius: 999px; padding: 8px 14px; font-size: .88rem; font-weight: 620; color: var(--ink); }
 .chip-btn.accent { background: var(--accent-soft); color: var(--accent); }
 
@@ -152,6 +153,7 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .banner { margin-top: 10px; border-radius: 16px; padding: 11px 14px; font-size: .86rem; background: var(--surface); color: var(--muted); }
 .banner.warn { background: var(--warn-soft); color: var(--warn); }
 .banner b { color: var(--ink); }
+.view-note { margin: 2px 0 6px; line-height: 1.45; }   /* the note at the top of a shared copy */
 .note { margin-top: 10px; font-size: .86rem; color: var(--warn); background: var(--warn-soft); border-radius: 14px; padding: 10px 14px; }
 
 /* meals (transaction-style rows) */
@@ -176,6 +178,8 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .entry-ms .ms-row { gap: 1px 10px; }
 .entry:active, .item:active { background: var(--surface); }
 @media (hover: hover) { .entry:hover, .item:hover { background: var(--surface); } }
+.entry.ro:active { background: none; }   /* a shared copy (viewer mode) shows the entries, it does not open them */
+@media (hover: hover) { .entry.ro:hover { background: none; } }
 .av { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 720; font-size: 1.05rem; flex: none; }
 .av0 { background: var(--av0-bg); color: var(--av0-fg); } .av1 { background: var(--av1-bg); color: var(--av1-fg); }
 .av2 { background: var(--av2-bg); color: var(--av2-fg); } .av3 { background: var(--av3-bg); color: var(--av3-fg); }

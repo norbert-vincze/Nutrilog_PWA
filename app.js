@@ -32,8 +32,15 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '22 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '23 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
+   The data sits in the part after the #, which a browser never sends to a server. In this mode the app does not open the storage of this
+   browser, saves nothing, does not sync, and shows only the Diary and Nutrients tabs without any way to change them: whoever opens the link
+   (for example a dietitian) may use Nutrilog herself on the same address, and her own diary must stay untouched. */
+const SHARE_PREFIX = '#share=';
+const VIEW = location.hash.startsWith(SHARE_PREFIX) ? { token: location.hash.slice(SHARE_PREFIX.length), from: '', to: '', made: 0 } : null;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
    The same rule runs in index.html before the first paint. */
@@ -490,7 +497,7 @@ function sharePct(vals, total) {
 let novaOpen = false;                                // the "Set NOVA groups" list stays open while you work through it
 
 /* ================= saving ================= */
-function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 120); }
+function save() { if (VIEW) return; clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 120); }   // a shared copy is never saved
 async function doSave() {
   const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)));
   await Store.set('log', S.log);
@@ -931,10 +938,18 @@ function toast(msg, undo) {
 /* ================= header, tabs, views ================= */
 const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'My foods', IC.foods], ['data', 'Data', IC.data]];
 
+const shownTabs = () => (VIEW ? TABS.filter((t) => t[0] === 'log' || t[0] === 'nutr') : TABS);   // a shared copy has only the Diary and the Nutrients tab
 function renderChrome() {
-  $('#tabbar').innerHTML = TABS.map(([id, name, ic]) => `<button class="tab" data-act="tab" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}>${ic}<span>${name}</span></button>`).join('');
+  $('#tabbar').innerHTML = shownTabs().map(([id, name, ic]) => `<button class="tab" data-act="tab" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}>${ic}<span>${name}</span></button>`).join('');
   const top = $('#topbar');
-  if (S.tab === 'log' || S.tab === 'nutr') {
+  if (VIEW) {   // the days of the shared copy only: no Today button, the arrows stop at the first and the last day, the date picker has a min and a max
+    top.innerHTML = `<div class="title"><h1>${esc(parseYmd(S.day).toLocaleDateString(LOC, { weekday: 'long' }))}</h1><p class="sub">${esc(fmtLong(S.day))}</p></div>
+      <div class="hdr-actions">
+        <button class="icon-btn" data-act="day" data-n="-1" aria-label="Previous day" ${S.day > VIEW.from ? '' : 'disabled'}>${IC.left}</button>
+        <button class="icon-btn" data-act="day" data-n="1" aria-label="Next day" ${S.day < VIEW.to ? '' : 'disabled'}>${IC.right}</button>
+        <label class="icon-btn" title="Pick a date">${IC.cal}<input type="date" id="datepick" value="${S.day}" min="${VIEW.from}" max="${VIEW.to}" aria-label="Date"></label>
+      </div>`;
+  } else if (S.tab === 'log' || S.tab === 'nutr') {
     const today = ymd(new Date());
     top.innerHTML = `<div class="title"><h1>${esc(dayTitle(S.day))}</h1><p class="sub">${esc(fmtLong(S.day))}</p></div>
       <div class="hdr-actions">
@@ -1011,29 +1026,33 @@ function viewLog() {
     const rows = list.map((e) => {
       const food = getFood(e.f), v = vecOf(food).lo[0], k = e.a / food.basis.qty;
       const kt = Number.isNaN(v) ? '–' : (energyEstimated(food) ? '~' : '') + fmt(v * k);
-      return `<button class="entry" data-act="edit-entry" data-id="${e.id}">${avatar(food.name)}
+      const tag = VIEW ? 'div' : 'button', attrs = VIEW ? 'class="entry ro"' : `class="entry" data-act="edit-entry" data-id="${e.id}"`;   // a shared copy shows the entry, it does not open anything
+      return `<${tag} ${attrs}>${avatar(food.name)}
         <span class="entry-main"><span class="entry-name">${esc(cap(food.name))}</span><span class="entry-sub">${timeOf(e) ? `<span class="entry-time">${timeOf(e)}</span> · ` : ''}${esc(amountText(e, food))} · ${esc(food.brand ? food.brand + ' · ' : '')}${srcTag(food)}</span></span>
-        <span class="entry-kcal">${kt}<small>kcal</small></span>${entrySumHtml(e)}</button>`;
+        <span class="entry-kcal">${kt}<small>kcal</small></span>${entrySumHtml(e)}</${tag}>`;
     }).join('');
     return `<section class="meal"><div class="meal-h"><h3>${m.name}</h3>${mkn ? `<span class="mk">${fmt(mk)} kcal</span>` : ''}
-      <button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Log food in ${m.name}">${IC.plus}</button></div>
+      ${VIEW ? '' : `<button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Log food in ${m.name}">${IC.plus}</button>`}</div>
       ${list.length ? mealSumHtml(list, m.name) : ''}
       <div class="rows">${rows}</div></section>`;
   }).join('');
 
-  const empty = !S.log.length ? `<div class="card" style="margin-top:16px"><div class="card-t">Log your first food</div>
+  const empty = VIEW ? (!es.length ? '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged on this day</div><p class="muted small" style="margin-top:6px">Nothing was logged on this day, or the day was left out of the shared copy.</p></div>' : '')
+    : !S.log.length ? `<div class="card" style="margin-top:16px"><div class="card-t">Log your first food</div>
     <p class="muted small" style="margin-top:6px">Tap <b>Log food</b>. Search in English or Hungarian (egg, tojás, bread, kenyér, avocado), scan a barcode, or look a product up in Open Food Facts. Use <b>Create food</b> to enter your own from a label.</p></div>` : '';
+  const lostOther = VIEW ? S.log.filter((e) => e.d === S.day && !getFood(e.f) && !(USDA_ERR && e.f.startsWith('usda:')) && !(DM_ERR && e.f.startsWith('dm:'))).length : 0;
+  const viewWarn = lostOther ? `<div class="banner warn">${lostOther} ${lostOther === 1 ? 'item' : 'items'} of this day cannot be shown: the food is not in the food tables of this version of the app. Reload the page once; if it stays, ask the sender to share again.</div>` : '';
 
-  return `<section class="hero">
+  return `${viewNote()}<section class="hero">
       <div class="hero-label">Energy</div>
       <div class="hero-num">${es.length ? (estE ? '~' : '') + fmt(T.lo[0]) : '0'}<small>kcal</small></div>
       ${noE > 0 ? `<span class="chip warn">Lower estimate · ${noE} without energy data</span>` : `<span class="chip">${es.length ? plural(es.length, 'item') + ' logged' : 'Nothing logged yet'}</span>`}
     </section>
-    <div class="actions">
+    ${VIEW ? '' : `<div class="actions">
       <button class="act primary" data-act="add"><span class="act-c">${IC.plus}</span>Log food</button>
       <button class="act" data-act="scan"><span class="act-c">${IC.scan}</span>Scan</button>
       <button class="act" data-act="new-food"><span class="act-c">${IC.tag}</span>Create food</button>
-    </div>
+    </div>`}
     <div class="card">
       <div class="bar" role="img" aria-label="Energy split between protein, carbohydrate and fat">${tot > 0
     ? `<i style="width:${p / tot * 100}%;background:var(--c-p)"></i><i style="width:${c / tot * 100}%;background:var(--c-c)"></i><i style="width:${f / tot * 100}%;background:var(--c-f)"></i>` : ''}</div>
@@ -1044,7 +1063,7 @@ function viewLog() {
       </div>
       <div class="mini"><span>Fibre <b>${fmt(g('fibres'))} g</b></span><span>Sugars <b>${fmt(g('sugars'))} g</b></span><span>Salt <b>${fmt(g('salt'))} g</b></span></div>
     </div>
-    ${usdaWarn}${dmWarn}
+    ${usdaWarn}${dmWarn}${viewWarn}
     ${estE ? '<div class="banner">~ means the energy is an estimate, not a label value: calculated from protein, carbohydrate and fat (generic food data, Atwater factors), or marked as an estimate in a food you made.</div>' : ''}
     ${nova}${empty}${meals}`;
 }
@@ -1052,9 +1071,9 @@ function viewLog() {
 /* ---- Nutrients ---- */
 function viewNutr() {
   const es = entriesOf(S.day);
-  if (!es.length) return '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
+  if (!es.length) return viewNote() + '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
   const T = totalsFor(es);
-  const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
+  const note = viewNote() + '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
     + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, dmBio values estimated from the ingredient list, or values you marked as estimates in your own foods (for example from an AI answer). Open a row to see which items and how confident the estimate is.</div>' : '');
   const out = GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
@@ -1108,11 +1127,11 @@ function novaHtml(es) {
       <div class="nova-rows">${rows}</div>
       <p class="muted small" style="margin:12px 0 0">${coverage}</p>
     </div>
-    <details class="fold" id="novafold" ${novaOpen ? 'open' : ''}><summary>Set NOVA groups${un.length ? ` · ${un.length} unclassified` : ''}</summary>
+    ${VIEW ? '' : `<details class="fold" id="novafold" ${novaOpen ? 'open' : ''}><summary>Set NOVA groups${un.length ? ` · ${un.length} unclassified` : ''}</summary>
       <p class="hint" style="margin:0 0 12px">Tap 1–4 for a food. 1 = minimal, 2 = culinary ingredient, 3 = processed, 4 = ultra-processed. Your choice is saved for the food, so you set it only once. Tap the chosen number again to clear it.</p>
       ${un.length ? `<h4 class="nova-h">Unclassified (${un.length})</h4>${un.map(itemHtml).join('')}` : '<p class="small" style="margin:0 0 12px">Every food of the day has a group.</p>'}
       ${done.length ? `<h4 class="nova-h">Classified (${done.length})</h4>${done.map(itemHtml).join('')}` : ''}
-    </details>
+    </details>`}
     <details class="fold"><summary>What are the NOVA groups?</summary>
       <div class="nova-def">${NOVA.map(([n, name, ex]) => `<p><b>${n} · ${esc(name)}</b><br><span class="muted">${esc(cap(ex))}.</span></p>`).join('')}
       <p class="hint">NOVA sorts foods by how industrially they are processed, not by how healthy they are. A group is a judgement: ingredient lists and brands matter, so check it for your own foods.</p></div>
@@ -1163,6 +1182,9 @@ function viewData() {
       <p class="muted small" style="margin:12px 0 0"><b>Restore from file</b> replaces everything in the app with the backup. <b>Import foods (JSON)</b> only adds foods to My foods from a file and never touches your diary.</p>
       <div id="fimp-msg" aria-live="polite"></div></div>
     ${syncCard()}
+    <div class="card"><div class="card-t">Share diary and nutrients</div>
+      <p class="muted small" style="margin:6px 0 14px">Make a link that shows your Diary and Nutrients tabs for the days you choose, read-only, for example for your dietitian. No password and no upload: the days are packed into the link. Whoever has the link can see those days, and a link cannot be taken back once it is sent.</p>
+      <button class="btn primary" data-act="share">Share diary and nutrients</button></div>
     <div class="card"><div class="card-t">For analysis</div>
       <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is. In the entries file, est_keys lists the estimated nutrients of that entry (separated by semicolons). In the daily totals file, est_share is the share of the day that is estimated, in percent: for every nutrient with data it takes the estimated part of the day’s amount, then averages those shares.</p>
       <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
@@ -2519,11 +2541,268 @@ function importFoods(file) {
   rd.readAsText(file);
 }
 
+/* ================= share a read-only copy of some days (version 23) ================= */
+/* "Share diary and nutrients" (Data tab) makes a link  <app address>#share=z.<data>  that opens the Diary and Nutrients tabs of the chosen days, read-only.
+   The days are inside the link: nothing is uploaded and nothing is stored anywhere, so no password is needed (Norbert: "nem kell jelszóval védett legyen").
+   The part after the # is never sent to a server (not even to GitHub Pages). The flip side is that a link cannot be taken back once it is sent.
+   Format (v 1): JSON { app:'tapnaplo-share', v:1, made, from, to, refs:[food ids], foods:[foods you made or saved from Open Food Facts, used in these days],
+   nova:{id: group of a generic or dmBio food}, days:{ 'YYYY-MM-DD': [[meal id, index into refs, 'HH:MM', amount], …] } }, packed with deflate (the browser's
+   CompressionStream, prefix "z.") or, when the browser cannot do that, as plain text (prefix "j."), then base64url. Generic foods (CIQUAL, USDA, dmBio) are only
+   named by id: the viewer loads the same bundled tables. A link from a newer format (v above 1, or an unknown prefix) says so instead of guessing. */
+const SHARE_APP = 'tapnaplo-share', SHARE_V = 1;
+const SHARE_MAX_DAYS = 62;        // the longest period the sender can choose
+const SHARE_LINK_LONG = 4000;     // above this a chat app may cut the link (Telegram allows 4,096 characters in a message)
+const SHARE_MAX_BYTES = 4e6;      // a link that unpacks to more than this is refused (a small link must not blow up in the browser)
+const SHARE_ID = /^(c|usda|dm|u|o):[A-Za-z0-9_.-]{1,64}$/;
+const b64u = {
+  enc(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+  dec(str) {
+    const s = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  },
+};
+/* bytes through a CompressionStream or DecompressionStream; stops when the result is longer than SHARE_MAX_BYTES */
+async function pipeBytes(bytes, transform) {
+  const reader = new Blob([bytes]).stream().pipeThrough(transform).getReader();
+  const parts = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > SHARE_MAX_BYTES) { try { await reader.cancel(); } catch { /* already stopped */ } throw new Error('too long'); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+/* a food you made or saved from Open Food Facts, as it goes into the link: what the numbers need, not the notes, dates or portions */
+function shareFood(f) {
+  const n = {};
+  for (const k of KEYS) { const c = f.n && f.n[k]; if (c !== undefined && c !== null && c !== '') n[k] = c; }
+  const o = { id: f.id, src: f.src === 'off' ? 'off' : 'user', name: f.name, basis: { qty: f.basis.qty, unit: f.basis.unit }, n };
+  if (f.brand) o.brand = f.brand;
+  if (Array.isArray(f.est) && f.est.length) o.est = f.est.filter((k) => k in n);
+  if (f.q && CONF[f.q]) o.q = f.q;
+  if (f.fortified === true) o.fortified = true;
+  if ([1, 2, 3, 4].includes(Number(f.nova))) o.nova = Number(f.nova);
+  if (f.ml === true) o.ml = true;
+  return o;
+}
+/* the days from..to (both included) of the diary as JSON text, with a count of what went in */
+function shareSnapshot(from, to) {
+  const es = S.log.filter((e) => e.d >= from && e.d <= to);   // the order of the diary is kept inside each day, so the viewer lists foods in the same order as the sender
+  const refs = [], refAt = new Map(), foods = [], nova = {}, days = {};
+  let items = 0, skipped = 0;
+  for (const e of es) {
+    const f = getFood(e.f);
+    if (!f || !SHARE_ID.test(e.f) || !Number.isFinite(e.a) || !(e.a > 0)) { skipped++; continue; }   // e.g. a USDA food while usda.json could not be loaded
+    let r = refAt.get(e.f);
+    if (r === undefined) {
+      r = refs.length; refAt.set(e.f, r); refs.push(e.f);
+      if (/^[uo]:/.test(e.f)) foods.push(shareFood(f));
+      else { const v = Number((S.meta.nova || {})[e.f]); if ([1, 2, 3, 4].includes(v)) nova[e.f] = v; }
+    }
+    (days[e.d] = days[e.d] || []).push([e.m, r, timeOf(e), e.a]);
+    items++;
+  }
+  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days });
+  return { json, items, skipped, dayCount: Object.keys(days).length };
+}
+const shareBase = () => location.href.replace(/[?#].*$/, '');
+async function shareLink(from, to) {
+  const snap = shareSnapshot(from, to);
+  const bytes = new TextEncoder().encode(snap.json);
+  let token = null;
+  if (typeof CompressionStream === 'function') { try { token = 'z.' + b64u.enc(await pipeBytes(bytes, new CompressionStream('deflate'))); } catch { token = null; } }
+  if (!token) token = 'j.' + b64u.enc(bytes);   // an old browser: longer, but it still works
+  return { ...snap, url: shareBase() + SHARE_PREFIX + token };
+}
+
+/* the sheet of the Data tab: choose the days, copy or share the link */
+function openShare() {
+  const today = ymd(new Date());
+  let seq = 0, url = '', timer = null;
+  const canShare = typeof navigator.share === 'function';
+  const d = openSheet('Share diary and nutrients', `
+    <p class="small" style="margin:0 0 12px">Makes a link that opens your <b>Diary</b> and <b>Nutrients</b> tabs for the days you choose, for example for your dietitian. Whoever opens it can look but not change anything. No password is needed, and nothing is uploaded: the days are packed into the link itself.</p>
+    <div class="seg" role="group" aria-label="Period">${[7, 14, 30].map((n) => `<button type="button" data-days="${n}" aria-pressed="false">${n} days</button>`).join('')}</div>
+    <div class="row gap" style="margin-top:12px;flex-wrap:nowrap;align-items:flex-end"><label class="f" style="flex:1;min-width:0">From<input type="date" id="sh-from" max="${today}"></label><label class="f" style="flex:1;min-width:0">To<input type="date" id="sh-to" max="${today}"></label></div>
+    <p class="note field-err" id="sh-err" role="alert" hidden></p>
+    <p class="small" id="sh-info" aria-live="polite" style="margin:12px 0 0">Preparing the link…</p>
+    <p class="note" id="sh-long" hidden>This link is long. Some chat apps cut very long messages (Telegram, for example, at 4,096 characters), and then the link does not open. Choose fewer days, or send it by email.</p>
+    <div id="sh-box"></div>
+    <p class="hint" style="margin:12px 0 0">Anyone who gets the link can see these days. A link cannot be taken back once it is sent. It is a copy: entries you add or change later are not in it. Send it only to the person you mean.</p>
+    <div class="sheet-actions col">${canShare ? '<button class="btn primary block" id="sh-send" disabled>Share link</button>' : ''}<button class="btn ${canShare ? '' : 'primary '}block" id="sh-copy" disabled>Copy link</button></div>`);
+  const from = $('#sh-from', d.el), to = $('#sh-to', d.el), err = $('#sh-err', d.el), info = $('#sh-info', d.el), long = $('#sh-long', d.el), box = $('#sh-box', d.el);
+  const copyB = $('#sh-copy', d.el), sendB = $('#sh-send', d.el);
+  const ready = (on) => { copyB.disabled = !on; if (sendB) sendB.disabled = !on; };
+  const say = (msg) => { err.textContent = msg; err.hidden = false; info.textContent = ''; };
+  async function refresh() {
+    const my = ++seq;
+    url = ''; ready(false); box.innerHTML = ''; long.hidden = true; err.hidden = true;
+    $$('[data-days]', d.el).forEach((b) => b.setAttribute('aria-pressed', String(to.value === today && from.value === addDays(today, 1 - Number(b.dataset.days)))));
+    if (!from.value || !to.value) { say('Choose the first and the last day.'); return; }
+    if (from.value > to.value) { say('The first day must not be after the last day.'); return; }
+    if (addDays(from.value, SHARE_MAX_DAYS - 1) < to.value) { say(`Choose at most ${SHARE_MAX_DAYS} days: a longer period makes the link too long.`); return; }
+    info.textContent = 'Preparing the link…';
+    let r;
+    try { r = await shareLink(from.value, to.value); } catch { if (my === seq) say('The link could not be made. Try fewer days.'); return; }
+    if (my !== seq) return;   // the choice changed while the link was being made
+    if (!r.items) { info.textContent = 'There are no diary entries in these days. Choose other days.'; return; }
+    url = r.url;
+    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
+    long.hidden = r.url.length <= SHARE_LINK_LONG;
+    ready(true);
+  }
+  const later = () => { clearTimeout(timer); ready(false); timer = setTimeout(refresh, 200); };
+  d.el.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-days]');
+    if (!b) return;
+    to.value = today; from.value = addDays(today, 1 - Number(b.dataset.days));
+    refresh();
+  });
+  from.addEventListener('change', later); to.addEventListener('change', later);
+  /* The link is made before the tap, because sharing and copying must start inside the tap itself (iOS refuses them after a wait). */
+  copyB.onclick = () => {
+    if (!url) return;
+    const fallback = () => { box.innerHTML = `<p class="note">This browser did not allow copying. The link is in the box below: press and hold in it, choose <b>Select All</b>, then <b>Copy</b>.</p><label class="f">Link<textarea id="sh-link" rows="5" readonly>${esc(url)}</textarea></label>`; };
+    try { navigator.clipboard.writeText(url).then(() => toast('Link copied'), fallback); } catch { fallback(); }
+  };
+  if (sendB) sendB.onclick = () => {
+    if (!url) return;
+    try { navigator.share({ title: 'Nutrilog diary', url }).catch((e) => { if (!e || e.name !== 'AbortError') toast('Sharing did not work. Use Copy link instead.'); }); } catch { toast('Sharing did not work. Use Copy link instead.'); }
+  };
+  to.value = today; from.value = addDays(today, -6);
+  refresh();
+}
+
+/* ---- the other side: opening a link ---- */
+/* the text after #share=, as JSON; or { error } 'bad' (damaged or cut off), 'new' (made by a newer version), 'browser' (cannot unpack it) */
+async function shareParse(token) {
+  const t = String(token).replace(/[^A-Za-z0-9_-]+$/, '');   // a chat app may add a full stop or a bracket behind a link
+  const m = /^([A-Za-z])\.([A-Za-z0-9_-]{8,})$/.exec(t);
+  if (!m || m[2].length > 8e6) return { error: 'bad' };
+  if (m[1] !== 'z' && m[1] !== 'j') return { error: 'new' };
+  try {
+    let bytes = b64u.dec(m[2]);
+    if (m[1] === 'z') {
+      if (typeof DecompressionStream !== 'function') return { error: 'browser' };
+      bytes = await pipeBytes(bytes, new DecompressionStream('deflate'));
+    } else if (bytes.length > SHARE_MAX_BYTES) return { error: 'bad' };
+    return { raw: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) };
+  } catch { return { error: 'bad' }; }
+}
+/* a food that came with the link; null when it is not what a link of ours holds. Only known fields are copied, so nothing else can ride along. */
+function shareFoodCheck(x) {
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  if (!x || typeof x !== 'object' || typeof x.id !== 'string' || !/^[uo]:[A-Za-z0-9_.-]{1,64}$/.test(x.id)) return null;
+  if (typeof x.name !== 'string' || !x.name || x.name.length > 200) return null;
+  const b = x.basis;
+  if (!b || typeof b !== 'object' || !Number.isFinite(b.qty) || !(b.qty > 0) || typeof b.unit !== 'string' || !b.unit || b.unit.length > 30) return null;
+  if (!x.n || typeof x.n !== 'object' || Array.isArray(x.n)) return null;
+  const f = { id: x.id, src: x.src === 'off' ? 'off' : 'user', name: x.name, brand: typeof x.brand === 'string' ? x.brand.slice(0, 120) : '', barcode: '', basis: { qty: b.qty, unit: b.unit }, n: {}, portions: [], note: '', nova: null };
+  for (const k of KEYS) if (own(x.n, k) && parseCell(x.n[k])) f.n[k] = x.n[k];
+  if (Array.isArray(x.est)) f.est = x.est.filter((k) => typeof k === 'string' && own(f.n, k));
+  if (typeof x.q === 'string' && own(CONF, x.q)) f.q = x.q;
+  if (x.fortified === true) f.fortified = true;
+  if ([1, 2, 3, 4].includes(x.nova)) f.nova = x.nova;
+  if (x.ml === true) f.ml = true;
+  return f;
+}
+/* checks everything in the unpacked JSON and builds the diary of the shared copy: { data:{from,to,made,entries,foods,nova} } or { error } */
+function shareCheck(r) {
+  const bad = { error: 'bad' };
+  const day = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && ymd(parseYmd(s)) === s;
+  const plain = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+  if (!plain(r) || r.app !== SHARE_APP || !Number.isInteger(r.v) || r.v < 1) return bad;
+  if (r.v > SHARE_V) return { error: 'new' };
+  if (!day(r.from) || !day(r.to) || r.from > r.to || addDays(r.from, 400) < r.to) return bad;
+  if (!Array.isArray(r.refs) || r.refs.length > 5000 || !r.refs.every((x) => typeof x === 'string' && SHARE_ID.test(x))) return bad;
+  const foods = {};
+  if (!Array.isArray(r.foods) || r.foods.length > 5000) return bad;
+  for (const x of r.foods) { const f = shareFoodCheck(x); if (!f || Object.prototype.hasOwnProperty.call(foods, f.id)) return bad; foods[f.id] = f; }
+  if (!r.refs.every((id) => !/^[uo]:/.test(id) || Object.prototype.hasOwnProperty.call(foods, id))) return bad;
+  const nova = {};
+  if (plain(r.nova)) for (const id of Object.keys(r.nova)) if (SHARE_ID.test(id) && [1, 2, 3, 4].includes(r.nova[id])) nova[id] = r.nova[id];
+  if (!plain(r.days)) return bad;
+  const entries = [];
+  for (const dd of Object.keys(r.days).sort()) {
+    const list = r.days[dd];
+    if (!day(dd) || dd < r.from || dd > r.to || !Array.isArray(list) || list.length > 500) return bad;
+    for (const x of list) {
+      if (!Array.isArray(x) || x.length !== 4) return bad;
+      const [m, ri, tm, a] = x;
+      if (typeof m !== 'string' || !/^m\d{1,2}$/.test(m) || !Number.isInteger(ri) || ri < 0 || ri >= r.refs.length) return bad;
+      if (typeof tm !== 'string' || (tm !== '' && !validHm(tm)) || !Number.isFinite(a) || !(a > 0) || a > 1e6) return bad;
+      if (entries.length >= 20000) return bad;
+      entries.push({ id: 'v' + (entries.length + 1), d: dd, m, f: r.refs[ri], a, tm });   // no t: the order of the link is kept (sorting is stable), and the time stays what the sender saw
+    }
+  }
+  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova } };
+}
+const fmtShort = (s, withYear = true) => parseYmd(s).toLocaleDateString(LOC, withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+/* the note at the top of both tabs of a shared copy */
+function viewNote() {
+  if (!VIEW) return '';
+  const when = VIEW.made ? new Date(VIEW.made).toLocaleString(LOC, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const span = VIEW.from === VIEW.to ? fmtShort(VIEW.from) : `${fmtShort(VIEW.from, VIEW.from.slice(0, 4) !== VIEW.to.slice(0, 4))} – ${fmtShort(VIEW.to)}`;
+  return `<div class="banner view-note" role="note"><b>Shared diary · read-only</b><br>${esc(span)}${when ? ` · made ${esc(when)}` : ''}. A copy for viewing: nothing can be changed or saved here, and entries added later are not in it.</div>`;
+}
+const SHARE_ERRORS = {
+  bad: ['This link cannot be opened', 'The link is damaged or incomplete. Chat apps sometimes cut a long link or add a character to it. Ask the sender to send it again, by email if it is long.'],
+  new: ['This link needs a newer version', 'The link was made with a newer version of Nutrilog than the one this browser has. Reload the page once (on a phone, pull the page down) and open the link again. If it still does not open, ask the sender to share again.'],
+  browser: ['This browser cannot open the link', 'The link is packed in a way that this browser cannot unpack. Open it in a current version of Chrome, Safari or Edge.'],
+};
+function showShareError(kind) {
+  const [title, text] = SHARE_ERRORS[kind] || SHARE_ERRORS.bad;
+  $('#tabbar').innerHTML = '';
+  $('#topbar').innerHTML = '<div class="title"><h1>Nutrilog</h1><p class="sub">Shared diary</p></div>';
+  $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">${esc(title)}</div><p class="muted small" style="margin-top:6px">${esc(text)}</p><button class="btn primary" id="vw-reload" style="margin-top:14px">Reload page</button></div>`;
+  $('#vw-reload').onclick = () => location.reload();
+}
+/* start in viewer mode: unpack the link, load only the food tables it needs, show the days. The storage of this browser is not opened. */
+async function initViewer() {
+  try {
+    const parsed = await shareParse(VIEW.token);
+    if (parsed.error) { showShareError(parsed.error); return; }
+    const refs = parsed.raw && Array.isArray(parsed.raw.refs) ? parsed.raw.refs.filter((x) => typeof x === 'string') : [];
+    await loadCatalog({ usda: refs.some((x) => x.startsWith('usda:')), dm: refs.some((x) => x.startsWith('dm:')) });
+    const res = shareCheck(parsed.raw);
+    if (res.error) { showShareError(res.error); return; }
+    const { data } = res;
+    Object.assign(VIEW, { from: data.from, to: data.to, made: data.made });
+    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova;
+    S.day = data.entries.reduce((m, e) => (e.d > m ? e.d : m), '') || data.to;   // the last day that has entries
+    S.tab = 'log';
+    render();
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+  } catch (err) {
+    $('#view').innerHTML = `<div class="card" style="margin-top:16px"><div class="card-t">The shared diary could not be opened.</div><p class="muted small" style="margin-top:6px">${esc(err && err.message)}</p></div>`;
+  }
+}
+/* opening another link (or leaving the shared copy) in the same tab: start again, so no data of the old page stays */
+window.addEventListener('hashchange', () => { if (VIEW || location.hash.startsWith(SHARE_PREFIX)) location.reload(); });
+
 /* ================= events ================= */
 document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-act]');
   if (!t) return;
   const a = t.dataset.act;
+  if (VIEW) {   // a shared copy: switch between the two tabs and walk through the shared days, nothing else (and nothing is written, not even the remembered tab)
+    if (a === 'tab' && (t.dataset.tab === 'log' || t.dataset.tab === 'nutr')) { S.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }
+    else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
+    return;
+  }
   if (a === 'tab') { S.tab = t.dataset.tab; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); }
   else if (a === 'day') { S.day = addDays(S.day, +t.dataset.n); render(); }
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
@@ -2544,6 +2823,7 @@ document.addEventListener('click', (ev) => {
   }
   else if (a === 'export-entries') exportEntries();
   else if (a === 'export-days') exportDays();
+  else if (a === 'share') openShare();
   else if (a === 'refresh-app') refreshApp();
   else if (a === 'persist') {
     (navigator.storage && navigator.storage.persist ? navigator.storage.persist() : Promise.resolve(false)).then((ok) => { toast(ok ? 'Persistent storage enabled' : 'The browser declined. Install the app to your home screen and back up regularly.'); persistState(); });
@@ -2552,6 +2832,10 @@ document.addEventListener('click', (ev) => {
 /* 'toggle' does not bubble, so listen while it travels down (third argument true) */
 document.addEventListener('toggle', (ev) => { if (ev.target.id === 'novafold') novaOpen = ev.target.open; }, true);
 document.addEventListener('change', (ev) => {
+  if (VIEW) {   // only the date picker of the shared days
+    if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value < VIEW.from ? VIEW.from : ev.target.value > VIEW.to ? VIEW.to : ev.target.value; render(); }
+    return;
+  }
   if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value; render(); }
   if (ev.target.id === 'importfile' && ev.target.files[0]) { importJson(ev.target.files[0]); ev.target.value = ''; }
   if (ev.target.id === 'importfoods' && ev.target.files[0]) { importFoods(ev.target.files[0]); ev.target.value = ''; }
@@ -2585,8 +2869,8 @@ function persistState() {
 }
 
 /* ================= start ================= */
-async function loadCatalog() {
-  const [r, ru, rd] = await Promise.all([fetch('ciqual.json'), fetch('usda.json').catch((e) => e), fetch('dmbio.json').catch((e) => e)]);   // the three files load at the same time
+async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy asks only for the tables its foods come from (usda.json is 0.9 MB, dmbio.json 0.1 MB gzipped)
+  const [r, ru, rd] = await Promise.all([fetch('ciqual.json'), need.usda ? fetch('usda.json').catch((e) => e) : null, need.dm ? fetch('dmbio.json').catch((e) => e) : null]);   // the files load at the same time
   if (!r.ok) throw new Error('ciqual.json could not be loaded (HTTP ' + r.status + ').');
   CAT = await r.json();
   KEYS = CAT.nutrients.map((n) => n.key);
@@ -2600,7 +2884,7 @@ async function loadCatalog() {
   }));
   CIQ_BY_ID = new Map(CIQ.map((f) => [f.id, f]));
   /* USDA is a second source of generic foods. CIQUAL is the base: the app still starts if usda.json cannot be read. */
-  try {
+  if (need.usda) try {
     if (!ru || !ru.ok) throw new Error(ru && ru.status ? 'HTTP ' + ru.status : 'no connection');
     const U = await ru.json();
     if (!Array.isArray(U.keys) || U.keys.join() !== KEYS.join()) throw new Error('its nutrient list differs from ciqual.json');
@@ -2611,7 +2895,7 @@ async function loadCatalog() {
     for (const f of USDA) CIQ_BY_ID.set(f.id, f);
   } catch (err) { USDA = []; USDA_ERR = (err && err.message) || 'unknown error'; }
   /* dmBio (dm.hu products) is also optional: the app still starts without it */
-  try {
+  if (need.dm) try {
     if (!rd || !rd.ok) throw new Error(rd && rd.status ? 'HTTP ' + rd.status : 'no connection');
     const D = await rd.json();
     if (!Array.isArray(D.keys) || D.keys.join() !== KEYS.join()) throw new Error('its nutrient list differs from ciqual.json');
@@ -2625,6 +2909,7 @@ async function loadCatalog() {
 }
 
 async function init() {
+  if (VIEW) { await initViewer(); return; }   // a shared copy: the storage of this browser is not opened, Sync does not start
   try {
     await Promise.all([Store.open(), loadCatalog()]);
     const [log, foods, meta, sy] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync')]);
@@ -2648,7 +2933,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u };
 init();
 
 })();

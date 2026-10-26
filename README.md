@@ -256,6 +256,34 @@ Ez akkor kell, ha egy fájlban **több kész étel** van (például az AI-tól v
 - A becsült értékek (`est`), a megbízhatóság (`confidence`) és a „dúsított” jelzés (`fortified`) bekerül az ételbe, és ugyanúgy látszik, mint a „Paste from AI” után: `~` jel a Nutrients fülön, az „Estimated values: N · confidence …” sor az „Amount” ablakban.
 - A fájl tartalmát az app nem küldi el sehova, és nem tárolja.
 
+## 14. A napló megosztása a dietetikussal („Share diary and nutrients”)
+
+Ezzel egy **linket** csinálsz, amely a kiválasztott napok **Diary** és **Nutrients** fülét mutatja, **csak olvasható** formában. Aki megnyitja (például a dietetikusod), mindent lát úgy, ahogy te: a tételeket, a P / C / F / Fib / Salt sorokat, a piros sót, a `~`, `≥` és `–` jeleket, a NOVA-kártyát és a tápanyag-sorokat. Hozzáadni, átírni vagy törölni nem tud semmit.
+
+**Hogyan működik, és mit kell tudnod róla?** A kiválasztott napok adatai **magában a linkben** vannak (a cím végén a `#share=` utáni hosszú rész). Semmi nem töltődik fel sehova, nincs szerver, és a te döntésed szerint **nincs jelszó** sem. Ebből két dolog következik:
+- **Aki megkapja a linket, látja a napokat.** Csak annak küldd el, akinek szánod.
+- **A linket nem lehet visszavonni, és pillanatfelvétel.** Ha utána új tételt veszel fel vagy átírsz egyet, az nincs benne. Az új állapothoz új linket kell csinálnod.
+
+**Link készítése lépésről lépésre:**
+1. Nyisd meg a **Data** fület, és keresd meg a „**Share diary and nutrients**” kártyát.
+2. Koppints a kártyán a „**Share diary and nutrients**” gombra.
+3. Válaszd ki az időszakot: „**7 days**”, „**14 days**” vagy „**30 days**” (a mai napig számolva), vagy állítsd be a „**From**” és a „**To**” dátumot kézzel (legfeljebb 62 nap).
+4. Az ablak megmondja, hány napról és hány tételről van szó, és milyen hosszú a link. Ha a kiválasztott napokban nincs tétel, azt írja, és nem ad linket.
+5. Koppints a „**Share link**” gombra: megnyílik a telefon megosztó ablaka, ahonnan elküldheted a dietetikusnak (e-mail, üzenet…). Ha a böngésződ nem tud megosztani, csak a „**Copy link**” gomb van: koppints rá, a link a vágólapra kerül („Link copied”), és te illeszted be az üzenetbe.
+6. Ha a böngésző nem engedi a másolást, egy mező jelenik meg a linkkel. Nyomd hosszan a mezőt, válaszd a „**Select All**”, majd a „**Copy**” menüpontot.
+
+**Hosszú link.** Hét nap jellemzően néhány ezer karakter. Ha a link 4000 karakternél hosszabb, az ablak figyelmeztet: néhány csevegőapp levágja a nagyon hosszú üzeneteket (a Telegram például 4096 karakternél), és akkor a link nem nyílik meg. Válassz kevesebb napot, vagy küldd e-mailben.
+
+**Mit lát a dietetikus?**
+- A linket telefonon vagy számítógépen, bármelyik böngészőben megnyithatja. Nem kell appot telepítenie és fiókot csinálnia.
+- Felül egy „**Shared diary · read-only**” megjegyzés áll az időszakkal és a készítés idejével.
+- Csak két fül van: **Diary** és **Nutrients**. A nyilakkal és a naptár gombbal lépked a megosztott napok között, a többi napra nem.
+- Nincs „Log food”, nincs „+” gomb, a tétel megérintésére nem nyílik meg semmi, és a NOVA-csoportokat sem lehet beállítani.
+- Az app **nem ír semmit** az ő böngészőjének tárhelyébe, és ha neki is van saját Nutrilog-naplója ugyanezen a címen, ahhoz **nem nyúl**.
+- Az első megnyitáskor a böngésző letölti az ételtáblákat. Az USDA- és a dmBio-táblát csak akkor, ha a megosztott napokban van ilyen étel.
+
+**Mi van a linkben?** A tételek (nap, étkezés, időpont, mennyiség) és azoknak az ételeknek az értékei, amelyeket te hoztál létre vagy mentettél el az Open Food Facts-ból (a becslésjelölés, a megbízhatóság, a „dúsított” jelzés és a NOVA-csoport is). A megjegyzés (`note`), a vonalkód és az adagok **nem** kerülnek bele. A CIQUAL, USDA és dmBio ételek csak azonosítóval szerepelnek, az értéküket az app a saját táblájából veszi, ezért ha egy tábla később frissül, a régi link már az új értékeket mutathatja.
+
 ## Ha elakadsz
 
 | Mit látsz | Mit csinálj |
@@ -290,6 +318,9 @@ Ez akkor kell, ha egy fájlban **több kész étel** van (például az AI-tól v
 | „This is not a Nutrilog file” az „Import foods (JSON)” gomb alatt | A fájl tetején nincs `"app": "tapnaplo"`. Ellenőrizd, hogy a teljes JSON-t mentetted el, és ne a magyarázó szöveget. |
 | „No food could be imported” az „Import foods (JSON)” gomb alatt | Egyetlen bejegyzés sem érvényes. Az üzenet az első okokat megmutatja (például hiányzó név vagy alap). Kérd az AI-t, hogy javítsa, és csak a JSON-t küldje el. Az azonosítónak `u:`-val kell kezdődnie. |
 | „Could not restore: this file has foods but no diary” | A fájlban csak ételek vannak. A „Restore from file” teljes mentéshez való. Ételek betöltéséhez használd az „Import foods (JSON)” gombot (13. fejezet). |
+| „This link cannot be opened” (a dietetikus látja) | A link sérült vagy csonka: a csevegőapp levághatta, vagy egy extra karaktert tett a végére. Küldd el újra, hosszú linknél e-mailben, vagy válassz kevesebb napot. |
+| „This link needs a newer version” | A link újabb Nutrilog-verzióval készült, mint amit a böngésző mutat. Töltse újra az oldalt egyszer (a „Reload page” gombbal, vagy telefonon húzza le az oldalt), és nyissa meg újra a linket. |
+| „This browser cannot open the link” | Túl régi böngésző. Nyissa meg a linket a Chrome, a Safari vagy az Edge friss verziójában. |
 | Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. Az app megerősítést kér, mielőtt felülírja az adataidat. |
 
 ## Amit érdemes tudnod
