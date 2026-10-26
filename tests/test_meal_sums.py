@@ -5,8 +5,8 @@ Fib fibre, Salt. Same rules as the Nutrients tab: "≥" when an item of the meal
 value is an estimate, "–" when no item has data; missing data is never counted as zero. A meal without entries has no line. A screen reader
 gets the full words (hidden text). The numbers follow edits and other days do not leak in.
 Covers: complete data, partial data (≥), nothing known (–), estimates (~, also ≥~), empty meal, other meals unaffected, other day, edit follows,
-delete follows, the spoken text, no sideways scroll at 390 px in the worst case, contrast in light and dark, version 19, no page errors."""
-import asyncio, os, pathlib, sys
+delete follows, the spoken text, no sideways scroll at 390 px in the worst case, contrast in light and dark, the version number (19 or newer, same as the service worker cache), no page errors."""
+import asyncio, os, pathlib, re, sys
 from playwright.async_api import async_playwright
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_ai_import import CONTRAST_JS
@@ -130,9 +130,10 @@ async def main():
 
         # ---- version ----
         await page.click('[data-tab=data]'); await page.wait_for_timeout(300)
-        check('the Data tab shows version 19', '19 · 26 Oct 2026' in await T("document.body.innerText"))
+        ver = re.search(r'(\d+) · \d+ \w+ 20\d\d', await T("document.body.innerText"))
+        check('the Data tab shows version 19 or newer', bool(ver) and int(ver.group(1)) >= 19, ver and ver.group(0))
         sw = open(pathlib.Path(__file__).resolve().parent.parent / 'sw.js', encoding='utf-8').read()
-        check('the service worker cache is nutrilog-v19', "const CACHE = 'nutrilog-v19'" in sw)
+        check('the service worker cache has the number of the version', bool(ver) and f"const CACHE = 'nutrilog-v{ver.group(1)}'" in sw)
 
         check('no page errors', errs == [], errs[:5])
         await browser.close()

@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '19 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '20 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -1869,35 +1869,109 @@ function aiPrompt() { return AI_PROMPT; }
 
 /* ---- reading the answer: the AI may wrap the JSON in text or a ``` fence, use curly quotes, a trailing comma, numbers as text with a decimal comma ---- */
 const aiStraight = (t) => t.replace(/[“”„‟″]/g, '"');
-function aiBraceEnd(t, start) {   // the index after the } that closes the { at start (quotes respected); -1 when it never closes
-  let depth = 0, inStr = false;
-  for (let i = start; i < t.length; i++) {
-    const c = t[i];
-    if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; }
-    else if (c === '"') inStr = true;
-    else if (c === '{') depth++;
-    else if (c === '}' && --depth === 0) return i + 1;
-  }
-  return -1;
-}
-function aiLoose(s) {
-  try { return JSON.parse(s); } catch { /* try again without the commas before } and ] */ }
-  try { return JSON.parse(s.replace(/,(\s*[}\]])/g, '$1')); } catch { return undefined; }
+/* A forgiving JSON reader: the strict JSON.parse gave up on answers of real AIs. It reads what is plainly meant: a " inside a text that is not escaped
+   (a note with „ékezési só"), a new line inside a text, a comma too many or one missing, a wrong escape such as \', True/False/None. A " ends a text only
+   when what follows fits the place (after a name: a colon; after a value: } or a comma and the next name), otherwise it is a quote inside the text.
+   Everything else must be valid JSON, so a broken answer stays an error. It reads the object that starts at s[start] and stops at its closing }: what comes
+   after it (an extra }, a sentence) is not looked at. Returns { v, end } or { err, at }: what is wrong and where. */
+function aiRead(s, start) {
+  let i = start;
+  const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+  const after = (k) => { while (k < s.length && /\s/.test(s[k])) k++; return k; };
+  const bad = (err) => { throw { err: i >= s.length ? 'The answer ends too early' : err, at: Math.min(i, s.length) }; };
+  const nameAt = (k) => {   // is there a "name": at k?
+    if (s[k] !== '"') return false;
+    for (k++; k < s.length && s[k] !== '"' && s[k] !== '\n'; k++) if (s[k] === '\\') k++;
+    return s[k] === '"' && s[after(k + 1)] === ':';
+  };
+  const text = (as) => {   // as: 'name', 'value' (of a name) or 'item' (of a list)
+    i++;
+    let out = '';
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (c === '\\') {
+        const n = s[++i];
+        if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 1, i + 5))) { out += String.fromCharCode(parseInt(s.slice(i + 1, i + 5), 16)); i += 4; }
+        else if (n !== undefined) out += ({ n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' })[n] || n;   // \" \\ \/ and a wrong escape such as \' stand for the character itself
+      } else if (c === '"') {
+        const k = after(i + 1), d = s[k];
+        const ends = as === 'name' || k >= s.length   // a name never has a " inside, so the first " ends it (and a missing colon is reported where it is)
+          || d === '}' || d === ']' || (d === ',' && (as === 'item' || s[after(k + 1)] === '}' || nameAt(after(k + 1)))) || (as === 'value' && d === '"' && nameAt(k));
+        if (ends) { i++; return out; }
+        out += c;   // a " inside the text
+      } else out += c;
+    }
+    bad('This text never ends');
+  };
+  const value = (as) => {
+    ws();
+    const c = s[i];
+    if (c === '{') return object();
+    if (c === '[') return list();
+    if (c === '"') return text(as);
+    const m = /^(?:-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|true|false|null|True|False|None)/.exec(s.slice(i, i + 40));
+    if (!m) bad('A value was expected here');
+    i += m[0].length;
+    const w = m[0];
+    if (/^[A-Za-z]/.test(w)) return w === 'true' || w === 'True' ? true : w === 'false' || w === 'False' ? false : null;
+    return Number(w);
+  };
+  const object = () => {
+    const o = {};
+    i++;
+    for (;;) {
+      ws();
+      if (s[i] === '}') { i++; return o; }
+      if (s[i] !== '"') bad('A name in quotes was expected here');
+      const k = text('name');
+      ws();
+      if (s[i] !== ':') bad('A colon was expected after the name');
+      i++;
+      Object.defineProperty(o, k, { value: value('value'), enumerable: true, writable: true, configurable: true });
+      ws();
+      if (s[i] === ',') i++;
+      else if (s[i] !== '}' && s[i] !== '"') bad('A comma or } was expected here');   // a comma missing before the next name is let through
+    }
+  };
+  const list = () => {
+    const a = [];
+    i++;
+    for (;;) {
+      ws();
+      if (s[i] === ']') { i++; return a; }
+      a.push(value('item'));
+      ws();
+      if (s[i] === ',') i++;
+      else if (s[i] !== ']') bad('A comma or ] was expected here');
+    }
+  };
+  try { const v = value('value'); return { v, end: i }; }
+  catch (e) { return e && typeof e.at === 'number' ? e : { err: 'The text is nested too deeply', at: i }; }
 }
 /* The shape of a Nutrilog file that holds foods: { "app": "tapnaplo", "foods": { "<id>": { … } } } (the v3 prompt answers like this, and so does a backup). */
 const isFoodsFile = (j) => !!j && typeof j === 'object' && j.app === 'tapnaplo' && !!j.foods && typeof j.foods === 'object' && !Array.isArray(j.foods);
 function aiFindJson(text) {
   const clean = String(text).replace(/[﻿​-‍⁠]/g, '').replace(/ /g, ' ');
+  let fail = null;   // why the answer could not be read: the problem of the outermost { that has the Nutrilog marker, from the pass that got furthest
   for (const t of [clean, aiStraight(clean)]) {   // a curly quote can be a real quote of the JSON, or only a quote inside a text: try both
-    let tries = 0;
+    let tries = 0, first = true;
     for (let s = t.indexOf('{'); s >= 0 && tries < 300; s = t.indexOf('{', s + 1), tries++) {
-      const e = aiBraceEnd(t, s);
-      if (e < 0) continue;
-      const j = aiLoose(t.slice(s, e));
+      const r = aiRead(t, s);
+      if (r.err) {
+        if (first && /nutrilog_import|"tapnaplo"/.test(t.slice(s))) { first = false; if (!fail || r.at > fail.at) fail = { err: r.err, at: r.at, text: t }; }
+        continue;
+      }
+      const j = r.v;
       if (j && typeof j === 'object' && !Array.isArray(j) && ('nutrilog_import' in j || Array.isArray(j.foods) || isFoodsFile(j))) return { json: j, marker: true };
     }
   }
-  return { json: null, marker: /nutrilog_import|"tapnaplo"/.test(clean) };
+  return { json: null, marker: /nutrilog_import|"tapnaplo"/.test(clean), fail };
+}
+/* The sentence for an answer that cannot be read: a missing end is "cut off"; anything else says what is wrong and shows the place. */
+function aiReadError(f) {
+  if (!f || f.err === 'The answer ends too early') return 'The answer has Nutrilog data, but it cannot be read as JSON. Often its end is missing because the answer was cut off: ask the AI to send only the JSON block again.';
+  const near = (a, b) => f.text.slice(a, b).replace(/\s+/g, ' ');
+  return `The answer has Nutrilog data, but it cannot be read as JSON: ${f.err.charAt(0).toLowerCase() + f.err.slice(1)}. The problem is at ⟨here⟩ in “…${near(Math.max(0, f.at - 40), f.at)}⟨here⟩${near(f.at, f.at + 25)}…”. Ask the AI to send only the JSON block again.`;
 }
 function aiNum(x) {   // a number, or text such as "0,5"; NaN when it is neither
   if (typeof x === 'number') return Number.isFinite(x) ? x : NaN;
@@ -2040,7 +2114,7 @@ function parseAiImport(text) {
   const found = aiFindJson(text);
   if (!found.json) {
     out.errors.push(found.marker
-      ? 'The answer has Nutrilog data, but it cannot be read as JSON. Often its end is missing because the answer was cut off: ask the AI to send only the JSON block again.'
+      ? aiReadError(found.fail)
       : 'No JSON found. Paste the whole answer of the AI, including the block that starts with { and has "nutrilog_import" in it.');
     return out;
   }
