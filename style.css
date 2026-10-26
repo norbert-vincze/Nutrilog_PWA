@@ -159,6 +159,12 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 .meal-h { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .meal-h h3 { font-size: 1.2rem; font-weight: 720; letter-spacing: -.01em; flex: 1; }
 .meal-h .mk { font-size: .95rem; color: var(--muted); font-weight: 600; }
+.meal-sum { margin: 0 0 6px; font-size: .84rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ms-row { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.ms { white-space: nowrap; }
+.ms b { color: var(--ink); font-weight: 680; }
+.ms small { font-size: .72rem; margin-left: 1px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .rows { display: grid; }
 .entry, .item {
   width: calc(100% + 16px); margin: 0 -8px; display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: center;

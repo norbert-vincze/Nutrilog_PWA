@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '18 · 25 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '19 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Theme: the person picks Auto (follow the phone), Light or Dark in the Data tab. Saved in localStorage ('nutrilog.theme').
@@ -955,6 +955,23 @@ function render() {
 }
 
 /* ---- Diary ---- */
+/* One line under the header of a meal with its totals in grams: P protein, C carbohydrate, F fat, Fib fibre, Salt. Same rules as the
+   Nutrients tab: "≥" when an item of the meal has no data for it (or the value is a range), so the number is a lower value; "~" when
+   part of it is an estimate; "–" when no item has data. Missing data is never counted as zero. */
+const MEAL_SUM = [['P', 'protein', 'Protein'], ['C', 'carbohydrate', 'Carbohydrate'], ['F', 'fat', 'Fat'], ['Fib', 'fibres', 'Fibre'], ['Salt', 'salt', 'Salt']];
+function mealSumHtml(list, mealName) {
+  const T = totalsFor(list);
+  const vis = [], spoken = [];
+  for (const [ab, key, name] of MEAL_SUM) {
+    const i = IDX[key], cnt = T.cnt[i], lo = T.lo[i], unit = UNITS[i];
+    if (cnt === 0) { vis.push(`<span class="ms"><b>${ab}</b> –</span>`); spoken.push(`${name}: no data`); continue; }
+    const partial = cnt < T.n || T.hi[i] - lo > Math.max(lo * 0.1, 1e-9), est = T.est[i] > 0;
+    vis.push(`<span class="ms"><b>${ab}</b> ${partial ? '≥' : ''}${est ? '~' : ''}${fmt(lo)}<small>${esc(unit)}</small></span>`);
+    spoken.push(`${name}: ${partial ? 'at least ' : est ? 'about ' : ''}${fmt(lo)} ${unit}${partial && est ? ', partly estimated' : ''}`);
+  }
+  return `<div class="meal-sum"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">${esc(mealName)} totals. ${esc(spoken.join('; '))}.</span></div>`;
+}
+
 function viewLog() {
   const es = entriesOf(S.day);
   const T = totalsFor(es);
@@ -989,6 +1006,7 @@ function viewLog() {
     }).join('');
     return `<section class="meal"><div class="meal-h"><h3>${m.name}</h3>${mkn ? `<span class="mk">${fmt(mk)} kcal</span>` : ''}
       <button class="icon-btn sm" data-act="add" data-meal="${m.id}" aria-label="Log food in ${m.name}">${IC.plus}</button></div>
+      ${list.length ? mealSumHtml(list, m.name) : ''}
       <div class="rows">${rows}</div></section>`;
   }).join('');
 
