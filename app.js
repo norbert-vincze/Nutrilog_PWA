@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '23 · 26 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '24 · 28 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -139,8 +139,21 @@ const Store = (() => {
 /* ================= state ================= */
 const MEAL_COUNT = 6;           // how many "Meal N" slots the diary shows
 const MEALS = Array.from({ length: MEAL_COUNT }, (_, i) => ({ id: 'm' + (i + 1), name: 'Meal ' + (i + 1) }));
-/* meta: last = last meal/amount per food, portions = your own portion sizes, nova = NOVA group you chose for CIQUAL and USDA foods (food id -> 1..4) */
-const metaDefaults = () => ({ last: {}, portions: {}, nova: {}, backup: null });
+/* meta: last = last meal/amount per food, portions = your own portion sizes, nova = NOVA group you chose for CIQUAL and USDA foods (food id -> 1..4),
+   water = the water you drank on a day, in whole millilitres ('YYYY-MM-DD' -> 1..WATER_MAX_ML; a day without a key has nothing logged) */
+const metaDefaults = () => ({ last: {}, portions: {}, nova: {}, water: {}, backup: null });
+const WATER_MAX_ML = 20000;   // the most one day (and one amount) can hold: 20 litres
+const isDay = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && ymd(parseYmd(s)) === s;
+/* only real days with a whole number of ml between 1 and the maximum; everything else (a damaged file, a wrong type) is dropped */
+function cleanWater(w) {
+  const out = {};
+  if (!w || typeof w !== 'object' || Array.isArray(w)) return out;
+  for (const d of Object.keys(w)) {
+    const v = Math.round(Number(w[d]));
+    if (isDay(d) && Number.isFinite(v) && v >= 1 && v <= WATER_MAX_ML) out[d] = v;
+  }
+  return out;
+}
 const S = {
   log: [],                      // {id, d, m, f, a, t}
   foods: {},                    // custom and Open Food Facts foods
@@ -515,7 +528,7 @@ async function doSave() {
    entries/YYYY-MM.json, foods/0..7.json, meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
    so the data records and the backup file are not changed by it. The token is never part of the backup. */
 const SY = { cfg: null, rec: {}, shas: {}, last: 0, born: 0, info: '', err: '', offline: false, stop: false, busy: false, again: false, timer: null, progress: '', applied: 0, sent: 0, viewStale: false, ranAt: 0, toasted: false };
-const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|meta)\.json$/;
+const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|meta)\.json$/;
 const SYNC_DELAY = 4000;
 const syncPersist = () => ({ cfg: SY.cfg, rec: SY.rec, shas: SY.shas, last: SY.last, born: SY.born, info: SY.info });
 
@@ -545,6 +558,7 @@ function syncRecords() {
   for (const [id, f] of Object.entries(S.foods)) out.set('f:' + id, { v: f, s: `foods/${hashNum(id) % 8}.json` });
   for (const [id, p] of Object.entries(S.meta.portions || {})) out.set('p:' + id, { v: p, s: 'meta.json' });
   for (const [id, n] of Object.entries(S.meta.nova || {})) out.set('n:' + id, { v: n, s: 'meta.json' });
+  for (const [d, ml] of Object.entries(S.meta.water || {})) out.set('w:' + d, { v: ml, s: `water/${d.slice(0, 4)}.json` });   // one record per day, one file per year
   return out;
 }
 /* the time of a record that existed before it was ever synced: when it was made or last edited, so it never beats a real later change */
@@ -636,9 +650,11 @@ async function mapLimit(list, n, fn) {
 
 /* ---- files <-> records ---- */
 function validRec(k, x) {
-  if (!/^[efpn]:./.test(k)) return false;
-  if (x === null) return true;
+  if (!/^[efpnw]:./.test(k)) return false;
   const id = k.slice(2);
+  if (k[0] === 'w' && !isDay(id)) return false;
+  if (x === null) return true;
+  if (k[0] === 'w') return Number.isInteger(x) && x >= 1 && x <= WATER_MAX_ML;
   if (k[0] === 'e') return typeof x === 'object' && !Array.isArray(x) && x.id === id && typeof x.d === 'string' && typeof x.f === 'string' && Number.isFinite(x.a);
   if (k[0] === 'f') return typeof x === 'object' && !Array.isArray(x) && x.id === id;
   if (k[0] === 'p') return Array.isArray(x);
@@ -662,6 +678,9 @@ function syncApply(k, x) {
   } else if (k[0] === 'p') {
     S.meta.portions = S.meta.portions || {};
     if (x === null) delete S.meta.portions[id]; else S.meta.portions[id] = x;
+  } else if (k[0] === 'w') {
+    S.meta.water = S.meta.water || {};
+    if (x === null) delete S.meta.water[id]; else S.meta.water[id] = x;
   } else {
     S.meta.nova = S.meta.nova || {};
     if (x === null) delete S.meta.nova[id]; else S.meta.nova[id] = x;
@@ -998,6 +1017,107 @@ function entrySumHtml(e) {
   return `<span class="entry-ms"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">Nutrients. ${esc(spoken.join('; '))}.</span></span>`;
 }
 
+/* ---- Water intake (version 24) ---- */
+/* The water you drank on a day: one total per day, no time of day. It is kept in whole ml in S.meta.water['YYYY-MM-DD']; a day without a key has nothing logged
+   (the daily totals CSV leaves it empty, it does not say 0). It is not the nutrient "Water" (the water inside the foods you log): a drink logged as a food does not count here. */
+const WATER_UNIT = { ml: { name: 'mL', per: 1, chips: [100, 200, 250, 330, 500] }, dl: { name: 'dL', per: 100, chips: [1, 2, 3, 5, 10] } };   // per: ml in one unit
+const WATER_QUICK_DL = [1, 2, 3, 5];   // the buttons on the card
+const waterOf = (d) => { const w = S.meta.water; return w && Object.prototype.hasOwnProperty.call(w, d) ? w[d] : 0; };
+const mlText = (ml) => `${ml.toLocaleString(LOC)} mL`;
+const dlText = (ml) => `${(ml / 100).toLocaleString(LOC, { maximumFractionDigits: 2 })} dL`;   // ml is whole, so two decimals are exact
+function setWater(d, ml) {
+  S.meta.water = S.meta.water || {};
+  if (ml > 0) S.meta.water[d] = ml; else delete S.meta.water[d];
+  save();
+}
+function waterHtml() {
+  const ml = waterOf(S.day);
+  if (VIEW && !Object.keys(S.meta.water).length) return '';   // a shared copy without any water: no empty card
+  const side = ml ? dlText(ml) : VIEW ? 'Not logged' : 'Nothing logged yet';
+  return `<div class="card water-card" role="group" aria-label="Water intake">
+      <div class="water-top"><div class="card-t">Water intake</div><div class="muted small">${side}</div></div>
+      <div class="water-num">${ml.toLocaleString(LOC)}<small>mL</small></div>
+      ${VIEW ? '' : `<div class="water-chips">${WATER_QUICK_DL.map((n) => `<button type="button" class="chip-btn" data-act="water-add" data-dl="${n}" aria-label="Add ${n} dL of water">+${n} dL</button>`).join('')}<button type="button" class="chip-btn accent" data-act="water-other" aria-label="Add another amount of water, or correct the total">Other</button></div>`}
+    </div>`;
+}
+function refreshWater() { const el = $('#water'); if (el) el.innerHTML = waterHtml(); }   // only the card is drawn again: the page does not jump
+/* adds ml to a day; the Undo puts the old total back */
+function waterAdd(day, ml) {
+  const prev = waterOf(day), next = prev + ml;
+  if (next > WATER_MAX_ML) { toast(`A day can hold at most ${mlText(WATER_MAX_ML)} of water.`); return false; }
+  setWater(day, next); refreshWater();
+  toast(`Water +${ml % 100 === 0 ? ml / 100 + ' dL' : ml + ' mL'} · total ${mlText(next)}`, () => { setWater(day, prev); refreshWater(); });
+  return true;
+}
+function openWater() {
+  const day = S.day;
+  let unit = 'dl';
+  try { const u = localStorage.getItem('nutrilog.waterUnit'); if (u === 'ml' || u === 'dl') unit = u; } catch { /* private mode: dL */ }
+  const sh = openSheet('Water intake', `
+    <div class="row gap" style="justify-content:space-between;flex-wrap:nowrap"><p class="small muted" style="margin:0;min-width:0">${esc(fmtLong(day))}<br>Total so far: <b id="wtot"></b></p><button type="button" class="chip-btn" id="wclear" style="flex:none;min-height:44px">Clear day</button></div>
+    <div class="seg two" role="group" aria-label="Unit">${Object.entries(WATER_UNIT).map(([u, x]) => `<button type="button" data-u="${u}" aria-pressed="false">${x.name}</button>`).join('')}</div>
+    <label class="f"><span id="wlab"></span><input type="text" inputmode="decimal" enterkeyhint="done" id="wamt" autocomplete="off" value=""></label>
+    <div class="chips water-pick" id="wchips"></div>
+    <p class="hint">1 dL = 100 mL. Only the total of the day is kept, there is no time of day. Use Subtract to correct a mistake.</p>
+    <div class="row gap sheet-actions"><span style="flex:1"></span><button class="btn" id="wsub">Subtract</button><button class="btn primary" id="wadd"></button></div>`);
+  const amt = $('#wamt', sh.el), add = $('#wadd', sh.el), clr = $('#wclear', sh.el);
+  const total = () => waterOf(day);
+  const read = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
+  function paint() {
+    const x = WATER_UNIT[unit], v = read();
+    $('#wtot', sh.el).textContent = total() ? `${mlText(total())} (${dlText(total())})` : 'nothing logged';
+    clr.hidden = !total();
+    $$('[data-u]', sh.el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.u === unit)));
+    $('#wlab', sh.el).textContent = `Amount (${x.name})`;
+    $('#wchips', sh.el).innerHTML = x.chips.map((c) => `<button type="button" class="chip-btn" data-v="${c}">${c} ${x.name}</button>`).join('');
+    add.textContent = 'Add' + (Number.isNaN(v) ? '' : ` ${fmt(v)} ${x.name}`);
+  }
+  const clearErr = () => { $$('.field-err', sh.el).forEach((e) => e.remove()); amt.removeAttribute('aria-invalid'); };
+  /* the amount in whole ml, or an error text */
+  function amount() {
+    const v = read();
+    if (Number.isNaN(v)) return { err: 'Enter an amount greater than 0.' };
+    const ml = Math.round(v * WATER_UNIT[unit].per);
+    if (ml < 1) return { err: 'The smallest amount is 1 mL.' };
+    if (ml > WATER_MAX_ML) return { err: `At most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL) at a time.` };
+    return { ml };
+  }
+  function apply(sign) {
+    const a = amount();
+    if (a.err) { fieldError(amt, a.err); return; }
+    const prev = total(), next = prev + sign * a.ml;
+    if (sign > 0 && next > WATER_MAX_ML) { fieldError(amt, `A day can hold at most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL). You can add ${mlText(WATER_MAX_ML - prev)} more.`); return; }
+    if (sign < 0 && next < 0) { fieldError(amt, prev ? `Only ${mlText(prev)} is logged on this day, so you can subtract at most that.` : 'Nothing is logged on this day, so there is nothing to subtract.'); return; }
+    try { localStorage.setItem('nutrilog.waterUnit', unit); } catch { /* private mode */ }
+    setWater(day, next); sh.close(); refreshWater();
+    toast(`Water ${sign > 0 ? '+' : '−'}${fmt(a.ml / WATER_UNIT[unit].per)} ${WATER_UNIT[unit].name} · total ${mlText(next)}`, () => { setWater(day, prev); refreshWater(); });
+  }
+  amt.value = unit === 'dl' ? '2' : '250';
+  paint();
+  amt.addEventListener('input', () => { clearErr(); paint(); });
+  amt.addEventListener('focus', () => setTimeout(() => { try { amt.setSelectionRange(0, amt.value.length); } catch { /* ignore */ } }, 40));
+  amt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add.click(); } });
+  $('.seg', sh.el).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-u]');
+    if (!b || b.dataset.u === unit) return;
+    const v = read(), old = WATER_UNIT[unit].per;
+    unit = b.dataset.u;
+    amt.value = Number.isNaN(v) ? (unit === 'dl' ? '2' : '250') : String(Number((v * old / WATER_UNIT[unit].per).toFixed(2)));   // the same amount in the other unit
+    clearErr(); paint();
+  });
+  $('#wchips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = b.dataset.v; clearErr(); paint(); } });
+  add.onclick = () => apply(1);
+  $('#wsub', sh.el).onclick = () => apply(-1);
+  clr.onclick = () => {
+    const prev = total();
+    if (!prev) return;
+    setWater(day, 0); sh.close(); refreshWater();
+    toast('Water cleared for this day', () => { setWater(day, prev); refreshWater(); });
+  };
+  if (!TOUCH) setTimeout(() => { amt.focus(); amt.select(); }, 60);
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+}
+
 function viewLog() {
   const es = entriesOf(S.day);
   const T = totalsFor(es);
@@ -1065,7 +1185,7 @@ function viewLog() {
     </div>
     ${usdaWarn}${dmWarn}${viewWarn}
     ${estE ? '<div class="banner">~ means the energy is an estimate, not a label value: calculated from protein, carbohydrate and fat (generic food data, Atwater factors), or marked as an estimate in a food you made.</div>' : ''}
-    ${nova}${empty}${meals}`;
+    ${nova}<div id="water">${waterHtml()}</div>${empty}${meals}`;
 }
 
 /* ---- Nutrients ---- */
@@ -2372,16 +2492,16 @@ function estShare(entries) {
   return c ? Math.round(1000 * sum / c) / 10 : '';
 }
 function exportDays() {
-  const days = [...new Set(S.log.filter((e) => getFood(e.f)).map((e) => e.d))].sort();
+  const days = [...new Set([...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...Object.keys(S.meta.water || {})])].sort();   // a day with only water gets a row too
   const per = days.map((d) => ({ d, T: totalsFor(entriesOf(d)) }));
   const withMax = new Set();
   per.forEach(({ T }) => { for (let i = 0; i < NUT_N; i++) if (T.cnt[i] && T.hi[i] - T.lo[i] > 1e-9) withMax.add(i); });
   const mi = [...withMax].sort((a, b) => a - b);
   const ei = KEYS.map((_, i) => i).filter((i) => per.some(({ T }) => T.est[i] > 0));
-  const head = ['date', 'entries', 'est_share', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est'), ...KEYS.map((_, i) => KEYS[i] + '__n')];
+  const head = ['date', 'entries', 'est_share', 'water_intake_ml', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est'), ...KEYS.map((_, i) => KEYS[i] + '__n')];   // water_intake_ml: the water drunk (Water intake in the Diary), empty when nothing was logged
   const lines = [csvLine(head)];
   for (const { d, T } of per) {
-    lines.push(csvLine([d, T.n, estShare(entriesOf(d)), ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...ei.map((i) => T.est[i]), ...KEYS.map((_, i) => T.cnt[i])]));
+    lines.push(csvLine([d, T.n, estShare(entriesOf(d)), waterOf(d) || '', ...KEYS.map((_, i) => (T.cnt[i] ? num6(T.lo[i]) : '')), ...mi.map((i) => (T.cnt[i] ? num6(T.hi[i]) : '')), ...ei.map((i) => T.est[i]), ...KEYS.map((_, i) => T.cnt[i])]));
   }
   download(`nutrilog-daily-totals-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -2398,7 +2518,7 @@ function importJson(file) {
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
         text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
-          S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {});
+          S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water);
           invalidate(); save(); render(); toast('Restored');
         },
       });
@@ -2615,8 +2735,11 @@ function shareSnapshot(from, to) {
     (days[e.d] = days[e.d] || []).push([e.m, r, timeOf(e), e.a]);
     items++;
   }
-  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days });
-  return { json, items, skipped, dayCount: Object.keys(days).length };
+  const water = {};   // the water intake of the shared days; the key is left out when there is none, so a link without water looks exactly as before
+  for (const [d, ml] of Object.entries(S.meta.water || {})) if (d >= from && d <= to) water[d] = ml;
+  const waterDays = Object.keys(water).length;
+  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days, ...(waterDays ? { water } : {}) });
+  return { json, items, skipped, dayCount: Object.keys(days).length, waterDays };
 }
 const shareBase = () => location.href.replace(/[?#].*$/, '');
 async function shareLink(from, to) {
@@ -2658,9 +2781,9 @@ function openShare() {
     let r;
     try { r = await shareLink(from.value, to.value); } catch { if (my === seq) say('The link could not be made. Try fewer days.'); return; }
     if (my !== seq) return;   // the choice changed while the link was being made
-    if (!r.items) { info.textContent = 'There are no diary entries in these days. Choose other days.'; return; }
+    if (!r.items && !r.waterDays) { info.textContent = 'There are no diary entries in these days. Choose other days.'; return; }
     url = r.url;
-    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
+    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')}${r.waterDays ? ` · water intake on ${plural(r.waterDays, 'day')}` : ''} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
     long.hidden = r.url.length <= SHARE_LINK_LONG;
     ready(true);
   }
@@ -2734,6 +2857,11 @@ function shareCheck(r) {
   if (!r.refs.every((id) => !/^[uo]:/.test(id) || Object.prototype.hasOwnProperty.call(foods, id))) return bad;
   const nova = {};
   if (plain(r.nova)) for (const id of Object.keys(r.nova)) if (SHARE_ID.test(id) && [1, 2, 3, 4].includes(r.nova[id])) nova[id] = r.nova[id];
+  const water = {};   // optional: the water intake of the shared days (whole ml per day); a value that is not a whole number of ml from 1 to the maximum, or a day outside from..to, is left out
+  if (r.water !== undefined) {
+    if (!plain(r.water) || Object.keys(r.water).length > 400) return bad;
+    for (const dd of Object.keys(r.water)) { const v = r.water[dd]; if (day(dd) && dd >= r.from && dd <= r.to && Number.isInteger(v) && v >= 1 && v <= WATER_MAX_ML) water[dd] = v; }
+  }
   if (!plain(r.days)) return bad;
   const entries = [];
   for (const dd of Object.keys(r.days).sort()) {
@@ -2748,7 +2876,7 @@ function shareCheck(r) {
       entries.push({ id: 'v' + (entries.length + 1), d: dd, m, f: r.refs[ri], a, tm });   // no t: the order of the link is kept (sorting is stable), and the time stays what the sender saw
     }
   }
-  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova } };
+  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova, water } };
 }
 const fmtShort = (s, withYear = true) => parseYmd(s).toLocaleDateString(LOC, withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
 /* the note at the top of both tabs of a shared copy */
@@ -2781,8 +2909,8 @@ async function initViewer() {
     if (res.error) { showShareError(res.error); return; }
     const { data } = res;
     Object.assign(VIEW, { from: data.from, to: data.to, made: data.made });
-    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova;
-    S.day = data.entries.reduce((m, e) => (e.d > m ? e.d : m), '') || data.to;   // the last day that has entries
+    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.water = data.water;
+    S.day = [...data.entries.map((e) => e.d), ...Object.keys(data.water)].reduce((m, d) => (d > m ? d : m), '') || data.to;   // the last day that has entries or water
     S.tab = 'log';
     render();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -2808,6 +2936,8 @@ document.addEventListener('click', (ev) => {
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
+  else if (a === 'water-add') waterAdd(S.day, Math.round(Number(t.dataset.dl) * 100));
+  else if (a === 'water-other') openWater();
   else if (a === 'edit-entry') { const e = S.log.find((x) => x.id === t.dataset.id); if (e) openAmount({ food: getFood(e.f), entry: e }); }
   else if (a === 'new-food') openFoodEditor(null);
   else if (a === 'ai-import') openAiImport({});
@@ -2916,6 +3046,7 @@ async function init() {
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
+    S.meta.water = cleanWater(S.meta.water);
     if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
     if (syncStamp()) await Store.set('sync', syncPersist());   // changes made while the app was closed, and the first start with Sync built in
@@ -2933,7 +3064,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML };
 init();
 
 })();
