@@ -94,7 +94,7 @@ async def main():
         await page.wait_for_timeout(100)
         tabs = await T("[...document.querySelectorAll('#tabbar .tab span')].map(s=>s.textContent)")
         acts = await T("[...document.querySelectorAll('.act')].map(a=>a.textContent.trim())")
-        check('11 tabs', tabs == ['Diary', 'Nutrients', 'My foods', 'Data'], tabs)
+        check('11 tabs', tabs == ['Diary', 'Nutrients', 'My foods', 'Health log', 'Data'], tabs)
         check('11 actions', acts == ['Log food', 'Scan', 'Create food'], acts)
         body = await T('document.body.innerText')
         check('10 Diary says Carbohydrate, never Carbs', 'Carbohydrate' in body and 'Carbs' not in body)

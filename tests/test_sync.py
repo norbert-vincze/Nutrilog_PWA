@@ -240,7 +240,7 @@ async def main():
         d = await dl.value
         bk = open(await d.path(), encoding='utf-8').read()
         j = json.loads(bk)
-        check('the backup file has no token and no sync state', 'github_pat' not in bk and 'tapnaplo-sync' not in bk and set(j) == {'app', 'version', 'exported', 'log', 'foods', 'meta'}, sorted(j))
+        check('the backup file has no token and no sync state', 'github_pat' not in bk and 'tapnaplo-sync' not in bk and set(j) == {'app', 'version', 'exported', 'log', 'foods', 'meta', 'health'}, sorted(j))
         check('the backup file still holds the diary', len(j['log']) == 3 and 'u:food1' in j['foods'])
 
         # ================= device B (computer) =================

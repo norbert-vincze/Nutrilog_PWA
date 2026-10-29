@@ -19,6 +19,7 @@
   --warn: #9a5200;
   --warn-soft: #fff0d9;
   --danger: #c4263a;
+  --danger-soft: #fde8eb;
   --ok: #086b4d;
   --ok-soft: #dcf4ea;
   --shadow: 0 10px 40px rgb(0 0 0 / .16);
@@ -51,6 +52,7 @@
   --warn: #ffbf66;
   --warn-soft: #3a2a0c;
   --danger: #ff6b7d;
+  --danger-soft: #3d1219;
   --ok: #55d8a9;
   --ok-soft: #0d3326;
   --shadow: 0 10px 40px rgb(0 0 0 / .6);
@@ -110,12 +112,14 @@ main { padding: 6px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, en
 /* bottom tab bar */
 .tabbar {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(560px, 100%); z-index: 6;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(var(--tabs, 5), minmax(0, 1fr));   /* --tabs is set by app.js: five tabs, or two in a shared copy */
   background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   border-top: 1px solid var(--line); padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
 }
 .tab { background: none; border: 0; padding: 6px 4px; display: grid; justify-items: center; gap: 3px; font-size: .72rem; font-weight: 560; color: var(--muted); min-height: 54px; }
+.tab span { white-space: nowrap; }
 .tab svg { width: 24px; height: 24px; }
+@media (max-width: 359px) { .tab { font-size: .66rem; padding-left: 1px; padding-right: 1px; } }   /* five tabs on a very narrow screen: "Health log" must still fit */
 .tab[aria-current="page"] { color: var(--ink); font-weight: 720; }
 .tab[aria-current="page"] svg { stroke-width: 2.3; }
 
@@ -341,3 +345,24 @@ details.fold details.fold { background: var(--sheet); }
 .water-chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
 .water-chips .chip-btn { min-height: 44px; padding: 8px 2px; white-space: nowrap; }
 .water-pick .chip-btn { min-height: 44px; padding: 8px 16px; }   /* the amount buttons in the Water intake sheet are real touch targets */
+
+/* Health log (version 25) */
+.health-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 12px; }
+.health-bar .act { justify-items: center; }
+.health-count { font-size: .95rem; font-weight: 620; }
+.health-list { background: var(--surface); border-radius: 22px; padding: 4px 6px; }
+.health-row { width: 100%; display: grid; gap: 4px; text-align: left; background: none; border: 0; border-radius: 16px; padding: 12px 10px; min-height: 44px; color: var(--ink); }
+.health-row + .health-row { border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
+.health-row:active { background: var(--surface-2); }
+@media (hover: hover) { .health-row:hover { background: var(--surface-2); } }
+.health-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.health-when { font-weight: 680; font-variant-numeric: tabular-nums; }
+.health-prev { overflow-wrap: anywhere; line-height: 1.4; }
+.label-chip { display: inline-block; flex: none; font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 3px 10px; background: var(--surface-2); color: var(--muted); }   /* Observation: neutral */
+.label-chip.symptom { background: var(--danger-soft); color: var(--danger); }
+.label-chip.event { background: var(--accent-soft); color: var(--accent); }
+.health-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }   /* the whole note, with its line breaks */
+.f-t { font-size: .84rem; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+#hlabels button { font-size: .92rem; padding: 0 2px; }   /* three label buttons must fit at 320 px */
+.health-counter { margin-top: 6px; font-variant-numeric: tabular-nums; }
+.health-counter.over { color: var(--danger); font-weight: 700; }

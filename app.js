@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '24 · 28 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '25 · 29 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -94,6 +94,7 @@ const IC = {
   right: SV('<path d="m9.5 6 6 6-6 6"/>'),
   cal: SV('<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/>'),
   close: SV('<path d="m6 6 12 12M18 6 6 18"/>'),
+  health: SV('<path d="M3 12h4l2.2-6 4 12 2.3-6H21"/>'),
 };
 
 /* ================= storage ================= */
@@ -154,9 +155,62 @@ function cleanWater(w) {
   }
   return out;
 }
+
+/* ---- Health log (version 25): data ---- */
+/* A note: {id, t, d, tm, label, x, e?}. t = when it was made (never changes), d = day (YYYY-MM-DD), tm = time (HH:MM, 24 h), label = symptom | event | observation,
+   x = the text (1..HEALTH_MAX characters, counted as Unicode characters, so an emoji is 1), e = when it was last edited (only on an edited note).
+   The notes are not nutrition data: they are kept apart (S.health, Store key 'health') and never counted in any total. */
+const HEALTH_MAX = 1000;        // characters in one note
+const HEALTH_PREVIEW = 100;     // characters of a note shown in the list
+const HEALTH_PAGE = 100;        // rows shown at once ("Show older notes" adds this many)
+const HEALTH_LABELS = { symptom: 'Symptom', event: 'Event', observation: 'Observation' };
+const HEALTH_T_MAX = 253402300799999;   // 9999-12-31, the last time that has a four-digit year (the Sync file is named after the month of t)
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const charCount = (s) => [...String(s)].length;
+/* the note as it may be kept (only these keys, the text trimmed), or null when it is not valid. A damaged item is never repaired or guessed, it is left out. */
+function cleanNote(n) {
+  if (!n || typeof n !== 'object' || Array.isArray(n)) return null;
+  const id = n.id, d = n.d, tm = n.tm, label = n.label, x = n.x;
+  if (typeof id !== 'string' || !id || id.length > 100) return null;
+  if (!isDay(d) || !validHm(tm)) return null;
+  if (typeof label !== 'string' || !hasOwn(HEALTH_LABELS, label)) return null;
+  if (typeof x !== 'string') return null;
+  const text = x.trim(), len = charCount(text);
+  if (len < 1 || len > HEALTH_MAX) return null;
+  let t = n.t;
+  if (!Number.isFinite(t) || t <= 0 || t > HEALTH_T_MAX) { const p = parseYmd(d); p.setHours(12); t = p.getTime(); }   // no usable creation time: noon of the day
+  const out = { id, t, d, tm, label, x: text };
+  if (Number.isFinite(n.e) && n.e > 0 && n.e <= HEALTH_T_MAX) out.e = n.e;
+  return out;
+}
+/* a list of notes -> { list: the valid ones (each id once), dropped: how many items were left out } */
+function cleanHealth(list) {
+  const out = [], seen = new Set();
+  let dropped = 0;
+  if (!Array.isArray(list)) return { list: out, dropped };
+  for (const n of list) {
+    const c = cleanNote(n);
+    if (!c || seen.has(c.id)) { dropped++; continue; }
+    seen.add(c.id); out.push(c);
+  }
+  return { list: out, dropped };
+}
+/* newest first: day, then time, then the time it was made; the id only makes the order the same on every device */
+const healthCmp = (a, b) => b.d.localeCompare(a.d) || b.tm.localeCompare(a.tm) || b.t - a.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const healthSorted = (list = S.health) => [...list].sort(healthCmp);
+/* the first HEALTH_PREVIEW characters with line breaks and repeated spaces turned into one space; "…" when there is more */
+function healthPreview(x) {
+  const chars = [...String(x).replace(/\s+/g, ' ').trim()];
+  return chars.length > HEALTH_PREVIEW ? chars.slice(0, HEALTH_PREVIEW).join('') + '…' : chars.join('');
+}
+const healthShort = (n) => `${parseYmd(n.d).toLocaleDateString(LOC, { day: 'numeric', month: 'short', year: 'numeric' })}, ${n.tm}`;   // 29 Oct 2026, 16:25
+const healthEdited = (n) => { const e = new Date(n.e); return `${e.toLocaleDateString(LOC, { day: 'numeric', month: 'short', year: 'numeric' })}, ${hm(e)}`; };   // 30 Oct 2026, 09:12
+const healthMonth = (n) => new Date(n.t).toISOString().slice(0, 7);   // the Sync file of a note: the month it was made (UTC, so every device agrees)
+
 const S = {
   log: [],                      // {id, d, m, f, a, t}
   foods: {},                    // custom and Open Food Facts foods
+  health: [],                   // Health log notes (see above)
   meta: metaDefaults(),
   day: ymd(new Date()),
   tab: 'log',
@@ -516,6 +570,7 @@ async function doSave() {
   await Store.set('log', S.log);
   await Store.set('foods', clean(S.foods));
   await Store.set('meta', S.meta);
+  await Store.set('health', S.health);
   if (syncStamp()) { await Store.set('sync', syncPersist()); syncSoon(); }   // note which records changed, so Sync knows what to send
   try { navigator.storage?.persist?.(); } catch { /* not critical */ }
 }
@@ -524,11 +579,11 @@ async function doSave() {
 /* The diary is kept in a private repository of your own. Every record has a time of its last change (u); when two devices
    changed the same record, the later change wins; a deleted record stays behind as a marker (tombstone), so the deletion reaches the other devices too.
    Records: 'e:<entry id>' diary entries, 'f:<food id>' foods you made or saved from Open Food Facts, 'p:<food id>' your own portion sizes,
-   'n:<food id>' NOVA groups you chose for CIQUAL, USDA and dmBio foods. They live in files of the repository:
-   entries/YYYY-MM.json, foods/0..7.json, meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
+   'n:<food id>' NOVA groups you chose for CIQUAL, USDA and dmBio foods, 'w:<YYYY-MM-DD>' the water of a day (whole ml), 'h:<note id>' a Health log note.
+   They live in files of the repository: entries/YYYY-MM.json, foods/0..7.json, water/YYYY.json, health/YYYY-MM.json (month of the time the note was made), meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
    so the data records and the backup file are not changed by it. The token is never part of the backup. */
 const SY = { cfg: null, rec: {}, shas: {}, last: 0, born: 0, info: '', err: '', offline: false, stop: false, busy: false, again: false, timer: null, progress: '', applied: 0, sent: 0, viewStale: false, ranAt: 0, toasted: false };
-const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|meta)\.json$/;
+const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|health\/\d{4}-\d{2}|meta)\.json$/;
 const SYNC_DELAY = 4000;
 const syncPersist = () => ({ cfg: SY.cfg, rec: SY.rec, shas: SY.shas, last: SY.last, born: SY.born, info: SY.info });
 
@@ -559,6 +614,7 @@ function syncRecords() {
   for (const [id, p] of Object.entries(S.meta.portions || {})) out.set('p:' + id, { v: p, s: 'meta.json' });
   for (const [id, n] of Object.entries(S.meta.nova || {})) out.set('n:' + id, { v: n, s: 'meta.json' });
   for (const [d, ml] of Object.entries(S.meta.water || {})) out.set('w:' + d, { v: ml, s: `water/${d.slice(0, 4)}.json` });   // one record per day, one file per year
+  for (const n of S.health) out.set('h:' + n.id, { v: n, s: `health/${healthMonth(n)}.json` });   // Health log: one record per note, one file per month it was made (t never changes, so a note stays in its file when its date is edited)
   return out;
 }
 /* the time of a record that existed before it was ever synced: when it was made or last edited, so it never beats a real later change */
@@ -650,11 +706,12 @@ async function mapLimit(list, n, fn) {
 
 /* ---- files <-> records ---- */
 function validRec(k, x) {
-  if (!/^[efpnw]:./.test(k)) return false;
+  if (!/^[efpnwh]:./.test(k)) return false;
   const id = k.slice(2);
   if (k[0] === 'w' && !isDay(id)) return false;
   if (x === null) return true;
   if (k[0] === 'w') return Number.isInteger(x) && x >= 1 && x <= WATER_MAX_ML;
+  if (k[0] === 'h') { const c = cleanNote(x); return !!c && c.id === id; }   // the same rules as when the notes are loaded
   if (k[0] === 'e') return typeof x === 'object' && !Array.isArray(x) && x.id === id && typeof x.d === 'string' && typeof x.f === 'string' && Number.isFinite(x.a);
   if (k[0] === 'f') return typeof x === 'object' && !Array.isArray(x) && x.id === id;
   if (k[0] === 'p') return Array.isArray(x);
@@ -681,6 +738,9 @@ function syncApply(k, x) {
   } else if (k[0] === 'w') {
     S.meta.water = S.meta.water || {};
     if (x === null) delete S.meta.water[id]; else S.meta.water[id] = x;
+  } else if (k[0] === 'h') {
+    const i = S.health.findIndex((n) => n.id === id), c = x === null ? null : cleanNote(x);
+    if (x === null) { if (i >= 0) S.health.splice(i, 1); } else if (c) { if (i >= 0) replaceObj(S.health[i], c); else S.health.push(c); }   // a note that is open in a sheet is changed in place
   } else {
     S.meta.nova = S.meta.nova || {};
     if (x === null) delete S.meta.nova[id]; else S.meta.nova[id] = x;
@@ -955,10 +1015,11 @@ function toast(msg, undo) {
 }
 
 /* ================= header, tabs, views ================= */
-const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'My foods', IC.foods], ['data', 'Data', IC.data]];
+const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'My foods', IC.foods], ['health', 'Health log', IC.health], ['data', 'Data', IC.data]];
 
-const shownTabs = () => (VIEW ? TABS.filter((t) => t[0] === 'log' || t[0] === 'nutr') : TABS);   // a shared copy has only the Diary and the Nutrients tab
+const shownTabs = () => (VIEW ? TABS.filter((t) => t[0] === 'log' || t[0] === 'nutr') : TABS);   // a shared copy has only the Diary and the Nutrients tab (the Health log is never part of it)
 function renderChrome() {
+  $('#tabbar').style.setProperty('--tabs', String(shownTabs().length));   // the tab bar has as many columns as tabs: five, or two in a shared copy
   $('#tabbar').innerHTML = shownTabs().map(([id, name, ic]) => `<button class="tab" data-act="tab" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}>${ic}<span>${name}</span></button>`).join('');
   const top = $('#topbar');
   if (VIEW) {   // the days of the shared copy only: no Today button, the arrows stop at the first and the last day, the date picker has a min and a max
@@ -978,13 +1039,13 @@ function renderChrome() {
         <label class="icon-btn" title="Pick a date">${IC.cal}<input type="date" id="datepick" value="${S.day}" aria-label="Date"></label>
       </div>`;
   } else {
-    top.innerHTML = `<div class="title"><h1>${S.tab === 'foods' ? 'My foods' : 'Data &amp; backup'}</h1></div>`;
+    top.innerHTML = `<div class="title"><h1>${S.tab === 'foods' ? 'My foods' : S.tab === 'health' ? 'Health log' : 'Data &amp; backup'}</h1></div>`;
   }
 }
 
 function render() {
   renderChrome();
-  $('#view').innerHTML = S.tab === 'log' ? viewLog() : S.tab === 'nutr' ? viewNutr() : S.tab === 'foods' ? viewFoods() : viewData();
+  $('#view').innerHTML = S.tab === 'log' ? viewLog() : S.tab === 'nutr' ? viewNutr() : S.tab === 'foods' ? viewFoods() : S.tab === 'health' ? viewHealth() : viewData();
   if (S.tab === 'data') persistState();
 }
 
@@ -1307,7 +1368,8 @@ function viewData() {
       <button class="btn primary" data-act="share">Share diary and nutrients</button></div>
     <div class="card"><div class="card-t">For analysis</div>
       <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is. In the entries file, est_keys lists the estimated nutrients of that entry (separated by semicolons). In the daily totals file, est_share is the share of the day that is estimated, in percent: for every nutrient with data it takes the estimated part of the day’s amount, then averages those shares.</p>
-      <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button></div></div>
+      <p class="muted small" style="margin:0 0 14px">The Health log file has one row per note, oldest first: date, time, label (symptom, event or observation), note and edited (the day and time of the last edit, empty if the note was never edited). It is a separate file: it is not mixed into the food tables, and the date column links it to them.</p>
+      <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button><button class="btn" data-act="export-health">Health log (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
       <p class="small" id="persist-state" style="margin:0 0 14px">Checking…</p>
@@ -1323,6 +1385,149 @@ function viewData() {
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
       <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}</p></div>
   </div>`;
+}
+
+/* ================= Health log (version 25) ================= */
+/* A journal of short notes about your health, kept next to the food diary but apart from it: it is not counted in any total. Each note has a day and a time, one label
+   (Symptom, Event or Observation) and a text of at most HEALTH_MAX characters. The list is newest first and shows the first HEALTH_PREVIEW characters of each note;
+   a tap opens the whole note. Notes can be edited and deleted (with Undo). An unsaved new note is kept as a draft on this device (localStorage), nothing else is. */
+const HEALTH_DRAFT_KEY = 'nutrilog.healthDraft';
+let healthShown = HEALTH_PAGE;   // how many rows the list shows; "Show older notes" adds HEALTH_PAGE
+const labelChip = (label) => `<span class="label-chip ${esc(label)}">${esc(HEALTH_LABELS[label])}</span>`;
+function healthRowHtml(n) {
+  return `<button type="button" class="health-row" data-act="health-open" data-id="${esc(n.id)}">
+      <span class="health-top"><span class="health-when">${esc(healthShort(n))}</span>${labelChip(n.label)}</span>
+      <span class="health-prev">${esc(healthPreview(n.x))}</span></button>`;
+}
+function healthBodyHtml() {
+  const list = healthSorted();
+  if (!list.length) return `<div class="card"><div class="card-t">No notes yet. Add your first note.</div>
+      <p class="muted small" style="margin-top:6px">Write down what you notice about your health: a <b>Symptom</b>, an <b>Event</b> (for example a new supplement) or an <b>Observation</b>. Notes are kept apart from the food diary and are not counted in any nutrient total.</p></div>`;
+  const rows = list.slice(0, healthShown).map(healthRowHtml).join('');
+  const more = list.length > healthShown ? `<button type="button" class="btn block" data-act="health-more" style="margin-top:12px">Show older notes</button>` : '';
+  return `<div class="health-list">${rows}</div>${more}`;
+}
+function viewHealth() {
+  const n = S.health.length;
+  return `<div class="health-bar"><button type="button" class="act primary" data-act="health-add"><span class="act-c">${IC.plus}</span>Add note</button>
+      <div class="health-count muted" aria-live="polite">${n ? plural(n, 'note') : ''}</div></div>
+    <div id="health-body">${healthBodyHtml()}</div>`;
+}
+function refreshHealthList() { const el = $('#health-body'); if (el) el.innerHTML = healthBodyHtml(); }
+
+function readHealthDraft() {
+  try {
+    const j = JSON.parse(localStorage.getItem(HEALTH_DRAFT_KEY) || 'null');
+    if (!j || typeof j !== 'object' || Array.isArray(j) || typeof j.x !== 'string' || !j.x.trim()) return null;
+    return { x: j.x, label: typeof j.label === 'string' && hasOwn(HEALTH_LABELS, j.label) ? j.label : '' };
+  } catch { return null; }
+}
+function writeHealthDraft(label, x) {   // no text: no draft. A blocked or full localStorage is not an error, there is just no draft.
+  try { if (x.trim()) localStorage.setItem(HEALTH_DRAFT_KEY, JSON.stringify({ label, x })); else localStorage.removeItem(HEALTH_DRAFT_KEY); } catch { /* private mode */ }
+}
+
+/* the whole note: tap a row in the list */
+function openHealthNote(id) {
+  const n = S.health.find((x) => x.id === id);
+  if (!n) return;
+  const sh = openSheet(`${fmtLong(n.d)}, ${n.tm}`, `
+    <div>${labelChip(n.label)}</div>
+    <div class="health-text">${esc(n.x)}</div>
+    ${n.e ? `<p class="hint">Edited ${esc(healthEdited(n))}</p>` : ''}
+    <div class="row gap sheet-actions"><button class="btn danger" id="hdel">Delete</button><span style="flex:1"></span><button class="btn primary" id="hedit">Edit</button></div>`);
+  const find = () => S.health.findIndex((x) => x.id === id);
+  $('#hedit', sh.el).onclick = () => { const i = find(); sh.close(); if (i >= 0) openHealthForm(S.health[i]); else toast('This note was deleted on another device.'); };
+  $('#hdel', sh.el).onclick = () => {
+    const i = find();
+    sh.close();
+    if (i < 0) return;
+    const copy = { ...S.health[i] };
+    S.health.splice(i, 1); save(); render();
+    toast('Note deleted', () => { if (!S.health.some((x) => x.id === copy.id)) { S.health.push(copy); save(); render(); } });
+  };
+}
+
+/* Add note (note = null) and Edit note */
+function openHealthForm(note) {
+  const isNew = !note, now = new Date();
+  const draft = isNew ? readHealthDraft() : null;
+  let label = note ? note.label : draft ? draft.label : '';   // no label is chosen for a new note: a forgotten default would put a wrong label on it
+  const sh = openSheet(isNew ? 'Add note' : 'Edit note', `
+    ${draft ? '<div class="banner row" id="hdraft" style="justify-content:space-between;margin-top:0"><span>Draft restored</span><button type="button" class="chip-btn" id="hdisc">Discard draft</button></div>' : ''}
+    <div role="group" aria-labelledby="hl-t"><div class="f-t" id="hl-t">Label</div>
+      <div class="seg" id="hlabels">${Object.entries(HEALTH_LABELS).map(([k, v]) => `<button type="button" data-l="${k}" aria-pressed="false">${v}</button>`).join('')}</div></div>
+    <p class="note field-err" id="hlaberr" role="alert" hidden>Choose a label.</p>
+    <p class="hint" style="margin-top:8px"><b>Symptom</b>: how you feel. <b>Event</b>: something that happened, such as a new supplement. <b>Observation</b>: something you noticed.</p>
+    <label class="f">Note<textarea id="hx" rows="6" autocomplete="off" aria-describedby="hcount">${esc(note ? note.x : draft ? draft.x : '')}</textarea></label>
+    <div class="hint health-counter" id="hcount"></div>
+    <p class="note field-err" id="hxerr" role="alert" hidden></p>
+    <div class="grid2">
+      <label class="f">Date<input type="date" id="hd" value="${note ? note.d : ymd(now)}" max="${ymd(now)}"></label>
+      <label class="f">Time (24 h)<input type="text" id="htm" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" placeholder="HH:MM" value="${note ? note.tm : hm(now)}"></label>
+    </div>
+    <p class="note field-err" id="hderr" role="alert" hidden></p>
+    <p class="note field-err" id="htmerr" role="alert" hidden>Enter a time between 00:00 and 23:59.</p>
+    <div class="row gap sheet-actions"><button class="btn" id="hcancel">Cancel</button><span style="flex:1"></span><button class="btn primary" id="hsave">${isNew ? 'Save note' : 'Save changes'}</button></div>`);
+  const ta = $('#hx', sh.el), cnt = $('#hcount', sh.el), hd = $('#hd', sh.el), tm = $('#htm', sh.el);
+  const laberr = $('#hlaberr', sh.el), xerr = $('#hxerr', sh.el), derr = $('#hderr', sh.el), tmerr = $('#htmerr', sh.el);
+  const showErr = (p, input, msg) => { if (msg) p.textContent = msg; p.hidden = false; if (input) input.setAttribute('aria-invalid', 'true'); };
+  const clearErr = (p, input) => { p.hidden = true; if (input) input.removeAttribute('aria-invalid'); };
+  function paintLabels() { $$('#hlabels [data-l]', sh.el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.l === label))); }
+  function paintCount() {
+    const n = charCount(ta.value), over = n - HEALTH_MAX;
+    cnt.textContent = over > 0 ? `${n} / ${HEALTH_MAX} · ${plural(over, 'character')} too many` : `${n} / ${HEALTH_MAX}`;
+    cnt.classList.toggle('over', over > 0);
+  }
+  paintLabels(); paintCount();
+  $('#hlabels', sh.el).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-l]');
+    if (!b) return;
+    label = b.dataset.l; paintLabels(); laberr.hidden = true;
+    if (isNew) writeHealthDraft(label, ta.value);
+  });
+  ta.addEventListener('input', () => { paintCount(); clearErr(xerr, ta); if (isNew) writeHealthDraft(label, ta.value); });
+  hd.addEventListener('input', () => clearErr(derr, hd));
+  hd.addEventListener('change', () => clearErr(derr, hd));
+  tm.addEventListener('input', () => { tm.value = shapeHm(tm.value); clearErr(tmerr, tm); });
+  tm.addEventListener('blur', () => { tm.value = normHm(tm.value); });
+  tm.addEventListener('focus', () => setTimeout(() => { try { tm.setSelectionRange(0, tm.value.length); } catch { /* ignore */ } }, 40));
+  tm.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#hsave', sh.el).click(); } });   // in the note field Enter is a new line
+  const disc = $('#hdisc', sh.el);
+  if (disc) disc.onclick = () => {
+    writeHealthDraft('', '');
+    label = ''; ta.value = ''; paintLabels(); paintCount(); clearErr(xerr, ta);
+    $('#hdraft', sh.el).remove();
+    toast('Draft discarded');
+  };
+  $('#hcancel', sh.el).onclick = () => sh.close();   // an unsaved new note stays as a draft
+  $('#hsave', sh.el).onclick = () => {
+    const raw = ta.value, text = raw.trim(), len = charCount(raw), tmv = normHm(tm.value), dv = hd.value;
+    let bad = null;
+    const fail = (el) => { if (!bad) bad = el; };
+    if (!label) { showErr(laberr, null); fail(laberr); } else laberr.hidden = true;
+    if (!text) { showErr(xerr, ta, 'Write a note.'); fail(xerr); }
+    else if (len > HEALTH_MAX) { showErr(xerr, ta, `The note can be ${HEALTH_MAX.toLocaleString(LOC)} characters at most. It is ${len.toLocaleString(LOC)} characters now.`); fail(xerr); }
+    else clearErr(xerr, ta);
+    if (!isDay(dv)) { showErr(derr, hd, 'Choose a date.'); fail(derr); }
+    else if (dv > ymd(new Date())) { showErr(derr, hd, 'The date cannot be in the future.'); fail(derr); }
+    else clearErr(derr, hd);
+    if (!validHm(tmv)) { showErr(tmerr, tm); fail(tmerr); } else clearErr(tmerr, tm);   // no focus() on a field here: on iOS it is only allowed inside the tap, and the message sits next to the field
+    if (bad) { bad.scrollIntoView({ block: 'center' }); return; }
+    if (isNew) {
+      S.health.push({ id: uid(), t: Date.now(), d: dv, tm: tmv, label, x: text });
+      writeHealthDraft('', '');
+      save(); sh.close(); render(); toast('Note added');
+      return;
+    }
+    if (!S.health.includes(note)) { sh.close(); toast('This note was deleted on another device.'); return; }
+    if (note.d === dv && note.tm === tmv && note.label === label && note.x === text) { sh.close(); return; }   // nothing changed: it does not count as an edit
+    const before = { ...note };
+    Object.assign(note, { d: dv, tm: tmv, label, x: text, e: Date.now() });
+    save(); sh.close(); render();
+    toast('Note updated', () => { const i = S.health.findIndex((x) => x.id === before.id); if (i >= 0) { replaceObj(S.health[i], before); save(); render(); } });
+  };
+  if (!TOUCH) setTimeout(() => { ta.focus(); const e = ta.value.length; try { ta.setSelectionRange(e, e); } catch { /* ignore */ } }, 60);
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
 }
 
 /* ================= food picker ================= */
@@ -2447,7 +2652,7 @@ const num6 = (v) => (Number.isFinite(v) ? prec(v) : '');
 const BOM = '﻿';
 
 function exportJson() {
-  const clean = JSON.parse(JSON.stringify({ app: 'tapnaplo', version: 1, exported: new Date().toISOString(), log: S.log, foods: S.foods, meta: S.meta }, (k, v) => (k[0] === '_' ? undefined : v)));
+  const clean = JSON.parse(JSON.stringify({ app: 'tapnaplo', version: 1, exported: new Date().toISOString(), log: S.log, foods: S.foods, meta: S.meta, health: S.health }, (k, v) => (k[0] === '_' ? undefined : v)));   // health: the Health log notes (version 25)
   S.meta.backup = Date.now(); save();
   download(`nutrilog-backup-${ymd(new Date())}.json`, JSON.stringify(clean), 'application/json');
   toast('Backup downloaded'); if (S.tab === 'data') render();
@@ -2491,6 +2696,13 @@ function estShare(entries) {
   for (const i of TRACKED) if (tot[i] > 0) { sum += est[i] / tot[i]; c++; }
   return c ? Math.round(1000 * sum / c) / 10 : '';
 }
+/* Health log as a table for analysis: oldest note first. label is the stable word (symptom, event, observation); edited is the day and time of the last edit, empty when the note was never edited. */
+function exportHealth() {
+  const rows = [...S.health].sort((a, b) => a.d.localeCompare(b.d) || a.tm.localeCompare(b.tm) || a.t - b.t);
+  const lines = [csvLine(['date', 'time', 'label', 'note', 'edited'])];
+  for (const n of rows) lines.push(csvLine([n.d, n.tm, n.label, n.x, n.e ? `${ymd(new Date(n.e))} ${hm(new Date(n.e))}` : '']));
+  download(`nutrilog-health-log-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
+}
 function exportDays() {
   const days = [...new Set([...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...Object.keys(S.meta.water || {})])].sort();   // a day with only water gets a row too
   const per = days.map((d) => ({ d, T: totalsFor(entriesOf(d)) }));
@@ -2514,12 +2726,20 @@ function importJson(file) {
       if (j.app !== 'tapnaplo' || !Array.isArray(j.log) || typeof j.foods !== 'object') throw new Error('this is not a Nutrilog backup file.');
       Object.values(j.foods).forEach(normConfidence);
       const nE = j.log.length, nF = Object.keys(j.foods).length;
+      /* Health log (version 25): a file that has a "health" part (even an empty one) replaces the notes; a file made before version 25 has none and leaves the notes as they are */
+      const hasH = hasOwn(j, 'health');
+      if (hasH && !Array.isArray(j.health)) throw new Error('the Health log part of this file is not a list of notes.');
+      const hc = hasH ? cleanHealth(j.health) : null;
+      const counts = `${nE === 1 ? '1 entry' : nE + ' entries'}${hc ? ',' : ' and'} ${nF === 1 ? '1 food' : nF + ' foods'}${hc ? ` and ${plural(hc.list.length, 'Health log note')}` : ''}`;
+      const healthText = hc ? (hc.dropped ? ` ${plural(hc.dropped, 'note')} in the file ${hc.dropped === 1 ? 'is' : 'are'} not valid and will be skipped.` : '')
+        : S.health.length ? (S.health.length === 1 ? ' Your Health log note is not in this file, so it stays as it is.' : ` Your ${S.health.length} Health log notes are not in this file, so they stay as they are.`) : '';
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
-        text: `This replaces everything in the app with the backup: ${nE === 1 ? '1 entry' : nE + ' entries'} and ${nF === 1 ? '1 food' : nF + ' foods'}. Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
+        text: `This replaces everything in the app with the backup: ${counts}.${healthText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
           S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water);
-          invalidate(); save(); render(); toast('Restored');
+          if (hc) S.health = hc.list;
+          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : ''));
         },
       });
     } catch (err) { toast('Could not restore: ' + err.message); }
@@ -2765,6 +2985,7 @@ function openShare() {
     <p class="note" id="sh-long" hidden>This link is long. Some chat apps cut very long messages (Telegram, for example, at 4,096 characters), and then the link does not open. Choose fewer days, or send it by email.</p>
     <div id="sh-box"></div>
     <p class="hint" style="margin:12px 0 0">Anyone who gets the link can see these days. A link cannot be taken back once it is sent. It is a copy: entries you add or change later are not in it. Send it only to the person you mean.</p>
+    <p class="hint" style="margin:8px 0 0">Health log notes are not included in the link.</p>
     <div class="sheet-actions col">${canShare ? '<button class="btn primary block" id="sh-send" disabled>Share link</button>' : ''}<button class="btn ${canShare ? '' : 'primary '}block" id="sh-copy" disabled>Copy link</button></div>`);
   const from = $('#sh-from', d.el), to = $('#sh-to', d.el), err = $('#sh-err', d.el), info = $('#sh-info', d.el), long = $('#sh-long', d.el), box = $('#sh-box', d.el);
   const copyB = $('#sh-copy', d.el), sendB = $('#sh-send', d.el);
@@ -2931,13 +3152,16 @@ document.addEventListener('click', (ev) => {
     else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
     return;
   }
-  if (a === 'tab') { S.tab = t.dataset.tab; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); }
+  if (a === 'tab') { S.tab = t.dataset.tab; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); }
   else if (a === 'day') { S.day = addDays(S.day, +t.dataset.n); render(); }
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
   else if (a === 'water-add') waterAdd(S.day, Math.round(Number(t.dataset.dl) * 100));
   else if (a === 'water-other') openWater();
+  else if (a === 'health-add') openHealthForm(null);
+  else if (a === 'health-open') openHealthNote(t.dataset.id);
+  else if (a === 'health-more') { healthShown += HEALTH_PAGE; refreshHealthList(); }
   else if (a === 'edit-entry') { const e = S.log.find((x) => x.id === t.dataset.id); if (e) openAmount({ food: getFood(e.f), entry: e }); }
   else if (a === 'new-food') openFoodEditor(null);
   else if (a === 'ai-import') openAiImport({});
@@ -2953,6 +3177,7 @@ document.addEventListener('click', (ev) => {
   }
   else if (a === 'export-entries') exportEntries();
   else if (a === 'export-days') exportDays();
+  else if (a === 'export-health') exportHealth();
   else if (a === 'share') openShare();
   else if (a === 'refresh-app') refreshApp();
   else if (a === 'persist') {
@@ -3042,15 +3267,18 @@ async function init() {
   if (VIEW) { await initViewer(); return; }   // a shared copy: the storage of this browser is not opened, Sync does not start
   try {
     await Promise.all([Store.open(), loadCatalog()]);
-    const [log, foods, meta, sy] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync')]);
+    const [log, foods, meta, sy, health] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
     S.meta.water = cleanWater(S.meta.water);
+    const hc = cleanHealth(health);   // old saves have no notes; a damaged item is left out and said so below
+    S.health = hc.list;
     if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
     if (syncStamp()) await Store.set('sync', syncPersist());   // changes made while the app was closed, and the first start with Sync built in
     render();
+    if (hc.dropped) toast(`${plural(hc.dropped, 'Health log note')} could not be read and ${hc.dropped === 1 ? 'was' : 'were'} skipped.`);
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
     syncStart();
   } catch (err) {
@@ -3064,7 +3292,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec };
 init();
 
 })();
