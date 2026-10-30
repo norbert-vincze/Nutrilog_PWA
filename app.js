@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '25 · 29 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '26 · 30 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -141,8 +141,9 @@ const Store = (() => {
 const MEAL_COUNT = 6;           // how many "Meal N" slots the diary shows
 const MEALS = Array.from({ length: MEAL_COUNT }, (_, i) => ({ id: 'm' + (i + 1), name: 'Meal ' + (i + 1) }));
 /* meta: last = last meal/amount per food, portions = your own portion sizes, nova = NOVA group you chose for CIQUAL and USDA foods (food id -> 1..4),
-   water = the water you drank on a day, in whole millilitres ('YYYY-MM-DD' -> 1..WATER_MAX_ML; a day without a key has nothing logged) */
-const metaDefaults = () => ({ last: {}, portions: {}, nova: {}, water: {}, backup: null });
+   water = the water you drank on a day, in whole millilitres ('YYYY-MM-DD' -> 1..WATER_MAX_ML; a day without a key has nothing logged),
+   ref = the reference intake profile (see cleanRef), null when none is set */
+const metaDefaults = () => ({ last: {}, portions: {}, nova: {}, water: {}, ref: null, backup: null });
 const WATER_MAX_ML = 20000;   // the most one day (and one amount) can hold: 20 litres
 const isDay = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && ymd(parseYmd(s)) === s;
 /* only real days with a whole number of ml between 1 and the maximum; everything else (a damaged file, a wrong type) is dropped */
@@ -583,7 +584,7 @@ async function doSave() {
    They live in files of the repository: entries/YYYY-MM.json, foods/0..7.json, water/YYYY.json, health/YYYY-MM.json (month of the time the note was made), meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
    so the data records and the backup file are not changed by it. The token is never part of the backup. */
 const SY = { cfg: null, rec: {}, shas: {}, last: 0, born: 0, info: '', err: '', offline: false, stop: false, busy: false, again: false, timer: null, progress: '', applied: 0, sent: 0, viewStale: false, ranAt: 0, toasted: false };
-const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|health\/\d{4}-\d{2}|meta)\.json$/;
+const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|health\/\d{4}-\d{2}|ref\/profile|meta)\.json$/;
 const SYNC_DELAY = 4000;
 const syncPersist = () => ({ cfg: SY.cfg, rec: SY.rec, shas: SY.shas, last: SY.last, born: SY.born, info: SY.info });
 
@@ -615,6 +616,7 @@ function syncRecords() {
   for (const [id, n] of Object.entries(S.meta.nova || {})) out.set('n:' + id, { v: n, s: 'meta.json' });
   for (const [d, ml] of Object.entries(S.meta.water || {})) out.set('w:' + d, { v: ml, s: `water/${d.slice(0, 4)}.json` });   // one record per day, one file per year
   for (const n of S.health) out.set('h:' + n.id, { v: n, s: `health/${healthMonth(n)}.json` });   // Health log: one record per note, one file per month it was made (t never changes, so a note stays in its file when its date is edited)
+  if (S.meta.ref) out.set('r:profile', { v: S.meta.ref, s: 'ref/profile.json' });   // the reference intake profile: one record, its own folder (an older app version ignores the folder)
   return out;
 }
 /* the time of a record that existed before it was ever synced: when it was made or last edited, so it never beats a real later change */
@@ -706,10 +708,12 @@ async function mapLimit(list, n, fn) {
 
 /* ---- files <-> records ---- */
 function validRec(k, x) {
-  if (!/^[efpnwh]:./.test(k)) return false;
+  if (!/^[efpnwhr]:./.test(k)) return false;
   const id = k.slice(2);
   if (k[0] === 'w' && !isDay(id)) return false;
+  if (k[0] === 'r' && k !== 'r:profile') return false;   // the profile is the only 'r' record
   if (x === null) return true;
+  if (k[0] === 'r') return cleanRef(x) !== null;          // a damaged profile is refused, not repaired
   if (k[0] === 'w') return Number.isInteger(x) && x >= 1 && x <= WATER_MAX_ML;
   if (k[0] === 'h') { const c = cleanNote(x); return !!c && c.id === id; }   // the same rules as when the notes are loaded
   if (k[0] === 'e') return typeof x === 'object' && !Array.isArray(x) && x.id === id && typeof x.d === 'string' && typeof x.f === 'string' && Number.isFinite(x.a);
@@ -741,6 +745,8 @@ function syncApply(k, x) {
   } else if (k[0] === 'h') {
     const i = S.health.findIndex((n) => n.id === id), c = x === null ? null : cleanNote(x);
     if (x === null) { if (i >= 0) S.health.splice(i, 1); } else if (c) { if (i >= 0) replaceObj(S.health[i], c); else S.health.push(c); }   // a note that is open in a sheet is changed in place
+  } else if (k[0] === 'r') {
+    S.meta.ref = x === null ? null : cleanRef(x);
   } else {
     S.meta.nova = S.meta.nova || {};
     if (x === null) delete S.meta.nova[id]; else S.meta.nova[id] = x;
@@ -1249,18 +1255,250 @@ function viewLog() {
     ${nova}<div id="water">${waterHtml()}</div>${empty}${meals}`;
 }
 
+/* ================= Reference intake (version 26) ================= */
+/* EFSA Dietary Reference Values for adults (18 and older), shown next to the nutrient totals of the day.
+   PRI = Population Reference Intake (covers the needs of about 97.5% of healthy adults), AI = Adequate Intake (EFSA could not set a PRI: observed intakes or a health marker),
+   SAI = safe and adequate intake (sodium and chloride, EFSA 2019). EFSA has no "RDA"; the PRI is the closest match.
+   Source: EFSA, Dietary Reference Values for nutrients: Summary report (EFSA supporting publication 2017:e15121) and the table summary, version 4 (September 2017);
+   sodium and chloride: the EFSA opinions of 2019. Which value is a PRI and which an AI was read from the typeface of the EFSA tables (bold = PRI).
+   The profile (S.meta.ref) holds four choices and nothing else (no age, no birth date): { sex: m|f|p|n, age: '18'|'25', meno: pre|post (women only), zinc: phytate 300|600|900|1200 mg }.
+   Principles: the percent follows the rules of the Nutrients tab: "≥" when an item has no data, "~" when an estimate is in it, a range for "<x" values, and no bar and no 0% when
+   there is no data. Nothing is guessed (no tryptophan from protein, no energy from nothing). No colour judges the percent: a PRI is not an upper limit. */
+const REF_SEXES = ['m', 'f', 'p', 'n'];
+const REF_SEX_NAME = { m: 'Male', f: 'Female', p: 'Pregnant', n: 'Nursing' };
+const REF_WHO = { m: 'man', f: 'woman', p: 'pregnant woman', n: 'nursing woman' };
+const REF_ZINC = [300, 600, 900, 1200];   // mg of phytate a day; 600 is the default
+const KCAL_PER_MJ = 238.83;
+const EPA_KEY = 'fa_20_5_5c_8c_11c_14c_17c_n_3_epa', DHA_KEY = 'fa_22_6_4c_7c_10c_13c_16c_19c_n_3_dha';
+/* a damaged or unknown profile is no profile: it is not repaired and nothing is guessed. Returns a new object with the known keys only, or null. */
+function cleanRef(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  if (!REF_SEXES.includes(r.sex) || (r.age !== '18' && r.age !== '25') || !REF_ZINC.includes(r.zinc)) return null;
+  if (r.sex === 'f') return r.meno === 'pre' || r.meno === 'post' ? { sex: 'f', age: r.age, meno: r.meno, zinc: r.zinc } : null;
+  return { sex: r.sex, age: r.age, zinc: r.zinc };   // "meno" only exists for women; here it is left out
+}
+const refSame = (a, b) => canon(a) === canon(b);
+const REF_ZINC_PRI = { m: [9.4, 11.7, 14.0, 16.3], f: [7.5, 9.3, 11.0, 12.7], p: [9.1, 10.9, 12.6, 14.3], n: [10.4, 12.2, 13.9, 15.6] };   // by phytate level (REF_ZINC)
+const bySex = (m, f, p = f, n = f) => (pr) => ({ m, f, p, n })[pr.sex];
+const SAI_NOTE = 'This is EFSA’s safe and adequate intake, not a goal to reach. Most adults in Europe eat more.';
+/* u = unit shown, type = PRI | AI | SAI (or a function of the profile), v(profile) = the value (per MJ of energy when perMJ), comps = [[key, factor]] for a row that is a sum of nutrients,
+   who(profile) = what the value depends on besides sex, basis = what an AI is built on (EFSA’s own words, shortened), weak = an AI that only reflects what healthy Europeans eat */
+const DRV = {
+  calcium: { u: 'mg', type: 'PRI', v: (p) => (p.age === '18' ? 1000 : 950), who: (p) => (p.age === '18' ? '18 to 24 years' : '25 years and over') },
+  phosphorus: { u: 'mg', type: 'AI', v: () => 550, basis: 'calculated from the calcium PRI with a molar ratio of 1.4 to 1; it was not measured directly' },
+  magnesium: { u: 'mg', type: 'AI', v: bySex(350, 300), weak: true, basis: 'based on the average intake observed in EU countries (men 264–439 mg, women 232–357 mg a day), rounded; it is not based on a requirement study' },
+  potassium: { u: 'mg', type: 'AI', v: bySex(3500, 3500, 3500, 4000), basis: 'based on blood pressure and the risk of stroke, from intervention and cohort studies' },
+  sodium: { u: 'mg', type: 'SAI', v: () => 2000, notes: () => [SAI_NOTE, '2,000 mg of sodium is about 5 g of salt.'] },
+  chloride: { u: 'mg', type: 'SAI', v: () => 3100, notes: () => [SAI_NOTE] },
+  iron: { u: 'mg', type: 'PRI', v: (p) => (p.sex === 'm' || (p.sex === 'f' && p.meno === 'post') ? 11 : 16),
+    who: (p) => (p.sex === 'f' ? (p.meno === 'post' ? 'past menopause' : 'before menopause') : ''),
+    notes: (p) => (p.sex === 'f' && p.meno === 'pre' ? ['For women before menopause, 16 mg covers about 95% of women, not 97.5%.'] : []) },
+  zinc: { u: 'mg', type: 'PRI', v: (p) => REF_ZINC_PRI[p.sex][REF_ZINC.indexOf(p.zinc)], who: (p) => `phytate ${p.zinc.toLocaleString(LOC)} mg a day`,
+    notes: () => ['Zinc is absorbed less from a diet rich in phytate (whole grains, legumes). You can change the phytate level in the settings.'] },
+  copper: { u: 'mg', type: 'AI', v: bySex(1.6, 1.3, 1.5, 1.5), weak: true, basis: 'based on average intakes in EU countries (men 1.27–1.67 mg, women 1.15–1.44 mg a day) and on balance studies' },
+  manganese: { u: 'mg', type: 'AI', v: () => 3.0, weak: true, basis: 'based on average intakes in EU countries (about 3 mg a day) and on balance studies (zero or positive balance above 2.5 mg)' },
+  selenium: { u: 'µg', type: 'AI', v: bySex(70, 70, 70, 85), basis: 'based on the plasma level of selenoprotein P in intervention studies' },
+  iodine: { u: 'µg', type: 'AI', v: bySex(150, 150, 200, 200), basis: 'based on a urinary iodine level of 100 µg/l, above which goitre stays below 5%' },
+  retinol: { u: 'µg RE', type: 'PRI', v: bySex(750, 650, 700, 1300), comps: [['retinol', 1], ['beta_carotene', 1 / 6]], names: 'retinol or beta-carotene', lineNote: 'with beta-carotene',
+    notes: () => ['Vitamin A is counted in retinol equivalents (RE): retinol plus beta-carotene ÷ 6. Other provitamin A carotenoids are not in the food data, so this is a lower value.'] },
+  vitamin_d: { u: 'µg', type: 'AI', v: () => 15, basis: 'based on a serum 25(OH)D level of at least 50 nmol/l (meta-regression of intervention studies)',
+    notes: () => ['EFSA’s value assumes minimal skin synthesis of vitamin D. With sun exposure the need is smaller, possibly zero.'] },
+  vitamin_e: { u: 'mg', type: 'AI', v: bySex(13, 11), weak: true, basis: 'based on observed intakes in 13 surveys in nine EU countries',
+    notes: () => ['EFSA’s value is based on alpha-tocopherol and alpha-tocopherol equivalents. Food tables differ in which one they list.'] },
+  vitamin_k1: { u: 'µg', type: 'AI', v: () => 70, basis: 'carried over from the 1993 SCF value (1 µg per kg body weight); EFSA found every newer method too uncertain to change it',
+    notes: () => ['The value is for phylloquinone (vitamin K1) only.'] },
+  vitamin_c: { u: 'mg', type: 'PRI', v: bySex(110, 95, 105, 155) },
+  vitamin_b1_or_thiamin: { u: 'mg', type: 'PRI', v: () => 0.1, perMJ: true },
+  vitamin_b2_or_riboflavin: { u: 'mg', type: 'PRI', v: bySex(1.6, 1.6, 1.9, 2.0) },
+  vitamin_b3_or_niacin: { u: 'mg NE', type: 'PRI', v: () => 1.6, perMJ: true, lower: true,
+    notes: () => ['Niacin equivalents (NE) also count tryptophan (60 mg of tryptophan = 1 mg NE). Nutrilog has no tryptophan data, so this is always a lower value.'] },
+  vitamin_b5_or_pantothenic_acid: { u: 'mg', type: 'AI', v: bySex(5, 5, 5, 7), weak: true, basis: 'based on observed intakes in EU surveys' },
+  vitamin_b6: { u: 'mg', type: 'PRI', v: bySex(1.7, 1.6, 1.8, 1.7) },
+  vitamin_b9_or_folate: { u: 'µg DFE', type: (p) => (p.sex === 'p' ? 'AI' : 'PRI'), v: bySex(330, 330, 600, 500),
+    notes: () => ['Folic acid counts 1.7 times in DFE (dietary folate equivalents); Nutrilog counts it once, so this is a lower value for fortified foods and supplements.'] },
+  vitamin_b12: { u: 'µg', type: 'AI', v: bySex(4.0, 4.0, 4.5, 5.0), basis: 'based on blood markers (holoTC, MMA, tHcy), taking observed intakes of 4.2–8.6 µg a day into account' },
+  fibres: { u: 'g', type: 'AI', v: () => 25, basis: 'enough for normal bowel function; more than 25 g shows further health benefits (heart and vessels, type 2 diabetes, body weight), but EFSA gives no separate value for that',
+    notes: () => ['Fibre values depend on the method used by each food table.'] },
+  epa_dha: { u: 'mg', type: 'AI', v: (p) => (p.sex === 'p' || p.sex === 'n' ? 350 : 250), comps: [[EPA_KEY, 1000], [DHA_KEY, 1000]], names: 'EPA or DHA', basis: 'set for the primary prevention of cardiovascular disease',
+    notes: (p) => (p.sex === 'p' || p.sex === 'n' ? ['EFSA: 250 mg EPA + DHA a day, and in pregnancy and nursing an extra 100–200 mg DHA. Nutrilog uses 350 mg (250 mg plus the lower extra, 100 mg).'] : []) },
+};
+const REF_WEAK = 'Staying below this is not a deficiency.';
+const REF_TYPE_WORDS = { PRI: 'population reference intake', AI: 'adequate intake', SAI: 'safe and adequate intake' };
+const REF_UNIT_WORDS = { mg: 'milligrams', 'µg': 'micrograms', g: 'grams', 'µg RE': 'micrograms of retinol equivalents', 'µg DFE': 'micrograms of dietary folate equivalents', 'mg NE': 'milligrams of niacin equivalents' };
+const refType = (d, p) => (typeof d.type === 'function' ? d.type(p) : d.type);
+const refNotes = (d, p) => (typeof d.notes === 'function' ? d.notes(p) : d.notes || []);
+const refWho = (d, p) => [REF_WHO[p.sex], d.who ? d.who(p) : ''].filter(Boolean).join(', ');
+const pctText = (x) => (x > 0 && x < 1 ? '<1' : Math.round(x).toLocaleString(LOC));
+const pctSpoken = (x) => (x > 0 && x < 1 ? 'less than 1' : String(Math.round(x)));
+/* The amount of one reference row: a single nutrient (from the totals of the day) or a sum of nutrients (vitamin A, EPA + DHA).
+   any = items that have data for at least one part, full = items that have data for every part; miss = the items that lack a part */
+function refAmount(d, key, es, T) {
+  if (!d.comps) { const i = IDX[key]; return { lo: T.lo[i], hi: T.hi[i], any: T.cnt[i], full: T.cnt[i], est: T.est[i] > 0, miss: [] }; }
+  const parts = d.comps.map(([k, m]) => [IDX[k], m]);
+  let lo = 0, hi = 0, any = 0, full = 0, est = false;
+  const miss = [];
+  for (const e of es) {
+    const f = getFood(e.f);
+    if (!f) continue;
+    const v = vecOf(f), k = e.a / f.basis.qty;
+    let got = 0;
+    for (const [i, m] of parts) {
+      if (Number.isNaN(v.lo[i])) continue;
+      got++; lo += v.lo[i] * k * m; hi += v.hi[i] * k * m;
+      if (isEst(f, i, v)) est = true;
+    }
+    if (got) any++;
+    if (got === parts.length) full++; else miss.push(f.name);
+  }
+  return { lo, hi, any, full, est, miss };
+}
+/* The day compared with the reference of one row: { state: 'ok' | 'nodata' | 'energy', pctLo, pctHi, ref, partial, est, range, … } or null when the row has no EFSA value.
+   B1 and niacin follow the energy of the day: they need energy data for every item (otherwise the reference would be too small and the percent too big). */
+function refCompare(key, es, T, p) {
+  const d = DRV[key];
+  if (!d || !p || !hasOwn(IDX, d.comps ? d.comps[0][0] : key)) return null;
+  const base = { key, d, type: refType(d, p) };
+  const a = refAmount(d, key, es, T);
+  if (!a.any) return { ...base, state: 'nodata', miss: a.miss };
+  let refLo, refHi;   // the reference that goes with the lower and with the upper amount
+  if (d.perMJ) {
+    if (!T.n || T.cnt[0] < T.n || !(T.hi[0] > 0) || !(T.lo[0] > 0)) return { ...base, state: 'energy', miss: a.miss };
+    const f = d.v(p);
+    refLo = f * T.lo[0] / KCAL_PER_MJ; refHi = f * T.hi[0] / KCAL_PER_MJ;
+  } else refLo = refHi = d.v(p);
+  const pctLo = a.lo / refHi * 100, pctHi = a.hi / refLo * 100;   // the lowest percent: lowest amount against the highest reference
+  return { ...base, state: 'ok', ref: refLo, pctLo, pctHi, partial: a.full < T.n || !!d.lower, est: a.est || (!!d.perMJ && T.est[0] > 0), range: pctHi - pctLo > Math.max(pctLo * 0.1, 1e-9),
+    mj: T.lo[0] / KCAL_PER_MJ, kcal: T.lo[0], any: a.any, full: a.full, miss: a.miss, lo: a.lo, hi: a.hi };
+}
+/* the reference as a short text: "950 mg", or "0.1 mg per MJ" */
+const refShort = (d, p) => `${fmt(d.v(p))} ${d.u}${d.perMJ ? ' per MJ' : ''}`;
+/* the thin bar and the line under a nutrient row. PRI: solid bar; AI: dashed bar (the value rests on less evidence); SAI: dotted bar (not a target). */
+function refLineHtml(c, label, p) {
+  const d = c.d, cls = c.type === 'PRI' ? 'pri' : c.type === 'AI' ? 'ai' : 'sai';
+  if (c.state !== 'ok') {
+    const why = c.state === 'energy' ? 'needs complete energy data' : 'no data to compare';
+    return `<span class="rline"><span class="rtxt" aria-hidden="true">Reference ${esc(refShort(d, p))} · ${c.type} · ${why}</span><span class="sr-only">${esc(label)}: ${why}. Reference intake ${esc(fmt(d.v(p)))} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? ' per megajoule' : ''} (${REF_TYPE_WORDS[c.type]}).</span></span>`;
+  }
+  const lead = `${c.partial ? '≥ ' : ''}${c.est ? '~' : ''}`;
+  const pc = c.range ? `${pctText(c.pctLo)}–${pctText(c.pctHi)}` : pctText(c.pctLo);
+  const w = Math.max(0, Math.min(100, c.pctLo));
+  const sp = c.range ? `${pctSpoken(c.pctLo)} to ${pctSpoken(c.pctHi)}` : pctSpoken(c.pctLo);
+  const spoken = `${label}: ${c.partial ? 'at least ' : c.est ? 'about ' : ''}${sp} percent of the reference intake of ${fmt(c.ref)} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? ' for the energy of the day' : ''} (${REF_TYPE_WORDS[c.type]})${d.lineNote ? `, counting ${d.lineNote.replace(/^with /, '')}` : ''}${c.partial && c.est ? ', partly estimated' : ''}.`;
+  return `<span class="rline"><span class="rtrack ${cls}" aria-hidden="true"><i class="rfill" style="width:${w}%"></i></span><span class="rtxt" aria-hidden="true">${esc(`${lead}${pc}% of ${fmt(c.ref)} ${d.u} · ${c.type}${d.lineNote ? ' · ' + d.lineNote : ''}`)}</span><span class="sr-only">${esc(spoken)}</span></span>`;
+}
+/* what the opened row says about the reference */
+function refDetailHtml(c, p) {
+  const d = c.d, who = refWho(d, p), lines = [];
+  const kc = KCAL_PER_MJ.toLocaleString(LOC, { maximumFractionDigits: 1 });
+  if (d.perMJ) {
+    lines.push(`Reference intake: ${fmt(d.v(p))} ${d.u} per MJ of energy (${c.type}, ${who}). 1 MJ = ${kc} kcal.`
+      + (c.state === 'ok' ? ` Energy of this day: ${fmt(c.mj)} MJ (${fmt(c.kcal)} kcal), so the reference is ${fmt(c.ref)} ${d.u}.` : c.state === 'energy' ? ' A percent is shown only when every item of the day has energy data, and some items have none.' : ''));
+  } else lines.push(`Reference intake: ${fmt(d.v(p))} ${d.u} a day (${c.type}, ${who}).`);
+  const out = lines.map((t) => `<div class="ndetail">${esc(t)}</div>`);
+  if (c.type === 'AI' && d.basis) out.push(`<div class="ndetail"><b>AI</b> · ${esc(d.basis)}.</div>`);
+  for (const t of refNotes(d, p)) out.push(`<div class="ndetail">${esc(t)}</div>`);
+  if (d.weak) out.push(`<div class="ndetail">${esc(REF_WEAK)}</div>`);
+  if (d.comps && c.miss && c.miss.length && c.state !== 'nodata') out.push(`<div class="ndetail">Missing ${esc(d.names)} for the reference: ${esc([...new Set(c.miss)].map(cap).join('; '))}</div>`);
+  return out.join('');
+}
+/* the row for a sum of nutrients that has no row of its own in the table (EPA + DHA), drawn under the DHA row */
+function refSumRowHtml(key, label, es, T, p) {
+  const c = refCompare(key, es, T, p);
+  if (!c) return '';
+  const n = T.n, d = c.d;
+  let val, cls, pill;
+  if (c.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = `0/${n}`; }
+  else {
+    const a = refAmount(d, key, es, T), range = a.hi - a.lo > Math.max(a.lo * 0.1, 1e-9);
+    val = `<span class="nval">${a.full < n ? '≥ ' : ''}${a.est ? '~' : ''}${range ? fmt(a.lo) + '–' + fmt(a.hi) : fmt(a.lo)}<em>${esc(d.u)}</em></span>`;
+    cls = a.full === n ? 'full' : 'part'; pill = `${a.any}/${n}`;
+  }
+  return `<details class="nrow"><summary><span>${esc(label)}</span>${val}<span class="pill ${cls}">${pill}</span>${refLineHtml(c, label, p)}</summary>${refDetailHtml(c, p)}</details>`;
+}
+function setRef(next, msg) {
+  const prev = S.meta.ref ? { ...S.meta.ref } : null;
+  S.meta.ref = next; save(); render();
+  toast(msg, () => { S.meta.ref = prev; save(); render(); });
+}
+/* one tap on the card: Male or Female with the usual defaults (25 and over, before menopause, phytate 600); every choice is shown on the card and can be changed */
+function refQuick(sex) {
+  if (sex !== 'm' && sex !== 'f') return;
+  setRef(cleanRef({ sex, age: '25', ...(sex === 'f' ? { meno: 'pre' } : {}), zinc: 600 }), 'Reference intake is on');
+}
+const refProfileText = (p) => [REF_SEX_NAME[p.sex], p.age === '18' ? '18–24 years' : '25 years and over', ...(p.sex === 'f' ? [p.meno === 'post' ? 'past menopause' : 'before menopause'] : []), `zinc: phytate ${p.zinc.toLocaleString(LOC)} mg`].join(' · ');
+function refCardHtml() {
+  const p = S.meta.ref;
+  if (!p && VIEW) return '';
+  const about = `<details class="fold"><summary>About reference intakes</summary>
+      <div class="nova-def">
+      <p><b>PRI · Population Reference Intake.</b> The intake that covers the needs of about 97.5% of healthy adults. It is a planning value for groups, not a personal target.</p>
+      <p><b>AI · Adequate Intake.</b> Used when EFSA could not set a PRI because the evidence was not enough. It rests on what healthy people eat, or on a health marker. Rows with an AI have a dashed bar, and the opened row says what the value is built on.</p>
+      <p><b>SAI · Safe and adequate intake.</b> EFSA’s value for sodium and chloride. It is not a goal to reach, and its bar is dotted.</p>
+      <p>The values are long-term daily averages for adults aged 18 and over. One day below them is not a deficiency, and a day above a PRI is not a warning. Upper limits (UL) are a different thing and are not shown here. Nutrilog does not show values for children.</p>
+      <p class="hint">Source: EFSA, <a href="https://www.efsa.europa.eu/sites/default/files/2017_09_DRVs_summary_report.pdf" target="_blank" rel="noopener">Dietary Reference Values for nutrients, Summary report</a> (EFSA supporting publication 2017:e15121), and the EFSA opinions of 2019 on sodium and chloride. Not medical advice.</p>
+      </div></details>`;
+  if (!p) {
+    return `<div class="card ref-card"><div class="card-t">Reference intake</div>
+      <p class="muted small">See your intake next to the EFSA reference values for adults. Choose one to start; you can change the details afterwards.</p>
+      <div class="ref-pick"><button type="button" class="btn primary" data-act="ref-quick" data-sex="m">Male</button><button type="button" class="btn primary" data-act="ref-quick" data-sex="f">Female</button></div></div>${about}`;
+  }
+  return `<div class="card ref-card"><div class="ref-top"><div class="card-t">Reference intake</div>${VIEW ? '' : '<button type="button" class="chip-btn accent" data-act="ref-change" aria-label="Change the reference intake settings">Change</button>'}</div>
+      <p class="small">EFSA values for adults: ${esc(refProfileText(p))}</p>
+      <p class="muted small">Reference values are long-term daily averages. One day below them is not a deficiency.</p></div>${about}`;
+}
+function openRefSheet() {
+  const st = S.meta.ref ? { ...S.meta.ref } : { sex: 'f', age: '25', meno: 'pre', zinc: 600 };
+  if (st.sex === 'f' && !st.meno) st.meno = 'pre';
+  const seg = (k, label, opts, cls = '') => `<div class="ref-l" id="rs-${k}-l">${label}</div><div class="seg ref-seg ${cls}" role="group" aria-labelledby="rs-${k}-l" id="rs-${k}">${opts.map(([v, t]) => `<button type="button" data-k="${k}" data-v="${v}" aria-pressed="false">${t}</button>`).join('')}</div>`;
+  const sh = openSheet('Reference intake settings', `
+    <p class="small muted" style="margin:0 0 4px">EFSA gives its values for groups of adults. These choices decide which value applies. Nutrilog keeps only these choices, not your age or birth date.</p>
+    ${seg('sex', 'Sex', REF_SEXES.map((s) => [s, REF_SEX_NAME[s]]), 'grid2')}
+    ${seg('age', 'Age', [['18', '18–24'], ['25', '25 and over']], 'two')}
+    <p class="hint" style="margin:6px 0 0">Only calcium depends on age. Values for people under 18 are not shown.</p>
+    <div id="rs-meno-w">${seg('meno', 'Menopause', [['pre', 'Not yet'], ['post', 'Past']], 'two')}<p class="hint" style="margin:6px 0 0">Only iron depends on it: women before menopause need more.</p></div>
+    ${seg('zinc', 'Zinc: phytate in your diet (mg a day)', REF_ZINC.map((z) => [z, z.toLocaleString(LOC)]), 'four')}
+    <p class="hint" style="margin:6px 0 0">Zinc is absorbed less from a diet rich in whole grains and legumes. Not sure? Keep 600.</p>
+    <p class="hint" style="margin:14px 0 0">The settings are saved on this device and in the backup file, and if you use Sync, in your private GitHub repository. They show whether you are pregnant or nursing. The Share sheet asks before they go into a link.</p>
+    ${S.meta.ref ? '<button type="button" class="btn danger block" id="rs-remove" style="margin-top:14px">Remove settings</button>' : ''}
+    <div class="row gap sheet-actions"><button type="button" class="btn" id="rs-cancel">Cancel</button><button type="button" class="btn primary" id="rs-save" style="flex:1">Save</button></div>`);
+  const paint = () => {
+    $$('[data-k]', sh.el).forEach((b) => b.setAttribute('aria-pressed', String(String(st[b.dataset.k]) === b.dataset.v)));
+    $('#rs-meno-w', sh.el).hidden = st.sex !== 'f';
+  };
+  sh.el.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-k]');
+    if (!b) return;
+    const k = b.dataset.k;
+    st[k] = k === 'zinc' ? Number(b.dataset.v) : b.dataset.v;
+    if (k === 'sex' && st.sex === 'f' && !st.meno) st.meno = 'pre';
+    paint();
+  });
+  $('#rs-save', sh.el).onclick = () => {
+    const c = cleanRef(st);
+    if (!c) return;
+    sh.close();
+    if (S.meta.ref && refSame(S.meta.ref, c)) { toast('Nothing changed'); return; }
+    setRef(c, 'Reference intake settings saved');
+  };
+  $('#rs-cancel', sh.el).onclick = () => sh.close();
+  const rm = $('#rs-remove', sh.el);
+  if (rm) rm.onclick = () => { sh.close(); setRef(null, 'Reference intake settings removed'); };
+  paint();
+}
+
 /* ---- Nutrients ---- */
 function viewNutr() {
   const es = entriesOf(S.day);
-  if (!es.length) return viewNote() + '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
+  const p = S.meta.ref;
+  if (!es.length) return viewNote() + `<div id="refcard">${refCardHtml()}</div>` + '<div class="card" style="margin-top:16px"><div class="card-t">Nothing logged for this day</div><p class="muted small" style="margin-top:6px">The daily nutrient summary is built from the foods you log in the Diary tab.</p><button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button></div>';
   const T = totalsFor(es);
-  const note = viewNote() + '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
+  const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
     + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, dmBio values estimated from the ingredient list, or values you marked as estimates in your own foods (for example from an AI answer). Open a row to see which items and how confident the estimate is.</div>' : '');
   const out = GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
     if (!idxs.length) return '';
     const rows = idxs.map((i) => {
-      const cnt = T.cnt[i], n = T.n, lo = T.lo[i], hi = T.hi[i], unit = UNITS[i];
+      const cnt = T.cnt[i], n = T.n, lo = T.lo[i], hi = T.hi[i], unit = UNITS[i], key = KEYS[i];
       const range = hi - lo > Math.max(lo * 0.1, 1e-9);
       const val = cnt === 0 ? '<span class="nval none">no data</span>'
         : `<span class="nval">${cnt < n ? '≥ ' : ''}${T.est[i] ? '~' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}<em>${esc(unit)}</em></span>`;
@@ -1269,13 +1507,17 @@ function viewNutr() {
       const estd = T.estNames[i];
       const detail = (miss.length ? `<div class="ndetail">No data for: ${esc([...new Set(miss)].map(cap).join('; '))}</div>` : '<div class="ndetail">Every item has data.</div>')
         + (estd.length ? `<div class="ndetail">Estimate, not a label value: ${esc([...new Set(estd)].map(cap).join('; '))}</div>` : '');
-      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span></summary>${detail}</details>`;
+      const rc = p ? refCompare(key, es, T, p) : null;   // the EFSA reference of this row, when a profile is set and EFSA gives a value
+      const line = rc ? refLineHtml(rc, labelOf(i), p) : '';
+      const rdet = rc ? refDetailHtml(rc, p) : p && key === 'beta_carotene' ? '<div class="ndetail">Counted in Vitamin A: one sixth of its amount (6 µg beta-carotene = 1 µg retinol equivalent).</div>' : '';
+      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span>${line}</summary>${rdet}${detail}</details>`
+        + (p && key === DHA_KEY ? refSumRowHtml('epa_dha', 'EPA + DHA', es, T, p) : '');
     }).join('');
     const list = `<div class="nlist">${rows}</div>`;
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>`
       : `<details class="group"><summary>${gname}</summary>${list}</details>`;
   }).join('');
-  return note + `<div id="nova">${novaHtml(es)}</div>` + out;
+  return viewNote() + `<div id="refcard">${refCardHtml()}</div>` + note + `<div id="nova">${novaHtml(es)}</div>` + out;
 }
 
 /* NOVA summary card and the list for setting a group by hand. Drawn again on its own after every tap (see novaTap). */
@@ -1381,6 +1623,7 @@ function viewData() {
       <p class="small" style="margin:8px 0">Generic foods: Anses. 2020. Ciqual French food composition table. <a href="https://doi.org/10.5281/zenodo.4770202" target="_blank" rel="noopener">doi.org/10.5281/zenodo.4770202</a> (CC BY 4.0).</p>
       <p class="small" style="margin:8px 0">Generic foods (second source): U.S. Department of Agriculture, Agricultural Research Service. FoodData Central: Foundation Foods (April 2026) and SR Legacy (April 2018). <a href="https://fdc.nal.usda.gov" target="_blank" rel="noopener">fdc.nal.usda.gov</a> (U.S. public domain).</p>
       <p class="small" style="margin:8px 0">Packaged products (built in): dmBio products of dm Hungary, from the product pages on <a href="https://www.dm.hu" target="_blank" rel="noopener">dm.hu</a>. Energy and macronutrients come from dm’s nutrition tables (corrected where they were inconsistent). All other values are estimates calculated from the ingredient list with CIQUAL 2020 (dmBio estimate v3, 24 Oct 2026); the product page shows how confident each estimate is.</p>
+      <p class="small" style="margin:8px 0">Reference intakes (Nutrients tab): EFSA (European Food Safety Authority), Dietary Reference Values for nutrients, Summary report, EFSA supporting publication 2017:e15121 (reproduction authorised with acknowledgement of the source), and the EFSA opinions of 2019 on sodium and chloride. Values for adults aged 18 and over. Not medical advice.</p>
       <p class="small" style="margin:8px 0">Packaged products (online): <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
       <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}</p></div>
@@ -2733,13 +2976,21 @@ function importJson(file) {
       const counts = `${nE === 1 ? '1 entry' : nE + ' entries'}${hc ? ',' : ' and'} ${nF === 1 ? '1 food' : nF + ' foods'}${hc ? ` and ${plural(hc.list.length, 'Health log note')}` : ''}`;
       const healthText = hc ? (hc.dropped ? ` ${plural(hc.dropped, 'note')} in the file ${hc.dropped === 1 ? 'is' : 'are'} not valid and will be skipped.` : '')
         : S.health.length ? (S.health.length === 1 ? ' Your Health log note is not in this file, so it stays as it is.' : ` Your ${S.health.length} Health log notes are not in this file, so they stay as they are.`) : '';
+      /* Reference intake (version 26): a file with a "ref" part in its meta (even null) replaces the profile; a file made before version 26 has none and leaves the profile as it is;
+         a "ref" that is damaged is not used and the profile stays as it is */
+      const hasR = !!j.meta && typeof j.meta === 'object' && hasOwn(j.meta, 'ref');
+      const refFile = hasR && j.meta.ref !== null ? cleanRef(j.meta.ref) : null;
+      const refBad = hasR && j.meta.ref !== null && refFile === null;
+      const refText = refBad ? ' The reference intake settings in the file are not valid and will be skipped; yours stay as they are.'
+        : !hasR && S.meta.ref ? ' Your reference intake settings are not in this file, so they stay as they are.' : '';
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
-        text: `This replaces everything in the app with the backup: ${counts}.${healthText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
+        text: `This replaces everything in the app with the backup: ${counts}.${healthText}${refText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
-          S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water);
+          const keepRef = hasR && !refBad ? refFile : cleanRef(S.meta.ref);
+          S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water); S.meta.ref = keepRef;
           if (hc) S.health = hc.list;
-          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : ''));
+          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : '') + (refBad ? ' · reference intake settings skipped: not valid' : ''));
         },
       });
     } catch (err) { toast('Could not restore: ' + err.message); }
@@ -2939,7 +3190,7 @@ function shareFood(f) {
   return o;
 }
 /* the days from..to (both included) of the diary as JSON text, with a count of what went in */
-function shareSnapshot(from, to) {
+function shareSnapshot(from, to, withRef = false) {
   const es = S.log.filter((e) => e.d >= from && e.d <= to);   // the order of the diary is kept inside each day, so the viewer lists foods in the same order as the sender
   const refs = [], refAt = new Map(), foods = [], nova = {}, days = {};
   let items = 0, skipped = 0;
@@ -2958,12 +3209,13 @@ function shareSnapshot(from, to) {
   const water = {};   // the water intake of the shared days; the key is left out when there is none, so a link without water looks exactly as before
   for (const [d, ml] of Object.entries(S.meta.water || {})) if (d >= from && d <= to) water[d] = ml;
   const waterDays = Object.keys(water).length;
-  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days, ...(waterDays ? { water } : {}) });
-  return { json, items, skipped, dayCount: Object.keys(days).length, waterDays };
+  const ref = withRef ? cleanRef(S.meta.ref) : null;   // the reference intake profile, only when the person chose to include it (it shows sex, pregnancy and nursing)
+  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days, ...(waterDays ? { water } : {}), ...(ref ? { ref } : {}) });
+  return { json, items, skipped, dayCount: Object.keys(days).length, waterDays, withRef: !!ref };
 }
 const shareBase = () => location.href.replace(/[?#].*$/, '');
-async function shareLink(from, to) {
-  const snap = shareSnapshot(from, to);
+async function shareLink(from, to, withRef = false) {
+  const snap = shareSnapshot(from, to, withRef);
   const bytes = new TextEncoder().encode(snap.json);
   let token = null;
   if (typeof CompressionStream === 'function') { try { token = 'z.' + b64u.enc(await pipeBytes(bytes, new CompressionStream('deflate'))); } catch { token = null; } }
@@ -2980,6 +3232,8 @@ function openShare() {
     <p class="small" style="margin:0 0 12px">Makes a link that opens your <b>Diary</b> and <b>Nutrients</b> tabs for the days you choose, for example for your dietitian. Whoever opens it can look but not change anything. No password is needed, and nothing is uploaded: the days are packed into the link itself.</p>
     <div class="seg" role="group" aria-label="Period">${[7, 14, 30].map((n) => `<button type="button" data-days="${n}" aria-pressed="false">${n} days</button>`).join('')}</div>
     <div class="row gap" style="margin-top:12px;flex-wrap:nowrap;align-items:flex-end"><label class="f" style="flex:1;min-width:0">From<input type="date" id="sh-from" max="${today}"></label><label class="f" style="flex:1;min-width:0">To<input type="date" id="sh-to" max="${today}"></label></div>
+    ${S.meta.ref ? `<label class="chk tall" style="margin-top:12px"><input type="checkbox" id="sh-ref" checked> Include reference intake settings</label>
+    <p class="hint" style="margin:0">The link then also carries these settings (${esc(refProfileText(S.meta.ref))}), including whether you are pregnant or nursing, so the person sees the same percentages next to the nutrients. A link cannot be taken back.</p>` : ''}
     <p class="note field-err" id="sh-err" role="alert" hidden></p>
     <p class="small" id="sh-info" aria-live="polite" style="margin:12px 0 0">Preparing the link…</p>
     <p class="note" id="sh-long" hidden>This link is long. Some chat apps cut very long messages (Telegram, for example, at 4,096 characters), and then the link does not open. Choose fewer days, or send it by email.</p>
@@ -2988,7 +3242,7 @@ function openShare() {
     <p class="hint" style="margin:8px 0 0">Health log notes are not included in the link.</p>
     <div class="sheet-actions col">${canShare ? '<button class="btn primary block" id="sh-send" disabled>Share link</button>' : ''}<button class="btn ${canShare ? '' : 'primary '}block" id="sh-copy" disabled>Copy link</button></div>`);
   const from = $('#sh-from', d.el), to = $('#sh-to', d.el), err = $('#sh-err', d.el), info = $('#sh-info', d.el), long = $('#sh-long', d.el), box = $('#sh-box', d.el);
-  const copyB = $('#sh-copy', d.el), sendB = $('#sh-send', d.el);
+  const copyB = $('#sh-copy', d.el), sendB = $('#sh-send', d.el), refB = $('#sh-ref', d.el);
   const ready = (on) => { copyB.disabled = !on; if (sendB) sendB.disabled = !on; };
   const say = (msg) => { err.textContent = msg; err.hidden = false; info.textContent = ''; };
   async function refresh() {
@@ -3000,11 +3254,11 @@ function openShare() {
     if (addDays(from.value, SHARE_MAX_DAYS - 1) < to.value) { say(`Choose at most ${SHARE_MAX_DAYS} days: a longer period makes the link too long.`); return; }
     info.textContent = 'Preparing the link…';
     let r;
-    try { r = await shareLink(from.value, to.value); } catch { if (my === seq) say('The link could not be made. Try fewer days.'); return; }
+    try { r = await shareLink(from.value, to.value, !!refB && refB.checked); } catch { if (my === seq) say('The link could not be made. Try fewer days.'); return; }
     if (my !== seq) return;   // the choice changed while the link was being made
     if (!r.items && !r.waterDays) { info.textContent = 'There are no diary entries in these days. Choose other days.'; return; }
     url = r.url;
-    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')}${r.waterDays ? ` · water intake on ${plural(r.waterDays, 'day')}` : ''} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
+    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')}${r.waterDays ? ` · water intake on ${plural(r.waterDays, 'day')}` : ''}${r.withRef ? ' · with reference intake settings' : ''} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
     long.hidden = r.url.length <= SHARE_LINK_LONG;
     ready(true);
   }
@@ -3016,6 +3270,7 @@ function openShare() {
     refresh();
   });
   from.addEventListener('change', later); to.addEventListener('change', later);
+  if (refB) refB.addEventListener('change', later);
   /* The link is made before the tap, because sharing and copying must start inside the tap itself (iOS refuses them after a wait). */
   copyB.onclick = () => {
     if (!url) return;
@@ -3083,6 +3338,7 @@ function shareCheck(r) {
     if (!plain(r.water) || Object.keys(r.water).length > 400) return bad;
     for (const dd of Object.keys(r.water)) { const v = r.water[dd]; if (day(dd) && dd >= r.from && dd <= r.to && Number.isInteger(v) && v >= 1 && v <= WATER_MAX_ML) water[dd] = v; }
   }
+  const ref = r.ref === undefined || r.ref === null ? null : cleanRef(r.ref);   // optional reference intake profile; a damaged one is left out and the link still opens, only without the bars
   if (!plain(r.days)) return bad;
   const entries = [];
   for (const dd of Object.keys(r.days).sort()) {
@@ -3097,7 +3353,7 @@ function shareCheck(r) {
       entries.push({ id: 'v' + (entries.length + 1), d: dd, m, f: r.refs[ri], a, tm });   // no t: the order of the link is kept (sorting is stable), and the time stays what the sender saw
     }
   }
-  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova, water } };
+  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova, water, ref } };
 }
 const fmtShort = (s, withYear = true) => parseYmd(s).toLocaleDateString(LOC, withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
 /* the note at the top of both tabs of a shared copy */
@@ -3130,7 +3386,7 @@ async function initViewer() {
     if (res.error) { showShareError(res.error); return; }
     const { data } = res;
     Object.assign(VIEW, { from: data.from, to: data.to, made: data.made });
-    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.water = data.water;
+    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.water = data.water; S.meta.ref = data.ref;   // in memory only: save() does nothing in a shared copy
     S.day = [...data.entries.map((e) => e.d), ...Object.keys(data.water)].reduce((m, d) => (d > m ? d : m), '') || data.to;   // the last day that has entries or water
     S.tab = 'log';
     render();
@@ -3159,6 +3415,8 @@ document.addEventListener('click', (ev) => {
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
   else if (a === 'water-add') waterAdd(S.day, Math.round(Number(t.dataset.dl) * 100));
   else if (a === 'water-other') openWater();
+  else if (a === 'ref-quick') refQuick(t.dataset.sex);
+  else if (a === 'ref-change') openRefSheet();
   else if (a === 'health-add') openHealthForm(null);
   else if (a === 'health-open') openHealthNote(t.dataset.id);
   else if (a === 'health-more') { healthShown += HEALTH_PAGE; refreshHealthList(); }
@@ -3272,6 +3530,7 @@ async function init() {
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
     S.meta.water = cleanWater(S.meta.water);
+    S.meta.ref = cleanRef(S.meta.ref);   // old saves have no profile; a damaged one is no profile
     const hc = cleanHealth(health);   // old saves have no notes; a damaged item is left out and said so below
     S.health = hc.list;
     if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
@@ -3292,7 +3551,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ };
 init();
 
 })();

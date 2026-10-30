@@ -366,3 +366,23 @@ details.fold details.fold { background: var(--sheet); }
 #hlabels button { font-size: .92rem; padding: 0 2px; }   /* three label buttons must fit at 320 px */
 .health-counter { margin-top: 6px; font-variant-numeric: tabular-nums; }
 .health-counter.over { color: var(--danger); font-weight: 700; }
+
+/* reference intake (version 26): the thin bar under a nutrient row and the settings card */
+.nrow > summary .rline { grid-column: 1 / -1; display: grid; gap: 5px; margin-top: -2px; }
+.rtrack { display: block; box-sizing: border-box; height: 9px; border-radius: 999px; overflow: hidden; background: var(--surface-2); border: 1.5px solid var(--surface-2); }
+.rtrack.ai { background: transparent; border: 1.5px dashed var(--muted); }    /* AI: EFSA's value rests on less evidence, so the bar is dashed */
+.rtrack.sai { background: transparent; border: 1.5px dotted var(--muted); }   /* SAI (sodium, chloride): not a target */
+.rfill { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.rtrack.ai .rfill { background: repeating-linear-gradient(90deg, var(--accent) 0 5px, transparent 5px 8px); border-radius: 0; }
+.rtrack.sai .rfill { background: var(--muted); }
+.rtxt { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#refcard { margin-top: 10px; }
+.ref-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ref-top .chip-btn { min-height: 44px; flex: none; }
+.ref-card p { margin: 6px 0 0; }
+.ref-pick { display: flex; gap: 10px; margin-top: 14px; }
+.ref-pick .btn { flex: 1; min-width: 0; }
+.ref-l { font-weight: 650; font-size: .9rem; margin: 16px 0 6px; }
+.seg.grid2 { grid-template-columns: repeat(2, 1fr); border-radius: 22px; }
+.seg.four { grid-template-columns: repeat(4, 1fr); }
+.seg.ref-seg { background: var(--surface); }

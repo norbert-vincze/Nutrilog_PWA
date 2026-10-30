@@ -235,7 +235,7 @@ async def main():
         dark = await T(CONTRAST_JS)
         check('text contrast >= 4.5:1 on the Nutrients tab in dark mode', dark == [], dark)
         await T("document.documentElement.setAttribute('data-theme','light')")
-        defs = await page.inner_text('#view details.fold:last-of-type')
+        defs = await page.inner_text('#nova details.fold:last-of-type')
         check('the definitions explain all four groups', all(f'{n} · ' in defs for n in '1234') and 'not by how healthy' in defs, defs[:120])
 
         check('no native dialogs', dialogs == [], dialogs)

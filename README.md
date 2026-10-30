@@ -179,10 +179,10 @@ A szinkron a naplódat egy **privát** GitHub-repóba menti, és minden eszköz�
 - A törlés minden eszközön megtörténik. Az „Undo” gomb a szinkronban is visszahozza a bejegyzést.
 - Internet nélkül minden működik, a változások akkor mennek el, amikor újra van net. A kártya jelzi, ha vár még valami elküldésre.
 - A „Restore from file” szinkron mellett **minden eszközön** lecseréli az adataidat a mentésre (az app erre külön figyelmeztet).
-- A repóban fájlok vannak: `entries/ÉÉÉÉ-HH.json` (havonta egy, a naplóbejegyzéseiddel), `foods/` (saját ételek), `water/ÉÉÉÉ.json` (napi vízfogyasztás, évente egy fájl), `health/ÉÉÉÉ-HH.json` (a Health log jegyzetei, havonta egy fájl, a jegyzet felvételének hónapja szerint) és `meta.json` (saját adagok, NOVA-besorolások). Ezeket ne szerkeszd kézzel. A GitHubon a „History” gombbal visszanézheted a korábbi állapotokat.
+- A repóban fájlok vannak: `entries/ÉÉÉÉ-HH.json` (havonta egy, a naplóbejegyzéseiddel), `foods/` (saját ételek), `water/ÉÉÉÉ.json` (napi vízfogyasztás, évente egy fájl), `health/ÉÉÉÉ-HH.json` (a Health log jegyzetei, havonta egy fájl, a jegyzet felvételének hónapja szerint), `ref/profile.json` (az ajánlott bevitel beállításai, 16. fejezet) és `meta.json` (saját adagok, NOVA-besorolások). Ezeket ne szerkeszd kézzel. A GitHubon a „History” gombbal visszanézheted a korábbi állapotokat.
 - A token csak azon az eszközön van, ahol beírtad. Nem része a mentésfájlnak, és nem kerül a repóba. **Ne küldd el senkinek, nekem se, és képernyőképen se mutasd meg.** Ha elveszik a telefon: GitHub → Settings → Developer settings → Fine-grained tokens → a token neve → „Delete”.
 - Leválasztás: Data fül → Sync → „**Disconnect**”. Ilyenkor az eszköz elfelejti a tokent, az adataid megmaradnak az eszközön és a repóban is.
-- A szinkron csak a naplót, a saját ételeket, az Open Food Facts-ból elmentett ételeket, a saját adagokat, a NOVA-besorolásokat, a vízfogyasztást és a Health log jegyzeteit viszi át. A jegyzeteid tehát a **saját privát repódba** is felkerülnek, ezért legyen a repó tényleg privát (az app amúgy sem csatlakozik nyilvános repóhoz). A téma (Appearance) és a legutóbbi mennyiségek eszközönként külön maradnak.
+- A szinkron csak a naplót, a saját ételeket, az Open Food Facts-ból elmentett ételeket, a saját adagokat, a NOVA-besorolásokat, a vízfogyasztást, a Health log jegyzeteit és az ajánlott bevitel beállításait viszi át. A jegyzeteid tehát a **saját privát repódba** is felkerülnek, ezért legyen a repó tényleg privát (az app amúgy sem csatlakozik nyilvános repóhoz). Az ajánlott bevitel beállításai abból látszanak, hogy terhes vagy-e, vagy szoptatsz-e (16. fejezet), ezért ez is csak a privát repóba megy. A téma (Appearance) és a legutóbbi mennyiségek eszközönként külön maradnak.
 
 ## 10. Elemzés Claude-dal
 
@@ -283,6 +283,8 @@ Ezzel egy **linket** csinálsz, amely a kiválasztott napok **Diary** és **Nutr
 
 **Hosszú link.** Hét nap jellemzően néhány ezer karakter. Ha a link 4000 karakternél hosszabb, az ablak figyelmeztet: néhány csevegőapp levágja a nagyon hosszú üzeneteket (a Telegram például 4096 karakternél), és akkor a link nem nyílik meg. Válassz kevesebb napot, vagy küldd e-mailben.
 
+**Ajánlott bevitel a linkben.** Ha beállítottad az ajánlott bevitelt a Nutrients fülön (16. fejezet), a megosztó ablakban megjelenik az „**Include reference intake settings**” jelölőnégyzet, alapból bepipálva. Ilyenkor a dietetikus is látja a sávokat és a százalékokat, ugyanazokkal a számokkal, mint te. A beállításokból az is kiderül, hogy terhes vagy-e, vagy szoptatsz-e. Ha ezt nem akarod elküldeni, vedd ki a pipát: a link rövidebb lesz, és semmit nem tartalmaz a beállításaidról. A linket utólag sem lehet visszavonni, ezért a küldés előtt döntsd el.
+
 **Mit lát a dietetikus?**
 - A linket telefonon vagy számítógépen, bármelyik böngészőben megnyithatja. Nem kell appot telepítenie és fiókot csinálnia.
 - Felül egy „**Shared diary · read-only**” megjegyzés áll az időszakkal és a készítés idejével.
@@ -322,6 +324,54 @@ A Health log egy általános egészségnapló az étkezési napló mellett: röv
 - **Megosztó link:** a jegyzetek **nincsenek benne** a dietetikusnak szánt linkben (14. fejezet).
 - Keresés és szűrés címke szerint egyelőre nincs.
 
+## 16. Ajánlott napi bevitel a Nutrients fülön („Reference intake”)
+
+A Nutrients fülön a mikrotápanyagok sorai alatt megmutathatja az app, hogy a mai beviteled hány százaléka az **EFSA** (az Európai Élelmiszerbiztonsági Hatóság) felnőttekre megadott ajánlott értékének. Ehhez nem kell semmit felvinned az ételeken kívül, csak egyszer megadni, melyik csoportba tartozol.
+
+**Beállítás lépésről lépésre:**
+1. Koppints az alsó sávban a „**Nutrients**” fülre. Legfelül a „**Reference intake**” kártyát látod.
+2. Koppints a „**Male**” vagy a „**Female**” gombra. Ez egy koppintással beállítja a leggyakoribb választ: 25 év felett, a nőknél a menopauza előtt, a cinknél a 600-as szint. A sávok azonnal megjelennek. Az „**Undo**” gomb visszavonja.
+3. Ha ettől eltérsz (terhes vagy, szoptatsz, 25 évnél fiatalabb vagy, a menopauza után vagy), koppints a kártyán a „**Change**” gombra.
+4. Az ablakban válassz: „**Sex**” (Male, Female, Pregnant, Nursing), „**Age**” (18–24 vagy 25 and over), nőknél „**Menopause**” (Not yet vagy Past), és a „**Zinc: phytate in your diet**” sort. A cinkből azért kell ez, mert a teljes kiőrlésű gabona és a hüvelyesek csökkentik a felszívódását. Ha nem tudod, hagyd a 600-on.
+5. Koppints a „**Save**” gombra. A „**Cancel**” gomb mindent úgy hagy, ahogy volt. A „**Remove settings**” gomb (az ablak tartalmában, piros) kikapcsolja az egészet, és az „Undo” visszahozza.
+
+**Mit látsz?** Minden olyan sor alatt, amelyikhez az EFSA ad értéket, egy vékony sáv és egy sor áll, például: „≥ 77% of 950 mg · PRI”. A sor végén a típus:
+- **PRI** (Population Reference Intake): az az érték, amely az egészséges felnőttek mintegy 97,5%-ának igényét fedezi. Tömör sáv.
+- **AI** (Adequate Intake): ahol az EFSA nem tudott PRI-t megállapítani, mert kevés volt a bizonyíték. Ez azon alapul, mennyit esznek az egészséges emberek. **Szaggatott sáv.** A gyengébb alapú AI-soroknál (magnézium, réz, mangán, E-vitamin, B5-vitamin) a megnyitott sor ki is írja: „Staying below this is not a deficiency.”
+- **SAI** (safe and adequate intake): a nátriumnál és a kloridnál. **Pontozott sáv.** Ez nem cél, amit el kell érni, a legtöbb európai felnőtt többet eszik.
+
+A sáv 100%-nál megáll, a szám tovább nő. Egyetlen szín sem „ítél”: a 20% és a 300% ugyanolyan kék, nincs piros vagy zöld. A túl magas bevitelre vonatkozó felső határokat (UL) az app még nem mutatja.
+
+**A hiányzó adatot az app nem veszi nullának.** Ugyanazok a jelek, mint máshol:
+- „**≥ 50%**”: valamelyik tételnél nincs adat erről a tápanyagról, ezért ez alsó érték.
+- „**~10%**”: az érték egy része becslés.
+- „**0–20%**”: egy „<x” értékből jön, az alsó és a felső határ látszik.
+- „**no data to compare**” és nincs sáv: aznap egyik tételnél sincs adat. Soha nem látsz „0%”-ot adat nélkül. A valódi nulla (például 0 mg kalcium egy tételen) viszont 0%.
+
+**Néhány sor másképp számol:**
+- **Vitamin A**: az EFSA retinol-egyenértékben (RE) adja meg. Az app a retinolt és a béta-karotin hatodát adja össze („with beta-carotene”). A többi karotinoidról nincs adat, ezért ez szigorúan véve alsó érték (a megnyitott sor ezt ki is írja). A „≥” jel akkor jelenik meg, ha valamelyik tételnél a retinol vagy a béta-karotin hiányzik.
+- **Vitamin B1 (thiamin)** és **Vitamin B3 (niacin)**: az EFSA ezeket a nap energiájához köti (B1: 0,1 mg, niacin: 1,6 mg NE megajoule-onként). Az app csak akkor számol százalékot, ha **minden** tételnél van energiaadat, különben azt írja: „needs complete energy data”. A niacin mindig alsó érték, mert a triptofánból is képződik niacin, és erről nincs adatunk.
+- **Folate**: terhességben az EFSA csak AI-t ad (600 µg DFE), egyébként PRI-t.
+- **Kalcium** (18–24 évesen 1000, utána 950 mg), **vas** (menopauza előtti nőknek, terhesnek és szoptatónak 16, másnak 11 mg), **cink** (a fitáttól függ).
+- **EPA + DHA**: ez egy új, számolt sor a DHA alatt (csak beállított profilnál). Az EPA és a DHA összege grammból milligrammra átváltva; az EFSA ajánlása 250 mg, terhesen és szoptatva az app 350 mg-ot használ (250 mg és a legalacsonyabb pótlás: 100 mg).
+- **Fibre** (rost): 25 g (AI).
+
+**Fontos tudnivalók:**
+- Az ajánlott értékek **hosszú távú napi átlagok**. Egyetlen nap, amelyik alatta marad, nem hiány. A kártya ezt ki is írja.
+- 18 év alattiaknak az app nem mutat értéket, mert az EFSA-nak ott más a táblázata.
+- Ez tájékoztató, nem orvosi vagy dietetikai tanács. Ha terhes vagy, szoptatsz, vagy betegség miatt más a szükségleted, a dietetikusod értékei mérvadók.
+- A „**About reference intakes**” lenyíló részben (a kártyán) a PRI, az AI és az SAI magyarázata és a forrás van.
+
+**Mit tárol az app a beállításokból?** Csak a választásaidat (Sex, Age, Menopause, Zinc), a **korodat vagy a születési dátumodat nem**.
+- **A telefonon**, és a mentésfájlban (JSON, `meta.ref`). A „Restore from file” a fájlban lévő beállításokra cserél. Ha a mentés a 26-os verzió előtt készült (nincs benne beállítás), a te beállításaid megmaradnak, és a megerősítő ablak ezt kiírja. Ha a fájlban sérült beállítás van, az app kihagyja, és megmondja.
+- **Szinkron:** ha bekapcsoltad (9. fejezet), a beállítások a saját privát repódba kerülnek (`ref/profile.json`). Mivel kiderül belőlük, hogy terhes vagy-e, vagy szoptatsz-e, tényleg csak privát repóba mehetnek.
+- **Megosztó link:** csak akkor, ha az „Include reference intake settings” be van pipálva (14. fejezet).
+- **CSV:** a két CSV-fájl nem változik, nincs bennük referenciaoszlop.
+
+**Amit nem tudtam ellenőrizni.** Két adat a megvalósításkor nem volt kéznél az eredeti dokumentumból:
+1. A **nátrium** 2000 mg-os értéke az EFSA 2019-es véleményéből való. Magát a véleményt nem tudtam megnyitni, a kloridnál ezt az EFSA kivonata és egy ellenpróba megerősítette (2,0 g nátrium = 87 mmol; ennyi kloridion 3,1 g).
+2. A CIQUAL „vitamin E” oszlopáról nem tudom, α-tokoferol vagy α-tokoferol-ekvivalens (α-TE). Az EFSA értéke mindkettőre épül, ezért a sor megjegyzést kap. A különbség általában kicsi, de ha pontosság kell, a címkén lévő értéket nézd.
+
 ## Ha elakadsz
 
 | Mit látsz | Mit csinálj |
@@ -344,7 +394,10 @@ A Health log egy általános egészségnapló az étkezési napló mellett: röv
 | „GitHub does not accept the token” | A token lejárt, vagy rosszul másoltad. Csinálj újat (9. fejezet, B), majd Data fül → Sync → „Disconnect” → „Set up sync”. |
 | „the token needs the permission “Contents: Read and write”” | A tokenben a „Contents” nem „Read and write” értékű. Csinálj új tokent a B lépések szerint. |
 | „This repository is public” | Az app csak privát repóhoz kapcsolódik. Csinálj egy újat a „Private” opcióval (9. fejezet, A). |
-| „The file … is not a Nutrilog sync file” | A repóban van egy fájl az `entries/`, `foods/`, `water/` mappában vagy `meta.json` néven, ami nem az appé. Használj külön, üres repót a Nutrilognak. |
+| A Nutrients fülön nincsenek sávok és százalékok | Nincs beállítva az ajánlott bevitel. Nutrients fül → „Reference intake” kártya → „Male” vagy „Female” (16. fejezet). Az étel nélküli napon csak a kártya látszik. |
+| Egy sor alatt „no data to compare” áll sáv nélkül | Aznap egyik tételnél sincs adat arról a tápanyagról. Nem nulla, csak hiányzik. |
+| A B1- vagy B3-vitamin sorában „needs complete energy data” áll | Ezeket az EFSA a nap energiájához köti, és az app csak akkor számol, ha minden tételnél van energiaadat. Írd be a hiányzó kalóriát a tételnél (vagy a saját ételnél). |
+| „The file … is not a Nutrilog sync file” | A repóban van egy fájl az `entries/`, `foods/`, `water/`, `health/`, `ref/` mappában vagy `meta.json` néven, ami nem az appé. Használj külön, üres repót a Nutrilognak. |
 | A Sync kártyán „Offline: your changes stay on this device…” | Nem hiba: nincs internet vagy a GitHub nem érhető el. A változások megmaradnak, és elmennek, amikor újra van kapcsolat. |
 | „Another device keeps writing at the same time” | Két eszköz egyszerre szinkronizált. Várj egy percet, és koppints a „Sync now” gombra. |
 | „No JSON found” a „Paste from AI” ablakban | A beillesztett szövegben nincs `nutrilog_import` adatblokk. Másold ki az AI teljes válaszát, a `json` blokkal együtt. Ha az AI nem adott ilyet, kérd: „Küldd el az eredményt a Nutrilog JSON formátumában.” |
@@ -371,6 +424,7 @@ A Health log egy általános egészségnapló az étkezési napló mellett: röv
 - A dmBio termékek (527 db, dm-drogerie markt Magyarország) be vannak építve az appba, a dm.hu termékoldalairól. Az energia és a makrók a dm tápértéktáblázatából jönnek (ahol a táblázat ellentmondott magának, a becslési projekt javította). Minden más érték **becslés** a hozzávalók listájából, a CIQUAL 2020 nyers alapanyagaival (dmBio becslés v3, 2026. október 24.). A becslés átlagérték, nem mérés: a „confidence” mutatja, mennyire bízhatsz benne. Ahol a dm.hu-n nincs táblázat, ott címkeérték sincs. A dmBio ételek NOVA-csoportja üres, azt te állítod be.
 - A csomagolt termékek az Open Food Facts közösségi adatbázisból jönnek. A címkeadat hiányos vagy hibás lehet, ezért érdemes összevetni a csomagolással.
 - Italoknál az app grammal számol, és 1 ml-t 1 g-nak vesz. Hígabb italoknál ez elég pontos. Ha egy saját ételnél a „100 ml (counted as 100 g)” van kiválasztva (a „Create food” és az „Edit food” ablakban, vagy az AI-válasz 100 ml-es adagja alapján magától), az app **ml-ben mutatja** a mennyiséget, a számolás ettől nem változik. A régebben felvett italok grammban maradnak, amíg az „Edit food” ablakban át nem állítod őket. A CSV `unit` oszlopában ilyenkor `ml` áll.
+- Az ajánlott bevitel (Nutrients fül, 16. fejezet) az EFSA felnőttekre vonatkozó értékeiből jön (PRI, AI, nátriumnál és kloridnál SAI). Egyetlen forrást használ, nem keveri a magyar vagy az amerikai (DRI) ajánlásokkal, mert azok átváltása és kora más, és egy rossz átváltás észrevétlenül hibás százalékot adna. A nátrium és a CIQUAL E-vitamin adatáról lásd a 16. fejezet végét.
 - Ez egy tájékoztató eszköz, nem orvosi tanács.
 
-**Források:** Anses. 2020. Ciqual French food composition table, <https://doi.org/10.5281/zenodo.4770202> (CC BY 4.0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, <https://fdc.nal.usda.gov> (U.S. public domain). dmBio termékek: dm-drogerie markt Magyarország termékoldalai, <https://www.dm.hu>; mikrotápanyag-becslés: dmBio becslés v3 (CIQUAL 2020 alapján). Open Food Facts, <https://world.openfoodfacts.org> (ODbL). Vonalkód-olvasó: ZXing-js (Apache 2.0, lásd `ZXING-LICENSE.txt`).
+**Források:** Anses. 2020. Ciqual French food composition table, <https://doi.org/10.5281/zenodo.4770202> (CC BY 4.0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, <https://fdc.nal.usda.gov> (U.S. public domain). dmBio termékek: dm-drogerie markt Magyarország termékoldalai, <https://www.dm.hu>; mikrotápanyag-becslés: dmBio becslés v3 (CIQUAL 2020 alapján). Ajánlott bevitel: EFSA, Dietary Reference Values for nutrients – Summary report (EFSA Supporting Publication 2017:e15121), <https://www.efsa.europa.eu/sites/default/files/2017_09_DRVs_summary_report.pdf>, és a Summary of Dietary Reference Values (4. verzió, 2017. szeptember); nátrium és klorid: EFSA, 2019. Open Food Facts, <https://world.openfoodfacts.org> (ODbL). Vonalkód-olvasó: ZXing-js (Apache 2.0, lásd `ZXING-LICENSE.txt`).
