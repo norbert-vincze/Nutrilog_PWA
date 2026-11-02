@@ -386,3 +386,23 @@ details.fold details.fold { background: var(--sheet); }
 .seg.grid2 { grid-template-columns: repeat(2, 1fr); border-radius: 22px; }
 .seg.four { grid-template-columns: repeat(4, 1fr); }
 .seg.ref-seg { background: var(--surface); }
+
+/* version 27: every nutrient with data in the Amount sheet, and the items a total adds up from in the opened rows of the Nutrients tab */
+.allnut { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.allnut .an-t { font-weight: 650; font-size: .9rem; }
+.allnut .an-h { margin: 14px 0 2px; font-size: .78rem; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.an-list { margin: 0; }
+.an-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: .9rem; }
+.an-row:first-child { border-top: 0; }
+.an-row dt { min-width: 0; overflow-wrap: anywhere; }
+.an-row dd { margin: 0; font-weight: 650; white-space: nowrap; text-align: right; }
+.an-row dd em, .nc-val em { font-style: normal; font-weight: 520; color: var(--muted); font-size: .8rem; margin-left: 3px; }
+.an-none { margin: 12px 0 0; }
+.ncontrib { padding: 0 16px 12px; font-size: .86rem; }
+.ncontrib .nc-h { color: var(--muted); margin-bottom: 2px; }
+.ncontrib ul { list-style: none; margin: 0; padding: 0; }
+.ncontrib li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.ncontrib li:first-child { border-top: 0; }
+.ncontrib .nc-name { min-width: 0; overflow-wrap: anywhere; }
+.ncontrib .nc-name small { color: var(--muted); font-size: inherit; }
+.ncontrib .nc-val { font-weight: 650; white-space: nowrap; text-align: right; }

@@ -409,8 +409,10 @@ async def main():
         await page.tap('[data-tab=data]'); await page.wait_for_selector('[data-act=export-days]')
         days = await csv_of('export-days'); ents = await csv_of('export-entries')
         check('the CSV files are unchanged by the profile (no reference columns)', not any('ref' in h.lower() or 'pri' == h.lower() for h in days[0] + ents[0]) and days[0][:4] == ['date', 'entries', 'est_share', 'water_intake_ml'], days[0][:5])
-        check('the Data tab names EFSA under Sources & licences, and shows version 26', 'EFSA' in await page.inner_text('#view') and 'Reference intakes (Nutrients tab)' in await page.inner_text('#view') and 'version 26' in (await page.inner_text('#view')).replace('Nutrilog version', 'version'), '')
-        check('sw.js cache name is v26', "'nutrilog-v26'" in (ROOT / 'sw.js').read_text())
+        data_txt = (await page.inner_text('#view')).replace('Nutrilog version', 'version')
+        ver = re.search(r'version (\d+)', data_txt)
+        check('the Data tab names EFSA under Sources & licences, and shows version 26 or newer', 'EFSA' in data_txt and 'Reference intakes (Nutrients tab)' in data_txt and bool(ver) and int(ver.group(1)) >= 26, ver and ver.group(0))
+        check('sw.js cache name has the number of the version', bool(ver) and f"'nutrilog-v{ver.group(1)}'" in (ROOT / 'sw.js').read_text())
 
         # =========================================================== 8 Sync with a fake GitHub
         gh = FakeGitHub()

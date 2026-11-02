@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '26 · 30 Oct 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '27 · 2 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -511,6 +511,53 @@ const trackedKnown = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) =
 const trackedEst = (f) => { const v = vecOf(f); return TRACKED.reduce((c, i) => c + (isEst(f, i, v) ? 1 : 0), 0); };
 const srcTag = (f) => (f.src === 'ciqual' ? 'CIQUAL' : f.src === 'usda' ? 'USDA' : f.src === 'dmbio' ? 'dmBio' : f.src === 'off' ? 'OFF' : 'custom');
 const kcalPer = (f) => vecOf(f).lo[0];
+
+/* ---- lists of nutrient values (version 27): the Amount sheet and the opened rows of the Nutrients tab ----
+   One value as HTML: "~" in front when part of it is an estimate, "<x" when it is only known to be below x, "a–b" for a real range.
+   The "~" and the "<" are hidden from a screen reader and replaced by words. Missing data never gets here (the callers skip it): missing is not zero. */
+function nutValHtml(lo, hi, est) {
+  const range = hi - lo > Math.max(lo * 0.1, 1e-9);
+  const num = !range ? fmt(lo) : lo === 0 ? '<span aria-hidden="true">&lt;</span><span class="sr-only">below </span>' + fmt(hi) : fmt(lo) + '–' + fmt(hi);
+  return (est ? '<span aria-hidden="true">~</span><span class="sr-only">estimated </span>' : '') + num;
+}
+/* Every nutrient that has data for this food, for the amount in the Amount sheet (k = amount / basis), grouped like the Nutrients tab.
+   Nutrients without data are not listed (only counted): they are not zero. */
+function allNutHtml(food, k) {
+  const v = vecOf(food);
+  let shown = 0;
+  const groups = GROUPS.map(([gid, gname]) => {
+    const rows = [];
+    for (let i = 0; i < NUT_N; i++) {
+      if (groupOf(i) !== gid || Number.isNaN(v.lo[i])) continue;
+      rows.push(`<div class="an-row"><dt>${esc(labelOf(i))}</dt><dd>${nutValHtml(v.lo[i] * k, v.hi[i] * k, isEst(food, i, v))}<em>${esc(UNITS[i])}</em></dd></div>`);
+    }
+    shown += rows.length;
+    return rows.length ? `<h4 class="an-h">${esc(gname)}</h4><dl class="an-list">${rows.join('')}</dl>` : '';
+  }).join('');
+  const none = NUT_N - shown;
+  return `<div class="allnut"><div class="an-t">All nutrients with data for this amount (${shown})</div>${groups}${none ? `<p class="muted small an-none">No data for ${none} more nutrient${none === 1 ? '' : 's'}. ${none === 1 ? 'It is' : 'They are'} not shown, and ${none === 1 ? 'it is' : 'they are'} not zero.</p>` : ''}</div>`;
+}
+/* The items of the day that have data for nutrient i, one entry of the list per food (the same food logged twice is added up), the biggest first.
+   Their values are exactly what the total of the row adds up from. */
+function partsFor(es, i) {
+  const by = new Map();
+  for (const e of es) {
+    const f = getFood(e.f);
+    if (!f) continue;
+    const v = vecOf(f);
+    if (Number.isNaN(v.lo[i])) continue;
+    const k = e.a / f.basis.qty;
+    let p = by.get(e.f);
+    if (!p) by.set(e.f, p = { f, a: 0, n: 0, lo: 0, hi: 0, est: isEst(f, i, v) });
+    p.a += e.a; p.n++; p.lo += v.lo[i] * k; p.hi += v.hi[i] * k;
+  }
+  return [...by.values()].sort((x, y) => y.lo - x.lo || y.hi - x.hi || x.f.name.localeCompare(y.f.name));
+}
+function partsHtml(es, i) {
+  const parts = partsFor(es, i);
+  if (!parts.length) return '';
+  return `<div class="ncontrib"><div class="nc-h">Added up from</div><ul>${parts.map((p) => `<li><span class="nc-name">${esc(cap(p.f.name))}<small> · ${esc(fmt(p.a))} ${esc(unitOf(p.f))}${p.n > 1 ? ` · ${p.n} entries` : ''}</small></span><span class="nc-val">${nutValHtml(p.lo, p.hi, p.est)}<em>${esc(UNITS[i])}</em></span></li>`).join('')}</ul></div>`;
+}
 
 /* ---- NOVA: how processed a food is (1 minimal … 4 ultra-processed) ----
    Open Food Facts gives a group for some products; CIQUAL and USDA give none. Unknown stays unknown: nothing is guessed.
@@ -1510,7 +1557,7 @@ function viewNutr() {
       const rc = p ? refCompare(key, es, T, p) : null;   // the EFSA reference of this row, when a profile is set and EFSA gives a value
       const line = rc ? refLineHtml(rc, labelOf(i), p) : '';
       const rdet = rc ? refDetailHtml(rc, p) : p && key === 'beta_carotene' ? '<div class="ndetail">Counted in Vitamin A: one sixth of its amount (6 µg beta-carotene = 1 µg retinol equivalent).</div>' : '';
-      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span>${line}</summary>${rdet}${detail}</details>`
+      return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span>${line}</summary>${partsHtml(es, i)}${rdet}${detail}</details>`
         + (p && key === DHA_KEY ? refSumRowHtml('epa_dha', 'EPA + DHA', es, T, p) : '');
     }).join('');
     const list = `<div class="nlist">${rows}</div>`;
@@ -2013,7 +2060,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
   const chips = (unitG ? [...portionsOf(food).map((p) => [p.label, p.grams]), ...[10, 30, 50, 100, 200].map((g) => [g + ' ' + au, g])] : [0.5, 1, 2, 3].map((x) => [x + ' ' + au, x]));
   const startTime = (entry && timeOf(entry)) || hm(new Date());   // new entry: now; existing entry: the saved time
   const sh = openSheet(entry ? 'Edit entry' : 'Amount', `
-    <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
+    <div class="row gap" style="flex-wrap:nowrap">${avatar(food.name)}<div style="min-width:0;overflow-wrap:anywhere"><b>${esc(cap(food.name))}</b><br><span class="muted small">${esc(food.brand || '')} ${esc(srcTag(food))}${unitG ? '' : ' · unit: ' + esc(food.basis.unit)}</span></div></div>
     <label class="f">Amount (${esc(au)})<input type="text" inputmode="decimal" enterkeyhint="done" id="amt" value="${esc(String(start))}"></label>
     <p class="note field-err" id="amterr" role="alert" hidden>Enter an amount greater than 0.</p>
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
@@ -2036,7 +2083,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     const known = trackedKnown(food);
     $('#prev', sh.el).innerHTML = `<div class="card-t">${Number.isNaN(v.lo[0]) ? 'no energy data' : (energyEstimated(food) ? '~' : '') + fmt(v.lo[0] * k) + ' kcal'}</div>
       <div class="muted small" style="margin-top:4px">protein ${fmt(g('protein'))} g · carbohydrate ${fmt(g('carbohydrate'))} g · fat ${fmt(g('fat'))} g · fibre ${fmt(g('fibres'))} g</div>
-      <div class="small" style="margin-top:8px">Data for <b>${known}</b> of the ${TRACKED.length} tracked nutrients${trackedEst(food) ? ` (<b>${trackedEst(food)}</b> of them estimated, not from a label)` : ''}${known < TRACKED.length * 0.6 ? ' <span style="color:var(--warn)">(few — micronutrient totals will be incomplete)</span>' : ''}</div>`;
+      <div class="small" style="margin-top:8px">Data for <b>${known}</b> of the ${TRACKED.length} tracked nutrients${trackedEst(food) ? ` (<b>${trackedEst(food)}</b> of them estimated, not from a label)` : ''}${known < TRACKED.length * 0.6 ? ' <span style="color:var(--warn)">(few — micronutrient totals will be incomplete)</span>' : ''}</div>${allNutHtml(food, k)}`;
   }
   amt.addEventListener('input', () => { amterr.hidden = true; amt.removeAttribute('aria-invalid'); prev(); });
   $('#chips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = String(b.dataset.v); amterr.hidden = true; prev(); } });
