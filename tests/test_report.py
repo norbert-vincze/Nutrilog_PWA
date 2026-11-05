@@ -398,7 +398,7 @@ async def main():
         check('after a reload the Report tab and the period (Month) are still there', s['pressed'] == ['month'] and s['title'] == 'Report', s)
         await T("() => { document.querySelector('details[data-sec=quality]').open = true; }"); await page.wait_for_timeout(60)
         ro = json.loads(await T("() => localStorage.getItem('nutrilog.reportOpen')"))
-        check('opening "Data quality" is remembered: {overview: true, quality: true, others false}', ro == {'overview': True, 'days': False, 'trend': False, 'trendtable': False, 'nutrients': False, 'meals': False, 'foods': False, 'nova': False, 'novatable': False, 'quality': True}, ro)
+        check('opening "Data quality" is remembered: {overview: true, quality: true, others false}', ro == {'overview': True, 'days': False, 'trend': False, 'trendtable': False, 'nutrients': False, 'meals': False, 'foods': False, 'nova': False, 'novatable': False, 'quality': True, 'time': False, 'timetable': False}, ro)
         await page.reload(); await page.wait_for_selector('.rp-seg')
         check('...and it is open after a reload', await T("() => document.querySelector('details[data-sec=quality]').open"))
 

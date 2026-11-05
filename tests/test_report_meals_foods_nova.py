@@ -180,7 +180,7 @@ async def main():
         await seed(WEEK, open_all={'overview': True})
         order = await T("() => [...document.querySelectorAll('#view > details.rp-sec')].map((d) => [d.dataset.sec, d.querySelector('summary').textContent.trim(), d.open])")
         check('the sections of the Report are in this order: Overview (open), Trend, Nutrients, Meals and weekdays, Foods, Food processing (NOVA), Data quality (all closed)',
-              order == [['overview', 'Overview', True], ['trend', 'Trend', False], ['nutrients', 'Nutrients', False], ['meals', 'Meals and weekdays', False], ['foods', 'Foods', False], ['nova', 'Food processing (NOVA)', False], ['quality', 'Data quality', False]], order)
+              order == [['overview', 'Overview', True], ['trend', 'Trend', False], ['nutrients', 'Nutrients', False], ['meals', 'Meals and weekdays', False], ['foods', 'Foods', False], ['nova', 'Food processing (NOVA)', False], ['quality', 'Data quality', False], ['time', 'Time of day', False]], order)
         await page.click('details[data-sec=meals] > summary'); await page.click('details[data-sec=foods] > summary'); await page.click('details[data-sec=nova] > summary'); await page.wait_for_timeout(60)
         ro = json.loads(await T("() => localStorage.getItem('nutrilog.reportOpen')"))
         check('opening a section is remembered on this device (meals, foods, nova), next to the older keys', ro.get('meals') is True and ro.get('foods') is True and ro.get('nova') is True and ro.get('overview') is True and ro.get('novatable') is False, ro)

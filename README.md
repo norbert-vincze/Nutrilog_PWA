@@ -396,7 +396,7 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 - Ha az időszak még nem ért véget (például a mai hét), a **mai napig** tart, és a fejlécben ott áll: „so far”.
 - Egy nap akkor számít **naplózott napnak**, ha van legalább egy tétele. Az üres napokat az app **kihagyja**, nem számolja nullának. Ha egy héten három napot vittél fel, az átlag a három napé, nem a hété.
 
-**Mit mutat a hét rész?** Az „Overview”, a „Trend”, a „Nutrients”, a „Meals and weekdays”, a „Foods”, a „Food processing (NOVA)” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod. Az app megjegyzi, melyik van nyitva (csak ezen a telefonon).
+**Mit mutat a nyolc rész?** Az „Overview”, a „Trend”, a „Nutrients”, a „Meals and weekdays”, a „Foods”, a „Food processing (NOVA)”, a „Data quality” és a „Time of day” szakaszt a címére koppintva nyithatod és zárhatod. Az app megjegyzi, melyik van nyitva (csak ezen a telefonon).
 - **Overview:** a naponkénti átlag kcal-ban nagy számmal (az „Average per logged day” felirat alatt), alatta a fehérje, szénhidrát, zsír, rost, cukor és só átlaga, és a vízfogyasztás átlaga. A vizet csak azokból a napokból átlagolja, amelyeken felvittél vizet. A „**Days**” szakasz napokra bontva mutatja az energiát. Egy napos időszaknál itt van az „**Open in Diary**” gomb is, ami a Diary fülön megnyitja azt a napot.
 - **Trend:** egyetlen mértéket (alapból az energiát) mutat oszlopokban, hogy lásd, hogyan alakult az időszak alatt. Részletesen lejjebb olvasod („Trend: oszlopdiagram az időszakról”). Egyetlen napos időszaknál nincs Trend, mert nincs mit összehasonlítani.
 - **Nutrients:** a Nutrients fül sorai az időszak átlagával. A sor megnyitva megmutatja, melyik ételekből jön az érték („Added up from”), hol nincs adat, és ha beállítottad az ajánlott bevitelt (16. fejezet), az EFSA-sávot az **átlagra** számolja. Egyetlen napos időszaknál a számok megegyeznek a Nutrients fülével.
@@ -464,9 +464,24 @@ Ha az időszak legalább két napos, alatta az „**Over time**” kártya: **eg
 - **Színes négyzet** (NOVA „Over time”): a sávokban látható NOVA-csoportok színe, csak az szerepel, amelyik tényleg van valamelyik sávban.
 A megosztott linken ugyanezek a jelmagyarázatok jelennek meg. A „Meals and weekdays” kártyán **három** van: az étkezések, a hétköznapok és a hétfő–péntek / szombat–vasárnap sávjai alatt, mert mindegyiknél másképp mérjük a hosszt.
 
+**Time of day: mikor eszel (33. verzió).** A Report utolsó szakasza, két kártyával. Nem tárol semmi újat, a már felvitt tételek időpontjából számol.
+
+- **When you eat:** a naplózott napokra az **átlagos első** és az **átlagos utolsó** tétel időpontja, a kettő közti **átlagos ablak** (például „9 h 25 min”), továbbá a **legkorábbi első** és a **legkésőbbi utolsó** tétel a napjával együtt. Egy napos időszaknál, vagy ha az időszakban csak egy naplózott nap van, csak a „First entry”, a „Last entry” és a „Window” sor áll ott. Az ablak az első és az utolsó tétel között eltelt idő, egyetlen tételnél 0 min.
+- **Energy by hour:** 24 sáv, egy sáv egy óra (00:00-tól 23:59-ig). A sáv magassága az abban az órában elfogyasztott energia **naponkénti átlaga**. Ha egy naplózott napon abban az órában nem volt tétel, az az óra arra a napra 0 kcal, mert tényleg nem ettél semmit. A hiányzó adat viszont **soha nem nulla**: ha egy tételnek nincs energiaadata, a sáv csíkos és `≥` jelet kap, ha az órában csak ilyen tétel van, pontozott vonal áll ott („no energy data”). A 24 sáv összege ezért pontosan az Overview átlagos energiája (tesztelve).
+
+**Egy óra értékének leolvasása lépésről lépésre:**
+1. Koppints a Report fülön a „**Time of day**” szakasz címére.
+2. Koppints egy sávra, vagy húzd végig az ujjadat a diagramon. A sáv alatti sor szavakkal mondja meg az értéket, például „12:00–12:59 · ≥ 100 kcal · 3 of 3 days · 3 items”. Induláskor a legmagasabb óra van kijelölve.
+3. A sor két oldalán lévő nyilakkal óráról órára léphetsz (képernyőolvasónak „Previous hour” és „Next hour”).
+4. A „**Show as table**” gomb mind a 24 órát táblázatban mutatja, napok és tételek számával.
+
+**Fontos tudni az időpontról.** Az app azt az időt használja, amit a tételnél beállítottál (Diary → tétel → „Time (24 h)”). Ha nem módosítottad, az az idő, amikor felvitted a tételt: ha este írod be a reggelit, a Report a felvitel idejét mutatja, nem az evését. Ha egy tételnél javítod az időt, a Report követi. Az **éjfél utáni** tétel arra a napra kerül, amelyiken felvitted (a 00:20-as tétel az adott nap legkorábbi tétele, nem az előző éjszakáé). Ha egy tételnek nincs használható ideje (nagyon régi mentésben fordulhat elő), az innen **kimarad**, és a kártya megmondja, hány ilyen van. A szakasz csak az energiát mutatja, nem választható mérték.
+
+A diagram alatt ugyanolyan jelmagyarázat áll, mint a Trendnél, és csak azokat a jeleket sorolja fel, amelyek a diagramon látszanak. A megosztott linken (14. fejezet) ez a szakasz is ott van, ugyanazokkal a számokkal.
+
 **Ha az időszakban nincs tétel**, egy kártya közli ezt („No entries on …” vagy „No entries from … to …”), és a „**Go to Diary**” gombbal átugorhatsz a naplóba. Ha egy tétel ételének adatát nem sikerült betölteni (például az USDA-tábla hiányzik), a fejléc alatt figyelmeztető sor mondja meg, hány tételt nem számolt az app.
 
-**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel, a „Meals and weekdays”, a „Foods” és a „Food processing (NOVA)” szakasszal együtt. A „Foods” mértékét ott is választhatod, de írni ott sem tud semmit, és a NOVA-csoportot sem tudja beállítani.
+**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel, a „Meals and weekdays”, a „Foods”, a „Food processing (NOVA)” és a „Time of day” szakasszal együtt. A „Foods” mértékét ott is választhatod, de írni ott sem tud semmit, és a NOVA-csoportot sem tudja beállítani.
 
 ## Ha elakadsz
 

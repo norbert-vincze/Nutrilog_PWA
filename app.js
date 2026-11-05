@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '32 · 5 Nov 2026';
+const VERSION = '33 · 5 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -1733,7 +1733,7 @@ const RP_MONTHS = { month: 1, m3: 3, m6: 6, year: 12 };
 const RP_MIN_DAY = '2000-01-01';
 const RP_TOP_FOODS = 12;     // foods listed in "Added up from" of a row; the rest is one line with their sum
 const RP_NAMES_MAX = 15;     // names listed after "No data for:"
-const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, meals: false, foods: false, nova: false, novatable: false, quality: false } };
+const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, meals: false, foods: false, nova: false, novatable: false, quality: false, time: false, timetable: false } };
 let RP_NOW = null;           // the period on the screen: { P, r } (the measure sheet and the Foods list read it)
 function rpLoad() {   // the choice of this device (not in the backup, not synced); a damaged value is ignored
   try {
@@ -2152,6 +2152,7 @@ function openRpMeasure() {
 function rpTrendAct(a, t) {
   if (a === 'rp-measure') openRpMeasure();
   else if (a === 'rp-trend-step') { if (RP_TREND) rpTrendSelect(RP_TREND.sel + Number(t.dataset.n)); }
+  else if (a === 'rp-hour-step') { if (RP_HOURS) rpHourSelect(RP_HOURS.sel + Number(t.dataset.n)); }
   else if (a === 'rp-open-bucket') {   // the day, the week or the month of the selected bar becomes the period of the Report
     const T = RP_TREND, b = T && !T.none ? T.bars[T.sel] : null;
     if (!b) return;
@@ -2403,6 +2404,138 @@ function rpQualityHtml(P, r) {
       ${least.length ? `<dl class="an-list">${leastRows}</dl><p class="hint rp-expl">Among the ${TRACKED.length} tracked nutrients. The share of items that have data for them.</p>` : '<p class="small" style="margin:0">Every tracked nutrient has data for every item.</p>'}
     </div>`;
 }
+/* ---- Time of day (version 33): the eating window and the energy by hour ---- */
+/* The time of an entry is `timeOf`: the time set in the Amount sheet or, when it was never changed, the moment the entry was logged. So this section shows when food was logged unless the times
+   were corrected, and says so. Energy by hour follows the rules of the meals: an hour without entries on a logged day counts as 0 kcal for that day (nothing was logged there), an item without
+   energy data is never 0 ("≥" on the bar, or "no energy data"). An entry belongs to the day it was logged on, whatever its time. */
+const hmMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+const minHm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const winText = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`);
+function rpTimeStats(P) {
+  const nd = P.nd, hours = Array.from({ length: 24 }, (_, h) => ({ h, lo: 0, hi: 0, n: 0, cnt: 0, est: 0, days: new Set() })), wins = [];
+  let noTime = 0;
+  for (const d of P.days) {
+    let first = Infinity, last = -Infinity;
+    for (const e of P.by.get(d)) {
+      const t = timeOf(e);
+      if (!validHm(t)) { noTime++; continue; }   // no usable time: left out of this section, and said
+      const mi = hmMin(t), o = hours[Math.floor(mi / 60)], f = getFood(e.f), v = vecOf(f);
+      if (mi < first) first = mi;
+      if (mi > last) last = mi;
+      o.n++; o.days.add(d);
+      if (!Number.isNaN(v.lo[0])) { const k = e.a / f.basis.qty; o.lo += v.lo[0] * k; o.hi += v.hi[0] * k; o.cnt++; if (isEst(f, 0, v)) o.est++; }
+    }
+    if (first <= last) wins.push({ d, first, last });
+  }
+  const bars = hours.map((o) => {
+    const b = { k: o.h, short: pad(o.h), long: `${pad(o.h)}:00–${pad(o.h)}:59`, items: o.n, dayN: o.days.size, state: 'none', lo: 0, hi: 0, partial: false, est: false, range: false, open: false };
+    if (!o.n) return b;
+    if (!o.cnt) { b.state = 'nodata'; return b; }
+    const lo = o.lo / nd, hi = o.hi / nd;
+    return Object.assign(b, { state: 'ok', lo, hi, partial: o.cnt < o.n, est: o.est > 0, range: hi - lo > Math.max(lo * 0.1, 1e-9) });
+  });
+  let win = null;
+  if (wins.length) {
+    const avgFirst = Math.round(wins.reduce((a, w) => a + w.first, 0) / wins.length), avgLast = Math.round(wins.reduce((a, w) => a + w.last, 0) / wins.length);
+    win = { n: wins.length, avgFirst, avgLast, window: avgLast - avgFirst, early: wins.reduce((a, w) => (w.first < a.first ? w : a)), late: wins.reduce((a, w) => (w.last > a.last ? w : a)) };
+  }
+  return { nd, bars, win, noTime };
+}
+function rpHourRead(b, nd, info) {
+  const bits = [b.long];
+  if (b.state === 'none') bits.push('no entries');
+  else if (b.state === 'nodata') bits.push('no energy data');
+  else bits.push(rpBarVal(b, 'kcal', info));
+  if (b.items) { if (nd > 1) bits.push(`${b.dayN} of ${plural(nd, 'day')}`); bits.push(plural(b.items, 'item')); }
+  return bits.join(' · ');
+}
+let RP_HOURS = null;       // the hour chart on the screen: { bars, nd, info, sel, ymax }
+function rpHourPaint() {
+  const H = RP_HOURS;
+  if (!H) return;
+  document.querySelectorAll('#rp-hours .rp-bar').forEach((el) => el.classList.toggle('sel', Number(el.dataset.k) === H.sel));
+  const rd = $('#rp-hrd'); if (rd) rd.textContent = rpHourRead(H.bars[H.sel], H.nd, H.info);
+  const pv = $('#rp-hours [data-act=rp-hour-step][data-n="-1"]'), nx = $('#rp-hours [data-act=rp-hour-step][data-n="1"]');
+  if (pv) pv.disabled = H.sel <= 0;
+  if (nx) nx.disabled = H.sel >= H.bars.length - 1;
+}
+function rpHourSelect(k) {
+  const H = RP_HOURS;
+  if (!H || !Number.isFinite(k)) return;
+  k = Math.max(0, Math.min(H.bars.length - 1, Math.round(k)));
+  if (k !== H.sel) { H.sel = k; rpHourPaint(); }
+}
+function rpTimeHtml(P) {
+  const { nd, bars, win, noTime } = rpTimeStats(P), info = rpMeasureInfo('kcal'), okBars = bars.filter((b) => b.state === 'ok');
+  RP_HOURS = null;
+  const row = (dt, dd, sub = '') => `<div class="an-row"><dt>${dt}${sub ? `<small> · <span class="rp-nw">${esc(sub)}</span></small>` : ''}</dt><dd>${dd}</dd></div>`;
+  let rows;
+  if (!win) rows = '<p class="small muted" style="margin:6px 0 0">No entry in this period has a time.</p>';
+  else if (win.n === 1) rows = `<dl class="an-list">${row('First entry', minHm(win.avgFirst))}${row('Last entry', minHm(win.avgLast))}${row('Window', winText(win.window), 'first to last entry')}</dl>`;
+  else rows = `<dl class="an-list">${row('Average first entry', minHm(win.avgFirst), plural(win.n, 'logged day'))}${row('Average last entry', minHm(win.avgLast))}${row('Average window', winText(win.window), 'first to last entry')}`
+    + `${row('Earliest first entry', minHm(win.early.first), dayLabel(win.early.d))}${row('Latest last entry', minHm(win.late.last), dayLabel(win.late.d))}</dl>`;
+  const when = `<div class="card rp-card"><h4 class="rp-h">When you eat</h4>${rows}${noTime ? `<p class="small muted" style="margin:8px 0 0">${noTime === 1 ? '1 entry has' : noTime.toLocaleString(LOC) + ' entries have'} no time and ${noTime === 1 ? 'is' : 'are'} not in this section.</p>` : ''}
+      <p class="hint rp-expl">The time of an entry is the time you set for it. If you did not change it, it is the time you logged the entry, so food logged later in the day shows when you logged it, not when you ate it. A day on which you logged only part of the food gives a short window. An entry belongs to the day it was logged on, also after midnight.</p></div>`;
+  const head = `<h4 class="rp-h">Energy by hour</h4><p class="muted small" style="margin:0">kcal ${nd === 1 ? 'in that day' : 'a day, average of the logged days'} · one bar = one hour</p>`;
+  if (!bars.some((b) => b.state !== 'none')) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No entry in this period has a time.</p></div>`;
+  if (!okBars.length) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No item in this period has energy data, so there is nothing to draw. This is not zero.</p></div>`;
+  const ymax = rpNiceMax(Math.max(...okBars.map((b) => b.hi)) * 1.05), sel = okBars.reduce((a, b) => (b.lo > a.lo ? b : a)).k;
+  RP_HOURS = { bars, nd, info, sel, ymax };
+  const pct = (x) => Math.max(0, Math.min(100, x / ymax * 100));
+  const barHtml = bars.map((b) => {
+    const cls = b.state === 'none' ? 'none' : b.state !== 'ok' ? 'nodata' : `${b.partial ? 'part' : 'full'}${b.range ? ' cap' : ''}`;
+    const h = b.state === 'ok' ? pct(b.lo) : 0, t = b.state === 'ok' ? pct(b.hi) : 0;
+    return `<div class="rp-bar ${cls}${b.k === sel ? ' sel' : ''}" data-k="${b.k}" style="--h:${h.toFixed(2)}%;--t:${t.toFixed(2)}%"></div>`;
+  }).join('');
+  const peak = bars[sel];
+  const label = `Bar chart of the energy in each hour of the day, 24 bars from 00:00 to 23:59. ${okBars.length} of them have a value. Highest: ${rpBarVal(peak, 'kcal', info)} at ${peak.long}. Use the left and right arrow keys, or the Previous hour and Next hour buttons, to read the bars one by one. The table below has all values.`;
+  const has = (f) => bars.some(f);
+  const leg = [
+    has((b) => b.state === 'ok' && !b.partial) ? '<li><i class="rp-sw full" aria-hidden="true"></i>Solid bar: every item has energy data</li>' : '',
+    has((b) => b.state === 'ok' && b.partial) ? '<li><i class="rp-sw part" aria-hidden="true"></i>Striped bar: a lower value (≥), some items have no energy data</li>' : '',
+    has((b) => b.state === 'ok' && b.range) ? '<li><i class="rp-sw cap" aria-hidden="true"></i>Outlined top: a range, from values given as “below x”</li>' : '',
+    has((b) => b.state === 'none') ? '<li><i class="rp-sw none" aria-hidden="true"></i>Dashed base: no entries in this hour (not a 0)</li>' : '',
+    has((b) => b.state === 'nodata') ? '<li><i class="rp-sw nodata" aria-hidden="true"></i>Dotted stub: logged, but no energy data (not a 0)</li>' : '',
+  ].join('');
+  const rowsT = bars.map((b) => `<tr><th scope="row">${esc(b.long)}</th><td>${b.state === 'none' ? 'no entries' : b.state === 'nodata' ? 'no energy data' : esc(rpBarVal(b, 'kcal', info))}</td>${nd > 1 ? `<td>${b.dayN}</td>` : ''}<td>${b.items}</td></tr>`).join('');
+  return when + `<div class="card rp-card" id="rp-hours">${head}
+    <div class="rp-chart">
+      <div class="rp-y" aria-hidden="true"><span style="bottom:100%">${rpTick(ymax)}</span><span style="bottom:50%">${rpTick(ymax / 2)}</span><span style="bottom:0">0</span></div>
+      <div class="rp-hplot" id="rp-hplot" tabindex="0" role="group" aria-label="${esc(label)}">
+        <i class="rp-gl" style="bottom:50%" aria-hidden="true"></i><i class="rp-gl" style="bottom:100%" aria-hidden="true"></i>
+        <div class="rp-bars" aria-hidden="true">${barHtml}</div>
+      </div>
+      <div class="rp-hx" aria-hidden="true"><span style="left:0">00:00</span><span style="left:25%">06:00</span><span style="left:50%">12:00</span><span style="left:75%">18:00</span></div>
+    </div>
+    <div class="rp-read">
+      <button type="button" class="icon-btn" data-act="rp-hour-step" data-n="-1" aria-label="Previous hour" ${sel <= 0 ? 'disabled' : ''}>${IC.left}</button>
+      <p class="rp-rd" id="rp-hrd" aria-live="polite">${esc(rpHourRead(peak, nd, info))}</p>
+      <button type="button" class="icon-btn" data-act="rp-hour-step" data-n="1" aria-label="Next hour" ${sel >= bars.length - 1 ? 'disabled' : ''}>${IC.right}</button>
+    </div>
+    <ul class="rp-leg">${leg}</ul>
+    <p class="hint rp-expl">${nd === 1 ? 'Each bar is the energy of the entries in that hour.' : 'Each bar is the average energy of the logged days in that hour.'} An hour with no entries on a logged day counts as 0 kcal for that hour, because nothing was logged there. Items without energy data are not counted as 0, so a ≥ means some are missing.</p>
+    <details class="fold" data-sec="timetable" ${RP.open.timetable ? 'open' : ''}><summary>Show as table</summary>
+      <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Energy by hour as a table"><table class="rp-table"><thead><tr><th scope="col">Hour</th><th scope="col">Energy</th>${nd > 1 ? '<th scope="col">Days</th>' : ''}<th scope="col">Items</th></tr></thead><tbody>${rowsT}</tbody></table></div>
+    </details>
+  </div>`;
+}
+document.addEventListener('pointerdown', (ev) => { const pl = ev.target.closest && ev.target.closest('.rp-hplot'); if (pl) rpHourPick(pl, ev.clientX); });
+document.addEventListener('pointermove', (ev) => { if (!(ev.buttons & 1)) return; const pl = ev.target.closest && ev.target.closest('.rp-hplot'); if (pl) rpHourPick(pl, ev.clientX); });
+function rpHourPick(plot, x) {
+  const H = RP_HOURS;
+  if (!H) return;
+  const rc = plot.getBoundingClientRect();
+  if (rc.width > 0) rpHourSelect(Math.floor((x - rc.left) / rc.width * H.bars.length));
+}
+document.addEventListener('keydown', (ev) => {
+  const H = RP_HOURS;
+  if (!H || !ev.target.classList || !ev.target.classList.contains('rp-hplot')) return;
+  const k = ev.key;
+  if (k === 'ArrowLeft') rpHourSelect(H.sel - 1); else if (k === 'ArrowRight') rpHourSelect(H.sel + 1);
+  else if (k === 'Home') rpHourSelect(0); else if (k === 'End') rpHourSelect(H.bars.length - 1);
+  else return;
+  ev.preventDefault();
+});
 const rpSec = (id, title, body) => `<details class="rp-sec" data-sec="${id}" ${RP.open[id] ? 'open' : ''}><summary>${title}</summary>${body}</details>`;
 function rpSelectorHtml() {
   const span = VIEW ? daysIn(VIEW.from, VIEW.to) : 0, longOff = (k) => VIEW && (k === 'm3' || k === 'm6' || k === 'year') && span <= SHARE_MAX_DAYS;
@@ -2424,10 +2557,10 @@ function viewReport() {
     const water = P && P.waterDays.length ? `<div class="card rp-card"><dl class="an-list">${rpWaterRow(P)}</dl></div>` : '';
     return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}`;
   }
-  RP_TREND = null; RP_NOW = { P, r };
+  RP_TREND = null; RP_HOURS = null; RP_NOW = { P, r };
   const trend = r.days >= 2 ? rpSec('trend', 'Trend', `<div class="card rp-card" id="rp-trend">${rpTrendMake(P, r)}</div>`) : '';
   return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${trend}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}`
-    + `${rpSec('meals', 'Meals and weekdays', rpMealsHtml(P))}${rpSec('foods', 'Foods', `<div class="card rp-card" id="rp-foods">${rpFoodsMake(P)}</div>`)}${rpSec('nova', 'Food processing (NOVA)', rpNovaHtml(P, r))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
+    + `${rpSec('meals', 'Meals and weekdays', rpMealsHtml(P))}${rpSec('foods', 'Foods', `<div class="card rp-card" id="rp-foods">${rpFoodsMake(P)}</div>`)}${rpSec('nova', 'Food processing (NOVA)', rpNovaHtml(P, r))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}${rpSec('time', 'Time of day', rpTimeHtml(P))}`;
 }
 function reportHeader() {   // the title bar of the Report tab: the calendar icon sets the day the period is built around, Today jumps back to the period of today
   const today = !VIEW && RP.kind !== 'custom' && !rpRange().hasToday;
@@ -4326,7 +4459,7 @@ document.addEventListener('click', (ev) => {
     else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
     else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
     else if (a === 'rp-step') rpGo(+t.dataset.n);
-    else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket') rpTrendAct(a, t);
+    else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step') rpTrendAct(a, t);
     else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d) && d >= VIEW.from && d <= VIEW.to) { S.day = d; S.tab = 'log'; render(); window.scrollTo(0, 0); } }
     return;
   }
@@ -4335,7 +4468,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
   else if (a === 'rp-step') rpGo(+t.dataset.n);
-  else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket') rpTrendAct(a, t);
+  else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step') rpTrendAct(a, t);
   else if (a === 'rp-today') { RP.anchor = ymd(new Date()); render(); }
   else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d)) { S.day = d; S.tab = 'log'; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); } }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
@@ -4488,7 +4621,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

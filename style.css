@@ -457,7 +457,7 @@ details.rp-sec[open] > summary::after { content: "－"; }
 .rp-chart { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 6px; margin-top: 12px; padding-top: 8px; }
 .rp-y { position: relative; height: 180px; }
 .rp-y span { position: absolute; right: 0; transform: translateY(50%); font-size: .72rem; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rp-plot { position: relative; height: 180px; border-bottom: 1.5px solid var(--muted); touch-action: pan-y; -webkit-user-select: none; user-select: none; border-radius: 4px; outline-offset: 3px; }
+.rp-plot, .rp-hplot { position: relative; height: 180px; border-bottom: 1.5px solid var(--muted); touch-action: pan-y; -webkit-user-select: none; user-select: none; border-radius: 4px; outline-offset: 3px; }
 .rp-gl { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
 .rp-bars { position: absolute; inset: 0; display: flex; align-items: stretch; }
 .rp-bar { position: relative; flex: 1 1 0; min-width: 0; border-radius: 3px; }
@@ -559,3 +559,8 @@ details.rp-sec[open] > summary::after { content: "－"; }
 .rp-leg.row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .rp-leg.row li { min-width: 0; }
 .rp-leg li > span:not(.rp-swt) { min-width: 0; overflow-wrap: anywhere; }
+
+/* version 33: Time of day (Report). The hour chart reuses the bars of the Trend; only the labels under the axis differ. */
+.rp-hx { grid-column: 2; position: relative; height: 1.15em; margin-top: 6px; font-size: .74rem; line-height: 1.15; color: var(--muted); }
+.rp-hx span { position: absolute; top: 0; white-space: nowrap; }
+.rp-nw { white-space: nowrap; }   /* a date or a count in a label is not broken in the middle */
