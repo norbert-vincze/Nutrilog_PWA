@@ -564,3 +564,23 @@ details.rp-sec[open] > summary::after { content: "－"; }
 .rp-hx { grid-column: 2; position: relative; height: 1.15em; margin-top: 6px; font-size: .74rem; line-height: 1.15; color: var(--muted); }
 .rp-hx span { position: absolute; top: 0; white-space: nowrap; }
 .rp-nw { white-space: nowrap; }   /* a date or a count in a label is not broken in the middle */
+
+/* version 34: Water intake recordings (Diary) and Water by hour (Report). The hour chart reuses the bars of the energy chart. */
+details.water-list { margin-top: 10px; border-top: 1px solid var(--line); }
+details.water-list > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 650; font-size: .92rem; touch-action: manipulation; }
+details.water-list > summary::-webkit-details-marker { display: none; }
+details.water-list > summary::after { content: "＋"; margin-left: auto; color: var(--muted); font-weight: 400; }
+details.water-list[open] > summary::after { content: "−"; }
+.water-rows { list-style: none; margin: 0; padding: 0; }
+.water-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 8px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--ink); font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
+.water-row.ro { cursor: default; }
+.water-row .wr-t { font-variant-numeric: tabular-nums; font-weight: 650; min-width: 4.2em; }
+.water-row .wr-v { text-align: right; font-variant-numeric: tabular-nums; }
+.water-row .wr-v small { color: var(--muted); font-size: .85em; }
+
+/* version 34: the table of Water by hour has the longer words "no recordings" and "Recordings", so on a 320 px screen it gets a little less type and padding */
+@media (max-width: 359px) {
+  #rp-whours .rp-table { font-size: .72rem; }
+  #rp-whours .rp-table th, #rp-whours .rp-table td { padding: 8px 2px; }
+  #rp-whours .rp-table thead th { font-size: .7rem; }
+}

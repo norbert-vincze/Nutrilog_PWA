@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '33 · 5 Nov 2026';
+const VERSION = '34 · 5 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -209,10 +209,40 @@ const healthShort = (n) => `${parseYmd(n.d).toLocaleDateString(LOC, { day: 'nume
 const healthEdited = (n) => { const e = new Date(n.e); return `${e.toLocaleDateString(LOC, { day: 'numeric', month: 'short', year: 'numeric' })}, ${hm(e)}`; };   // 30 Oct 2026, 09:12
 const healthMonth = (n) => new Date(n.t).toISOString().slice(0, 7);   // the Sync file of a note: the month it was made (UTC, so every device agrees)
 
+/* ---- Water recordings (version 34): data ---- */
+/* Every tap on the Water intake card is one recording: {id, t, d, tm, ml}. t = when it was made (never changes), d = the day it belongs to (YYYY-MM-DD), tm = its time (HH:MM, 24 h),
+   ml = whole millilitres (1..WATER_MAX_ML). The recordings are kept in S.wlog (Store key 'wlog'). The total of a day is the sum of its recordings plus the amount that was logged before
+   water had a time (S.meta.water, version 24, shown as "No time"): nothing is converted or guessed, an old total keeps no time. A damaged recording is left out and counted, never repaired. */
+function cleanDrink(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const { id, d, tm, ml } = r;
+  if (typeof id !== 'string' || !id || id.length > 100) return null;
+  if (!isDay(d) || !validHm(tm)) return null;
+  if (!Number.isInteger(ml) || ml < 1 || ml > WATER_MAX_ML) return null;
+  let t = r.t;
+  if (!Number.isFinite(t) || t <= 0 || t > HEALTH_T_MAX) { const p = parseYmd(d); p.setHours(12); t = p.getTime(); }   // no usable creation time: noon of the day
+  return { id, t, d, tm, ml };
+}
+/* a list of recordings -> { list: the valid ones (each id once), dropped: how many items were left out } */
+function cleanWlog(list) {
+  const out = [], seen = new Set();
+  let dropped = 0;
+  if (!Array.isArray(list)) return { list: out, dropped };
+  for (const r of list) {
+    const c = cleanDrink(r);
+    if (!c || seen.has(c.id)) { dropped++; continue; }
+    seen.add(c.id); out.push(c);
+  }
+  return { list: out, dropped };
+}
+const drinkCmp = (a, b) => a.tm.localeCompare(b.tm) || a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);   // oldest first inside a day; the id only makes the order the same on every device
+const drinkMonth = (r) => (Number.isFinite(r.t) && r.t > 0 && r.t <= HEALTH_T_MAX ? new Date(r.t).toISOString().slice(0, 7) : String(r.d).slice(0, 7));   // the Sync file of a recording: the month it was made (UTC), so it stays in its file when its time is edited (a record without a usable moment, which cleanDrink never lets in, falls back to the month of its day instead of throwing)
+
 const S = {
   log: [],                      // {id, d, m, f, a, t}
   foods: {},                    // custom and Open Food Facts foods
   health: [],                   // Health log notes (see above)
+  wlog: [],                     // water recordings with a time (see above)
   meta: metaDefaults(),
   day: ymd(new Date()),
   tab: 'log',
@@ -631,6 +661,7 @@ async function doSave() {
   await Store.set('foods', clean(S.foods));
   await Store.set('meta', S.meta);
   await Store.set('health', S.health);
+  await Store.set('wlog', S.wlog);
   if (syncStamp()) { await Store.set('sync', syncPersist()); syncSoon(); }   // note which records changed, so Sync knows what to send
   try { navigator.storage?.persist?.(); } catch { /* not critical */ }
 }
@@ -639,11 +670,12 @@ async function doSave() {
 /* The diary is kept in a private repository of your own. Every record has a time of its last change (u); when two devices
    changed the same record, the later change wins; a deleted record stays behind as a marker (tombstone), so the deletion reaches the other devices too.
    Records: 'e:<entry id>' diary entries, 'f:<food id>' foods you made or saved from Open Food Facts, 'p:<food id>' your own portion sizes,
-   'n:<food id>' NOVA groups you chose for CIQUAL, USDA and dmBio foods, 'w:<YYYY-MM-DD>' the water of a day (whole ml), 'h:<note id>' a Health log note.
-   They live in files of the repository: entries/YYYY-MM.json, foods/0..7.json, water/YYYY.json, health/YYYY-MM.json (month of the time the note was made), meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
+   'n:<food id>' NOVA groups you chose for CIQUAL, USDA and dmBio foods, 'w:<YYYY-MM-DD>' the water of a day that has no time (whole ml, version 24), 'i:<recording id>' a water recording with a time (version 34),
+   'h:<note id>' a Health log note.
+   They live in files of the repository: entries/YYYY-MM.json, foods/0..7.json, water/YYYY.json, intake/YYYY-MM.json (month the recording was made), health/YYYY-MM.json (month of the time the note was made), meta.json. The state (times, hashes, files seen, token) is kept apart from the diary under the Store key 'sync',
    so the data records and the backup file are not changed by it. The token is never part of the backup. */
 const SY = { cfg: null, rec: {}, shas: {}, last: 0, born: 0, info: '', err: '', offline: false, stop: false, busy: false, again: false, timer: null, progress: '', applied: 0, sent: 0, viewStale: false, ranAt: 0, toasted: false };
-const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|health\/\d{4}-\d{2}|ref\/profile|meta)\.json$/;
+const SYNC_SHARD = /^(entries\/(\d{4}-\d{2}|undated)|foods\/[0-7]|water\/\d{4}|intake\/\d{4}-\d{2}|health\/\d{4}-\d{2}|ref\/profile|meta)\.json$/;
 const SYNC_DELAY = 4000;
 const syncPersist = () => ({ cfg: SY.cfg, rec: SY.rec, shas: SY.shas, last: SY.last, born: SY.born, info: SY.info });
 
@@ -674,6 +706,7 @@ function syncRecords() {
   for (const [id, p] of Object.entries(S.meta.portions || {})) out.set('p:' + id, { v: p, s: 'meta.json' });
   for (const [id, n] of Object.entries(S.meta.nova || {})) out.set('n:' + id, { v: n, s: 'meta.json' });
   for (const [d, ml] of Object.entries(S.meta.water || {})) out.set('w:' + d, { v: ml, s: `water/${d.slice(0, 4)}.json` });   // one record per day, one file per year
+  for (const r of S.wlog) out.set('i:' + r.id, { v: r, s: `intake/${drinkMonth(r)}.json` });   // water recordings with a time (version 34): one record each, one file per month it was made, in a folder an older app version ignores
   for (const n of S.health) out.set('h:' + n.id, { v: n, s: `health/${healthMonth(n)}.json` });   // Health log: one record per note, one file per month it was made (t never changes, so a note stays in its file when its date is edited)
   if (S.meta.ref) out.set('r:profile', { v: S.meta.ref, s: 'ref/profile.json' });   // the reference intake profile: one record, its own folder (an older app version ignores the folder)
   return out;
@@ -767,7 +800,7 @@ async function mapLimit(list, n, fn) {
 
 /* ---- files <-> records ---- */
 function validRec(k, x) {
-  if (!/^[efpnwhr]:./.test(k)) return false;
+  if (!/^[efpnwhir]:./.test(k)) return false;
   const id = k.slice(2);
   if (k[0] === 'w' && !isDay(id)) return false;
   if (k[0] === 'r' && k !== 'r:profile') return false;   // the profile is the only 'r' record
@@ -775,6 +808,7 @@ function validRec(k, x) {
   if (k[0] === 'r') return cleanRef(x) !== null;          // a damaged profile is refused, not repaired
   if (k[0] === 'w') return Number.isInteger(x) && x >= 1 && x <= WATER_MAX_ML;
   if (k[0] === 'h') { const c = cleanNote(x); return !!c && c.id === id; }   // the same rules as when the notes are loaded
+  if (k[0] === 'i') { const c = cleanDrink(x); return !!c && c.id === id; }   // a water recording: the same rules as when they are loaded
   if (k[0] === 'e') return typeof x === 'object' && !Array.isArray(x) && x.id === id && typeof x.d === 'string' && typeof x.f === 'string' && Number.isFinite(x.a);
   if (k[0] === 'f') return typeof x === 'object' && !Array.isArray(x) && x.id === id;
   if (k[0] === 'p') return Array.isArray(x);
@@ -804,6 +838,9 @@ function syncApply(k, x) {
   } else if (k[0] === 'h') {
     const i = S.health.findIndex((n) => n.id === id), c = x === null ? null : cleanNote(x);
     if (x === null) { if (i >= 0) S.health.splice(i, 1); } else if (c) { if (i >= 0) replaceObj(S.health[i], c); else S.health.push(c); }   // a note that is open in a sheet is changed in place
+  } else if (k[0] === 'i') {
+    const i = S.wlog.findIndex((r) => r.id === id), c = x === null ? null : cleanDrink(x);
+    if (x === null) { if (i >= 0) S.wlog.splice(i, 1); } else if (c) { if (i >= 0) replaceObj(S.wlog[i], c); else S.wlog.push(c); }   // a recording that is open in a sheet is changed in place
   } else if (k[0] === 'r') {
     S.meta.ref = x === null ? null : cleanRef(x);
   } else {
@@ -1144,62 +1181,94 @@ function entrySumHtml(e) {
   return `<span class="entry-ms"><span class="ms-row" aria-hidden="true">${vis.join('')}</span><span class="sr-only">Nutrients. ${esc(spoken.join('; '))}.</span></span>`;
 }
 
-/* ---- Water intake (version 24) ---- */
-/* The water you drank on a day: one total per day, no time of day. It is kept in whole ml in S.meta.water['YYYY-MM-DD']; a day without a key has nothing logged
-   (the daily totals CSV leaves it empty, it does not say 0). It is not the nutrient "Water" (the water inside the foods you log): a drink logged as a food does not count here. */
+/* ---- Water intake (version 24; every recording has a time since version 34) ---- */
+/* Every tap on the Water intake card is a recording with a time (S.wlog, see cleanDrink). The total of a day is the sum of its recordings plus the amount that was logged before version 34, when water
+   had no time (S.meta.water['YYYY-MM-DD'], whole ml): it is shown as a row "No time" and keeps no time. A day with neither has nothing logged (the daily totals CSV leaves it empty, it does not say 0).
+   It is not the nutrient "Water" (the water inside the foods you log): a drink logged as a food does not count here. */
 const WATER_UNIT = { ml: { name: 'mL', per: 1, chips: [100, 200, 250, 330, 500] }, dl: { name: 'dL', per: 100, chips: [1, 2, 3, 5, 10] } };   // per: ml in one unit
 const WATER_QUICK_DL = [1, 2, 3, 5];   // the buttons on the card
-const waterOf = (d) => { const w = S.meta.water; return w && Object.prototype.hasOwnProperty.call(w, d) ? w[d] : 0; };
+const waterLegacy = (d) => { const w = S.meta.water; return w && Object.prototype.hasOwnProperty.call(w, d) ? w[d] : 0; };   // the amount of a day that has no time
+const waterRecs = (d) => S.wlog.filter((r) => r.d === d).sort(drinkCmp);   // the recordings of a day, oldest first
+const waterTimed = (d) => S.wlog.reduce((s, r) => (r.d === d ? s + r.ml : s), 0);
+const waterOf = (d) => waterLegacy(d) + waterTimed(d);   // the total of a day: 0 when nothing is logged
+const waterDayList = () => { const s = new Set(Object.keys(S.meta.water || {})); for (const r of S.wlog) s.add(r.d); return [...s].sort(); };   // every day that has water
+/* the water of the days from..to: { days: the days that have water (sorted), ml: day -> total, sum: all of it } */
+function waterRange(from, to) {
+  const ml = Object.create(null);
+  for (const [d, v] of Object.entries(S.meta.water || {})) if (d >= from && d <= to) ml[d] = (ml[d] || 0) + v;
+  for (const r of S.wlog) if (r.d >= from && r.d <= to) ml[r.d] = (ml[r.d] || 0) + r.ml;
+  const days = Object.keys(ml).sort();
+  return { days, ml, sum: days.reduce((s, d) => s + ml[d], 0) };
+}
 const mlText = (ml) => `${ml.toLocaleString(LOC)} mL`;
 const dlText = (ml) => `${(ml / 100).toLocaleString(LOC, { maximumFractionDigits: 2 })} dL`;   // ml is whole, so two decimals are exact
-function setWater(d, ml) {
+const dlShort = (ml) => (ml % 100 === 0 ? `${ml / 100} dL` : `${ml} mL`);   // 200 -> "2 dL", 250 -> "250 mL"
+function setWater(d, ml) {   // the amount of a day that has no time
   S.meta.water = S.meta.water || {};
   if (ml > 0) S.meta.water[d] = ml; else delete S.meta.water[d];
   save();
 }
+function dropDrink(id) { const i = S.wlog.findIndex((r) => r.id === id); if (i >= 0) { S.wlog.splice(i, 1); save(); } }
+let waterOpen = false;   // the list of recordings stays open while you work with it (the card is drawn again after each change)
+function waterRowsHtml(day) {
+  const row = (attrs, time, ml, spoken) => {
+    const inner = `<span class="wr-t">${esc(time)}</span><span class="wr-v">${ml.toLocaleString(LOC)} mL<small> · ${esc(dlText(ml))}</small></span>`;
+    return VIEW ? `<li><div class="water-row ro">${inner}</div></li>` : `<li><button type="button" class="water-row" ${attrs} aria-label="${esc(spoken)}">${inner}</button></li>`;
+  };
+  const legacy = waterLegacy(day);
+  return (legacy ? row('data-act="water-edit-legacy"', 'No time', legacy, `Edit the water amount that has no time: ${legacy} mL`) : '')
+    + waterRecs(day).map((r) => row(`data-act="water-edit" data-id="${esc(r.id)}"`, r.tm, r.ml, `Edit water recording: ${r.tm}, ${r.ml} mL`)).join('');
+}
 function waterHtml() {
-  const ml = waterOf(S.day);
-  if (VIEW && !Object.keys(S.meta.water).length) return '';   // a shared copy without any water: no empty card
+  const day = S.day, ml = waterOf(day), recs = waterRecs(day), n = recs.length + (waterLegacy(day) ? 1 : 0);
+  if (VIEW && !waterDayList().length) return '';   // a shared copy without any water: no empty card
   const side = ml ? dlText(ml) : VIEW ? 'Not logged' : 'Nothing logged yet';
+  const last = recs.length ? ` · last ${recs[recs.length - 1].tm}` : '';
+  const list = n ? `<details class="water-list" id="wlist"${waterOpen ? ' open' : ''}><summary>Recordings (${n})${last}</summary><ul class="water-rows">${waterRowsHtml(day)}</ul></details>` : '';
   return `<div class="card water-card" role="group" aria-label="Water intake">
       <div class="water-top"><div class="card-t">Water intake</div><div class="muted small">${side}</div></div>
       <div class="water-num">${ml.toLocaleString(LOC)}<small>mL</small></div>
-      ${VIEW ? '' : `<div class="water-chips">${WATER_QUICK_DL.map((n) => `<button type="button" class="chip-btn" data-act="water-add" data-dl="${n}" aria-label="Add ${n} dL of water">+${n} dL</button>`).join('')}<button type="button" class="chip-btn accent" data-act="water-other" aria-label="Add another amount of water, or correct the total">Other</button></div>`}
+      ${VIEW ? '' : `<div class="water-chips">${WATER_QUICK_DL.map((q) => `<button type="button" class="chip-btn" data-act="water-add" data-dl="${q}" aria-label="Add ${q} dL of water">+${q} dL</button>`).join('')}<button type="button" class="chip-btn accent" data-act="water-other" aria-label="Add another amount of water at another time">Other</button></div>`}
+      ${list}
     </div>`;
 }
 function refreshWater() { const el = $('#water'); if (el) el.innerHTML = waterHtml(); }   // only the card is drawn again: the page does not jump
-/* adds ml to a day; the Undo puts the old total back */
+/* adds a recording with the time of now to a day; the Undo takes it away again */
 function waterAdd(day, ml) {
-  const prev = waterOf(day), next = prev + ml;
-  if (next > WATER_MAX_ML) { toast(`A day can hold at most ${mlText(WATER_MAX_ML)} of water.`); return false; }
-  setWater(day, next); refreshWater();
-  toast(`Water +${ml % 100 === 0 ? ml / 100 + ' dL' : ml + ' mL'} · total ${mlText(next)}`, () => { setWater(day, prev); refreshWater(); });
+  const prev = waterOf(day);
+  if (prev + ml > WATER_MAX_ML) { toast(`A day can hold at most ${mlText(WATER_MAX_ML)} of water.`); return false; }
+  const r = { id: uid(), t: Date.now(), d: day, tm: hm(new Date()), ml };
+  S.wlog.push(r); save(); refreshWater();
+  toast(`Water +${dlShort(ml)} at ${r.tm} · total ${mlText(prev + ml)}`, () => { dropDrink(r.id); refreshWater(); });
   return true;
 }
-function openWater() {
-  const day = S.day;
+/* The sheet. No argument: add a recording (any amount, any time). A recording: change or delete it. 'legacy': change or delete the amount that has no time. */
+function openWater(rec) {
+  const legacy = rec === 'legacy', editing = !!rec, day = rec && !legacy ? rec.d : S.day;
   let unit = 'dl';
   try { const u = localStorage.getItem('nutrilog.waterUnit'); if (u === 'ml' || u === 'dl') unit = u; } catch { /* private mode: dL */ }
-  const sh = openSheet('Water intake', `
-    <div class="row gap" style="justify-content:space-between;flex-wrap:nowrap"><p class="small muted" style="margin:0;min-width:0">${esc(fmtLong(day))}<br>Total so far: <b id="wtot"></b></p><button type="button" class="chip-btn" id="wclear" style="flex:none;min-height:44px">Clear day</button></div>
+  const before = legacy ? waterLegacy(day) : rec ? rec.ml : 0;
+  const sh = openSheet(legacy ? 'Water without a time' : editing ? 'Edit water' : 'Water intake', `
+    <div class="row gap" style="justify-content:space-between;flex-wrap:nowrap"><p class="small muted" style="margin:0;min-width:0">${esc(fmtLong(day))}<br>Total of the day: <b id="wtot"></b></p>${editing ? '' : '<button type="button" class="chip-btn" id="wclear" style="flex:none;min-height:44px">Clear day</button>'}</div>
     <div class="seg two" role="group" aria-label="Unit">${Object.entries(WATER_UNIT).map(([u, x]) => `<button type="button" data-u="${u}" aria-pressed="false">${x.name}</button>`).join('')}</div>
     <label class="f"><span id="wlab"></span><input type="text" inputmode="decimal" enterkeyhint="done" id="wamt" autocomplete="off" value=""></label>
     <div class="chips water-pick" id="wchips"></div>
-    <p class="hint">1 dL = 100 mL. Only the total of the day is kept, there is no time of day. Use Subtract to correct a mistake.</p>
-    <div class="row gap sheet-actions"><span style="flex:1"></span><button class="btn" id="wsub">Subtract</button><button class="btn primary" id="wadd"></button></div>`);
-  const amt = $('#wamt', sh.el), add = $('#wadd', sh.el), clr = $('#wclear', sh.el);
-  const total = () => waterOf(day);
+    ${legacy ? '' : `<label class="f">Time (24 h)<input type="text" id="wtm" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" placeholder="HH:MM" value="${rec ? rec.tm : hm(new Date())}"></label>
+    <p class="note field-err" id="wtmerr" data-static role="alert" hidden>Enter a time in 24-hour form, for example 13:45.</p>`}
+    <p class="hint">1 dL = 100 mL. ${legacy ? 'This amount was logged before water recordings had a time, so it has none.' : editing ? 'Changing the time never moves the recording to another day.' : 'The time starts at now. Change it if you drank earlier.'}</p>
+    <div class="row gap sheet-actions">${editing ? '<button type="button" class="btn danger" id="wdel">Delete</button>' : ''}<span style="flex:1"></span><button type="button" class="btn primary" id="wadd"></button></div>`);
+  const amt = $('#wamt', sh.el), add = $('#wadd', sh.el), clr = $('#wclear', sh.el), tm = $('#wtm', sh.el), tmerr = $('#wtmerr', sh.el);
   const read = () => { const v = num(amt.value); return Number.isFinite(v) && v > 0 ? v : NaN; };
   function paint() {
-    const x = WATER_UNIT[unit], v = read();
-    $('#wtot', sh.el).textContent = total() ? `${mlText(total())} (${dlText(total())})` : 'nothing logged';
-    clr.hidden = !total();
+    const x = WATER_UNIT[unit], v = read(), tot = waterOf(day);
+    $('#wtot', sh.el).textContent = tot ? `${mlText(tot)} (${dlText(tot)})` : 'nothing logged';
+    if (clr) clr.hidden = !tot;
     $$('[data-u]', sh.el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.u === unit)));
     $('#wlab', sh.el).textContent = `Amount (${x.name})`;
     $('#wchips', sh.el).innerHTML = x.chips.map((c) => `<button type="button" class="chip-btn" data-v="${c}">${c} ${x.name}</button>`).join('');
-    add.textContent = 'Add' + (Number.isNaN(v) ? '' : ` ${fmt(v)} ${x.name}`);
+    add.textContent = editing ? 'Save changes' : 'Add' + (Number.isNaN(v) ? '' : ` ${fmt(v)} ${x.name}`);
   }
-  const clearErr = () => { $$('.field-err', sh.el).forEach((e) => e.remove()); amt.removeAttribute('aria-invalid'); };
+  const clearErr = () => { $$('.field-err', sh.el).forEach((e) => { if (e !== tmerr) e.remove(); }); amt.removeAttribute('aria-invalid'); };
   /* the amount in whole ml, or an error text */
   function amount() {
     const v = read();
@@ -1209,37 +1278,82 @@ function openWater() {
     if (ml > WATER_MAX_ML) return { err: `At most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL) at a time.` };
     return { ml };
   }
-  function apply(sign) {
-    const a = amount();
+  function apply() {
+    const a = amount(), tmv = legacy ? '' : normHm(tm.value), badTime = !legacy && !validHm(tmv);
+    if (badTime) { tmerr.hidden = false; tm.setAttribute('aria-invalid', 'true'); }   // no focus() on the time field: on iOS it can stay "focused" without opening the keyboard
     if (a.err) { fieldError(amt, a.err); return; }
-    const prev = total(), next = prev + sign * a.ml;
-    if (sign > 0 && next > WATER_MAX_ML) { fieldError(amt, `A day can hold at most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL). You can add ${mlText(WATER_MAX_ML - prev)} more.`); return; }
-    if (sign < 0 && next < 0) { fieldError(amt, prev ? `Only ${mlText(prev)} is logged on this day, so you can subtract at most that.` : 'Nothing is logged on this day, so there is nothing to subtract.'); return; }
+    if (badTime) { tmerr.scrollIntoView({ block: 'center' }); return; }
+    if (editing && !legacy && !S.wlog.includes(rec)) { fieldError(amt, 'This recording was deleted on another device.', false); return; }
+    const others = waterOf(day) - (editing ? before : 0);
+    if (others + a.ml > WATER_MAX_ML) {
+      fieldError(amt, editing ? `A day can hold at most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL). With the other water of this day, this one can be at most ${mlText(WATER_MAX_ML - others)}.`
+        : `A day can hold at most ${mlText(WATER_MAX_ML)} (${WATER_MAX_ML / 100} dL). You can add ${mlText(WATER_MAX_ML - others)} more.`);
+      return;
+    }
     try { localStorage.setItem('nutrilog.waterUnit', unit); } catch { /* private mode */ }
-    setWater(day, next); sh.close(); refreshWater();
-    toast(`Water ${sign > 0 ? '+' : '−'}${fmt(a.ml / WATER_UNIT[unit].per)} ${WATER_UNIT[unit].name} · total ${mlText(next)}`, () => { setWater(day, prev); refreshWater(); });
+    const shown = `${fmt(a.ml / WATER_UNIT[unit].per)} ${WATER_UNIT[unit].name}`;
+    if (!editing) {
+      const r = { id: uid(), t: Date.now(), d: day, tm: tmv, ml: a.ml };
+      S.wlog.push(r); save(); sh.close(); refreshWater();
+      toast(`Water +${shown} at ${tmv} · total ${mlText(others + a.ml)}`, () => { dropDrink(r.id); refreshWater(); });
+    } else if (legacy) {
+      sh.close();
+      if (a.ml === before) { toast('Nothing changed'); return; }
+      setWater(day, a.ml); refreshWater();
+      toast(`Water without a time: ${mlText(a.ml)}`, () => { setWater(day, before); refreshWater(); });
+    } else {
+      sh.close();
+      if (a.ml === rec.ml && tmv === rec.tm) { toast('Nothing changed'); return; }
+      const old = { ml: rec.ml, tm: rec.tm };
+      rec.ml = a.ml; rec.tm = tmv; save(); refreshWater();
+      toast(`Water recording updated: ${shown} at ${tmv}`, () => { if (S.wlog.includes(rec)) { rec.ml = old.ml; rec.tm = old.tm; save(); refreshWater(); } });
+    }
   }
-  amt.value = unit === 'dl' ? '2' : '250';
+  amt.value = editing ? String(Number((before / WATER_UNIT[unit].per).toFixed(2))) : unit === 'dl' ? '2' : '250';
   paint();
   amt.addEventListener('input', () => { clearErr(); paint(); });
   amt.addEventListener('focus', () => setTimeout(() => { try { amt.setSelectionRange(0, amt.value.length); } catch { /* ignore */ } }, 40));
   amt.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add.click(); } });
+  if (tm) {
+    tm.addEventListener('input', () => { tm.value = shapeHm(tm.value); tmerr.hidden = true; tm.removeAttribute('aria-invalid'); });
+    tm.addEventListener('blur', () => { tm.value = normHm(tm.value); });
+    tm.addEventListener('focus', () => setTimeout(() => { try { tm.setSelectionRange(0, tm.value.length); } catch { /* ignore */ } }, 40));
+    tm.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add.click(); } });
+  }
   $('.seg', sh.el).addEventListener('click', (e) => {
     const b = e.target.closest('[data-u]');
     if (!b || b.dataset.u === unit) return;
     const v = read(), old = WATER_UNIT[unit].per;
     unit = b.dataset.u;
-    amt.value = Number.isNaN(v) ? (unit === 'dl' ? '2' : '250') : String(Number((v * old / WATER_UNIT[unit].per).toFixed(2)));   // the same amount in the other unit
+    amt.value = Number.isNaN(v) ? (editing ? String(Number((before / WATER_UNIT[unit].per).toFixed(2))) : unit === 'dl' ? '2' : '250') : String(Number((v * old / WATER_UNIT[unit].per).toFixed(2)));   // the same amount in the other unit
     clearErr(); paint();
   });
   $('#wchips', sh.el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { amt.value = b.dataset.v; clearErr(); paint(); } });
-  add.onclick = () => apply(1);
-  $('#wsub', sh.el).onclick = () => apply(-1);
-  clr.onclick = () => {
-    const prev = total();
-    if (!prev) return;
-    setWater(day, 0); sh.close(); refreshWater();
-    toast('Water cleared for this day', () => { setWater(day, prev); refreshWater(); });
+  add.onclick = apply;
+  const del = $('#wdel', sh.el);
+  if (del) del.onclick = () => {
+    if (legacy) {
+      sh.close(); setWater(day, 0); refreshWater();
+      toast('Water without a time deleted', () => { setWater(day, before); refreshWater(); });
+      return;
+    }
+    const i = S.wlog.indexOf(rec), copy = { ...rec };
+    sh.close();
+    if (i < 0) { toast('This recording was deleted on another device.'); return; }
+    S.wlog.splice(i, 1); save(); refreshWater();
+    toast('Water recording deleted', () => { if (!S.wlog.some((x) => x.id === copy.id)) { S.wlog.push(copy); save(); refreshWater(); } });
+  };
+  if (clr) clr.onclick = () => {   // everything of this day: the recordings and the amount that has no time
+    const oldLegacy = waterLegacy(day), gone = S.wlog.filter((r) => r.d === day);
+    if (!oldLegacy && !gone.length) return;
+    for (const r of gone) S.wlog.splice(S.wlog.indexOf(r), 1);
+    if (oldLegacy) delete S.meta.water[day];
+    save(); sh.close(); refreshWater();
+    toast('Water cleared for this day', () => {
+      for (const r of gone) if (!S.wlog.some((x) => x.id === r.id)) S.wlog.push(r);
+      if (oldLegacy) { S.meta.water = S.meta.water || {}; S.meta.water[day] = oldLegacy; }
+      save(); refreshWater();
+    });
   };
   if (!TOUCH) setTimeout(() => { amt.focus(); amt.select(); }, 60);
   else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1733,7 +1847,7 @@ const RP_MONTHS = { month: 1, m3: 3, m6: 6, year: 12 };
 const RP_MIN_DAY = '2000-01-01';
 const RP_TOP_FOODS = 12;     // foods listed in "Added up from" of a row; the rest is one line with their sum
 const RP_NAMES_MAX = 15;     // names listed after "No data for:"
-const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, meals: false, foods: false, nova: false, novatable: false, quality: false, time: false, timetable: false } };
+const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, meals: false, foods: false, nova: false, novatable: false, quality: false, time: false, timetable: false, watertable: false } };
 let RP_NOW = null;           // the period on the screen: { P, r } (the measure sheet and the Foods list read it)
 function rpLoad() {   // the choice of this device (not in the backup, not synced); a damaged value is ignored
   try {
@@ -1835,8 +1949,9 @@ function rpStats(from, to) {
     if (!t.n) continue;
     for (let i = 0; i < NUT_N; i++) if (t.cnt[i] === t.n) { cDays[i]++; cLo[i] += t.lo[i]; cHi[i] += t.hi[i]; cEst[i] += t.est[i]; }
   }
-  const waterDays = Object.keys(S.meta.water || {}).filter((d) => d >= from && d <= to).sort();
-  const P = { from, to, days, nd, by, ts, es, T, cDays, cLo, cHi, cEst, hidden, waterDays, waterSum: waterDays.reduce((s, d) => s + S.meta.water[d], 0), _elig: null,
+  const W = waterRange(from, to);   // the water of the period: every day with water, its total (recordings with a time plus the amount without one), and the sum
+  const waterDays = W.days;
+  const P = { from, to, days, nd, by, ts, es, T, cDays, cLo, cHi, cEst, hidden, waterDays, waterMl: W.ml, waterSum: W.sum, _elig: null,
     /* Vitamin B1 and niacin follow the energy: only the days on which every item has energy data are compared (otherwise the reference would be too small) */
     elig() {
       if (!P._elig) {
@@ -1990,7 +2105,7 @@ function rpTrendBars(P, r, m) {
     if (m === RP_WATER) {   // the average of the days with water logged in the bar
       const wd = P.waterDays.filter((d) => d >= b.from && d <= b.to);
       bar.logged = wd.length;
-      if (wd.length) { const v = Math.round(wd.reduce((sum, d) => sum + S.meta.water[d], 0) / wd.length); Object.assign(bar, { state: 'ok', lo: v, hi: v }); }
+      if (wd.length) { const v = Math.round(wd.reduce((sum, d) => sum + P.waterMl[d], 0) / wd.length); Object.assign(bar, { state: 'ok', lo: v, hi: v }); }
       return bar;
     }
     if (!idx.length) return bar;
@@ -2153,6 +2268,7 @@ function rpTrendAct(a, t) {
   if (a === 'rp-measure') openRpMeasure();
   else if (a === 'rp-trend-step') { if (RP_TREND) rpTrendSelect(RP_TREND.sel + Number(t.dataset.n)); }
   else if (a === 'rp-hour-step') { if (RP_HOURS) rpHourSelect(RP_HOURS.sel + Number(t.dataset.n)); }
+  else if (a === 'rp-whour-step') { if (RP_WHOURS) rpHourSelect(RP_WHOURS.sel + Number(t.dataset.n), RP_WHOURS); }
   else if (a === 'rp-open-bucket') {   // the day, the week or the month of the selected bar becomes the period of the Report
     const T = RP_TREND, b = T && !T.none ? T.bars[T.sel] : null;
     if (!b) return;
@@ -2450,24 +2566,27 @@ function rpHourRead(b, nd, info) {
   return bits.join(' · ');
 }
 let RP_HOURS = null;       // the hour chart on the screen: { bars, nd, info, sel, ymax }
-function rpHourPaint() {
-  const H = RP_HOURS;
+let RP_WHOURS = null;      // the water chart under it (version 34): { bars, nd, sel, ymax, kind: 'w' }; its own state, so the two charts never move each other
+const RP_HK = { e: { card: 'rp-hours', rd: 'rp-hrd', step: 'rp-hour-step' }, w: { card: 'rp-whours', rd: 'rp-whrd', step: 'rp-whour-step' } };
+const rpHState = (plot) => (plot && plot.id === 'rp-wplot' ? RP_WHOURS : RP_HOURS);
+function rpHourPaint(H = RP_HOURS) {
   if (!H) return;
-  document.querySelectorAll('#rp-hours .rp-bar').forEach((el) => el.classList.toggle('sel', Number(el.dataset.k) === H.sel));
-  const rd = $('#rp-hrd'); if (rd) rd.textContent = rpHourRead(H.bars[H.sel], H.nd, H.info);
-  const pv = $('#rp-hours [data-act=rp-hour-step][data-n="-1"]'), nx = $('#rp-hours [data-act=rp-hour-step][data-n="1"]');
+  const K = RP_HK[H.kind === 'w' ? 'w' : 'e'];
+  document.querySelectorAll(`#${K.card} .rp-bar`).forEach((el) => el.classList.toggle('sel', Number(el.dataset.k) === H.sel));
+  const rd = $('#' + K.rd); if (rd) rd.textContent = H.kind === 'w' ? rpWhourRead(H.bars[H.sel], H.nd) : rpHourRead(H.bars[H.sel], H.nd, H.info);
+  const pv = $(`#${K.card} [data-act=${K.step}][data-n="-1"]`), nx = $(`#${K.card} [data-act=${K.step}][data-n="1"]`);
   if (pv) pv.disabled = H.sel <= 0;
   if (nx) nx.disabled = H.sel >= H.bars.length - 1;
 }
-function rpHourSelect(k) {
-  const H = RP_HOURS;
+function rpHourSelect(k, H = RP_HOURS) {
   if (!H || !Number.isFinite(k)) return;
   k = Math.max(0, Math.min(H.bars.length - 1, Math.round(k)));
-  if (k !== H.sel) { H.sel = k; rpHourPaint(); }
+  if (k !== H.sel) { H.sel = k; rpHourPaint(H); }
 }
 function rpTimeHtml(P) {
   const { nd, bars, win, noTime } = rpTimeStats(P), info = rpMeasureInfo('kcal'), okBars = bars.filter((b) => b.state === 'ok');
-  RP_HOURS = null;
+  RP_HOURS = null; RP_WHOURS = null;
+  const wh = rpWaterHoursHtml(P);   // the water by hour (version 34), '' when the period has no water
   const row = (dt, dd, sub = '') => `<div class="an-row"><dt>${dt}${sub ? `<small> · <span class="rp-nw">${esc(sub)}</span></small>` : ''}</dt><dd>${dd}</dd></div>`;
   let rows;
   if (!win) rows = '<p class="small muted" style="margin:6px 0 0">No entry in this period has a time.</p>';
@@ -2477,8 +2596,8 @@ function rpTimeHtml(P) {
   const when = `<div class="card rp-card"><h4 class="rp-h">When you eat</h4>${rows}${noTime ? `<p class="small muted" style="margin:8px 0 0">${noTime === 1 ? '1 entry has' : noTime.toLocaleString(LOC) + ' entries have'} no time and ${noTime === 1 ? 'is' : 'are'} not in this section.</p>` : ''}
       <p class="hint rp-expl">The time of an entry is the time you set for it. If you did not change it, it is the time you logged the entry, so food logged later in the day shows when you logged it, not when you ate it. A day on which you logged only part of the food gives a short window. An entry belongs to the day it was logged on, also after midnight.</p></div>`;
   const head = `<h4 class="rp-h">Energy by hour</h4><p class="muted small" style="margin:0">kcal ${nd === 1 ? 'in that day' : 'a day, average of the logged days'} · one bar = one hour</p>`;
-  if (!bars.some((b) => b.state !== 'none')) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No entry in this period has a time.</p></div>`;
-  if (!okBars.length) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No item in this period has energy data, so there is nothing to draw. This is not zero.</p></div>`;
+  if (!bars.some((b) => b.state !== 'none')) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No entry in this period has a time.</p></div>` + wh;
+  if (!okBars.length) return when + `<div class="card rp-card" id="rp-hours">${head}<p class="small muted rp-trend-none">No item in this period has energy data, so there is nothing to draw. This is not zero.</p></div>` + wh;
   const ymax = rpNiceMax(Math.max(...okBars.map((b) => b.hi)) * 1.05), sel = okBars.reduce((a, b) => (b.lo > a.lo ? b : a)).k;
   RP_HOURS = { bars, nd, info, sel, ymax };
   const pct = (x) => Math.max(0, Math.min(100, x / ymax * 100));
@@ -2517,22 +2636,90 @@ function rpTimeHtml(P) {
     <details class="fold" data-sec="timetable" ${RP.open.timetable ? 'open' : ''}><summary>Show as table</summary>
       <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Energy by hour as a table"><table class="rp-table"><thead><tr><th scope="col">Hour</th><th scope="col">Energy</th>${nd > 1 ? '<th scope="col">Days</th>' : ''}<th scope="col">Items</th></tr></thead><tbody>${rowsT}</tbody></table></div>
     </details>
+  </div>` + wh;
+}
+/* ---- Water by hour (version 34) ---- */
+/* The recordings of the Water intake card have a time, so they can be drawn by hour like the energy. Value of a bar = the water recorded in that hour, added up over the days that have at least one
+   recording with a time, divided by the number of those days: an hour without a recording on such a day counts as 0 mL (nothing was recorded there), so the 24 bars add up to the average timed water
+   of a day. Water logged before recordings had a time (S.meta.water) has no hour: it is not in any bar, and the card says how much it is. No data is never turned into 0: a period without a timed
+   recording draws nothing. */
+function rpWaterTimeStats(from, to) {
+  const hours = Array.from({ length: 24 }, (_, h) => ({ h, ml: 0, n: 0, days: new Set() })), timed = new Set();
+  for (const r of S.wlog) {
+    if (r.d < from || r.d > to) continue;
+    const o = hours[Math.floor(hmMin(r.tm) / 60)];
+    o.ml += r.ml; o.n++; o.days.add(r.d); timed.add(r.d);
+  }
+  let noTimeMl = 0, noTimeDays = 0;
+  for (const [d, v] of Object.entries(S.meta.water || {})) if (d >= from && d <= to) { noTimeMl += v; noTimeDays++; }
+  const nd = timed.size;
+  const bars = hours.map((o) => ({ k: o.h, short: pad(o.h), long: `${pad(o.h)}:00–${pad(o.h)}:59`, items: o.n, dayN: o.days.size, ml: o.ml, state: o.n ? 'ok' : 'none', lo: nd ? o.ml / nd : 0, hi: nd ? o.ml / nd : 0, partial: false, est: false, range: false, open: false }));
+  return { nd, bars, recs: bars.reduce((s, b) => s + b.items, 0), noTimeMl, noTimeDays };
+}
+const rpWaterVal = (b) => { const v = Math.round(b.lo); return v >= 1 ? mlText(v) : '<1 mL'; };
+function rpWhourRead(b, nd) {
+  const bits = [b.long];
+  if (b.state === 'none') bits.push('no recordings');
+  else bits.push(rpWaterVal(b));
+  if (b.items) { if (nd > 1) bits.push(`${b.dayN} of ${plural(nd, 'day')}`); bits.push(plural(b.items, 'recording')); }
+  return bits.join(' · ');
+}
+function rpWaterHoursHtml(P) {
+  RP_WHOURS = null;
+  if (!P || !P.waterDays.length) return '';   // no water in this period at all: no card
+  const W = rpWaterTimeStats(P.from, P.to), nd = W.nd, bars = W.bars;
+  const head = `<h4 class="rp-h">Water by hour</h4><p class="muted small" style="margin:0">mL ${nd === 1 ? 'in that day' : 'a day, average of the days with a recording time'} · one bar = one hour</p>`;
+  const noTime = W.noTimeMl ? `<p class="small muted" style="margin:8px 0 0">${esc(mlText(W.noTimeMl))} on ${plural(W.noTimeDays, 'day')} ${W.noTimeDays === 1 ? 'was' : 'were'} logged before water recordings had a time. It has no hour, so it is not in the bars.</p>` : '';
+  if (!nd) return `<div class="card rp-card" id="rp-whours">${head}<p class="small muted rp-trend-none">No water in this period has a time.</p>${noTime}</div>`;
+  const okBars = bars.filter((b) => b.state === 'ok'), ymax = rpNiceMax(Math.max(...okBars.map((b) => b.hi)) * 1.05), sel = okBars.reduce((a, b) => (b.lo > a.lo ? b : a)).k;
+  RP_WHOURS = { bars, nd, sel, ymax, kind: 'w' };
+  const pct = (x) => Math.max(0, Math.min(100, x / ymax * 100));
+  const barHtml = bars.map((b) => `<div class="rp-bar ${b.state === 'none' ? 'none' : 'full'}${b.k === sel ? ' sel' : ''}" data-k="${b.k}" style="--h:${(b.state === 'ok' ? pct(b.lo) : 0).toFixed(2)}%;--t:${(b.state === 'ok' ? pct(b.hi) : 0).toFixed(2)}%"></div>`).join('');
+  const peak = bars[sel];
+  const label = `Bar chart of the water in each hour of the day, 24 bars from 00:00 to 23:59. ${okBars.length} of them have a value. Highest: ${rpWaterVal(peak)} at ${peak.long}. Use the left and right arrow keys, or the Previous hour and Next hour buttons, to read the bars one by one. The table below has all values.`;
+  const has = (f) => bars.some(f);
+  const leg = [
+    has((b) => b.state === 'ok') ? '<li><i class="rp-sw full" aria-hidden="true"></i>Solid bar: water recorded in that hour</li>' : '',
+    has((b) => b.state === 'none') ? '<li><i class="rp-sw none" aria-hidden="true"></i>Dashed base: no recording in this hour (not a 0)</li>' : '',
+  ].join('');
+  const rowsT = bars.map((b) => `<tr><th scope="row">${esc(b.long)}</th><td>${b.state === 'none' ? 'no recordings' : esc(rpWaterVal(b))}</td>${nd > 1 ? `<td>${b.dayN}</td>` : ''}<td>${b.items}</td></tr>`).join('');
+  return `<div class="card rp-card" id="rp-whours">${head}
+    <div class="rp-chart">
+      <div class="rp-y" aria-hidden="true"><span style="bottom:100%">${rpTick(ymax)}</span><span style="bottom:50%">${rpTick(ymax / 2)}</span><span style="bottom:0">0</span></div>
+      <div class="rp-hplot" id="rp-wplot" tabindex="0" role="group" aria-label="${esc(label)}">
+        <i class="rp-gl" style="bottom:50%" aria-hidden="true"></i><i class="rp-gl" style="bottom:100%" aria-hidden="true"></i>
+        <div class="rp-bars" aria-hidden="true">${barHtml}</div>
+      </div>
+      <div class="rp-hx" aria-hidden="true"><span style="left:0">00:00</span><span style="left:25%">06:00</span><span style="left:50%">12:00</span><span style="left:75%">18:00</span></div>
+    </div>
+    <div class="rp-read">
+      <button type="button" class="icon-btn" data-act="rp-whour-step" data-n="-1" aria-label="Previous hour" ${sel <= 0 ? 'disabled' : ''}>${IC.left}</button>
+      <p class="rp-rd" id="rp-whrd" aria-live="polite">${esc(rpWhourRead(peak, nd))}</p>
+      <button type="button" class="icon-btn" data-act="rp-whour-step" data-n="1" aria-label="Next hour" ${sel >= bars.length - 1 ? 'disabled' : ''}>${IC.right}</button>
+    </div>
+    <ul class="rp-leg">${leg}</ul>
+    <p class="hint rp-expl">${nd === 1 ? 'Each bar is the water recorded in that hour.' : 'Each bar is the average water of the days that have a recording with a time, in that hour.'} An hour without a recording on such a day counts as 0 mL for that hour, because nothing was recorded there.</p>
+    ${noTime}
+    <details class="fold" data-sec="watertable" ${RP.open.watertable ? 'open' : ''}><summary>Show as table</summary>
+      <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Water by hour as a table"><table class="rp-table"><thead><tr><th scope="col">Hour</th><th scope="col">Water</th>${nd > 1 ? '<th scope="col">Days</th>' : ''}<th scope="col">Recordings</th></tr></thead><tbody>${rowsT}</tbody></table></div>
+    </details>
   </div>`;
 }
 document.addEventListener('pointerdown', (ev) => { const pl = ev.target.closest && ev.target.closest('.rp-hplot'); if (pl) rpHourPick(pl, ev.clientX); });
 document.addEventListener('pointermove', (ev) => { if (!(ev.buttons & 1)) return; const pl = ev.target.closest && ev.target.closest('.rp-hplot'); if (pl) rpHourPick(pl, ev.clientX); });
 function rpHourPick(plot, x) {
-  const H = RP_HOURS;
+  const H = rpHState(plot);
   if (!H) return;
   const rc = plot.getBoundingClientRect();
-  if (rc.width > 0) rpHourSelect(Math.floor((x - rc.left) / rc.width * H.bars.length));
+  if (rc.width > 0) rpHourSelect(Math.floor((x - rc.left) / rc.width * H.bars.length), H);
 }
 document.addEventListener('keydown', (ev) => {
-  const H = RP_HOURS;
-  if (!H || !ev.target.classList || !ev.target.classList.contains('rp-hplot')) return;
+  if (!ev.target.classList || !ev.target.classList.contains('rp-hplot')) return;
+  const H = rpHState(ev.target);
+  if (!H) return;
   const k = ev.key;
-  if (k === 'ArrowLeft') rpHourSelect(H.sel - 1); else if (k === 'ArrowRight') rpHourSelect(H.sel + 1);
-  else if (k === 'Home') rpHourSelect(0); else if (k === 'End') rpHourSelect(H.bars.length - 1);
+  if (k === 'ArrowLeft') rpHourSelect(H.sel - 1, H); else if (k === 'ArrowRight') rpHourSelect(H.sel + 1, H);
+  else if (k === 'Home') rpHourSelect(0, H); else if (k === 'End') rpHourSelect(H.bars.length - 1, H);
   else return;
   ev.preventDefault();
 });
@@ -2555,9 +2742,11 @@ function viewReport() {
     const text = r.empty ? `This period is outside the shared days (${esc(fmtShort(VIEW.from))} – ${esc(fmtShort(VIEW.to))}).`
       : r.from === r.to ? `No entries on ${esc(fmtShort(r.from))}.` : `No entries from ${esc(fmtShort(r.from, false))} to ${esc(fmtShort(r.to))}.`;
     const water = P && P.waterDays.length ? `<div class="card rp-card"><dl class="an-list">${rpWaterRow(P)}</dl></div>` : '';
-    return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}`;
+    RP_HOURS = null;
+    const wtime = P && P.waterDays.length ? rpSec('time', 'Time of day', rpWaterHoursHtml(P)) : '';   // a period with water but no food still shows when the water was drunk
+    return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}${wtime}`;
   }
-  RP_TREND = null; RP_HOURS = null; RP_NOW = { P, r };
+  RP_TREND = null; RP_HOURS = null; RP_WHOURS = null; RP_NOW = { P, r };
   const trend = r.days >= 2 ? rpSec('trend', 'Trend', `<div class="card rp-card" id="rp-trend">${rpTrendMake(P, r)}</div>`) : '';
   return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${trend}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}`
     + `${rpSec('meals', 'Meals and weekdays', rpMealsHtml(P))}${rpSec('foods', 'Foods', `<div class="card rp-card" id="rp-foods">${rpFoodsMake(P)}</div>`)}${rpSec('nova', 'Food processing (NOVA)', rpNovaHtml(P, r))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}${rpSec('time', 'Time of day', rpTimeHtml(P))}`;
@@ -2602,7 +2791,7 @@ function openRpCustom() {
     if (!b) return;
     clear();
     if (b.dataset.q === 'all') {
-      const days = [...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...Object.keys(S.meta.water || {})].filter((d) => d >= lo && d <= hi).sort();
+      const days = [...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...waterDayList()].filter((d) => d >= lo && d <= hi).sort();
       if (!days.length) { say(from, VIEW ? 'The shared link has no days.' : 'There are no entries yet.'); return; }
       from.value = VIEW ? VIEW.from : days[0]; to.value = VIEW ? VIEW.to : days[days.length - 1];
     } else {
@@ -2661,7 +2850,8 @@ function viewData() {
     <div class="card"><div class="card-t">For analysis</div>
       <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is. In the entries file, est_keys lists the estimated nutrients of that entry (separated by semicolons). In the daily totals file, est_share is the share of the day that is estimated, in percent: for every nutrient with data it takes the estimated part of the day’s amount, then averages those shares.</p>
       <p class="muted small" style="margin:0 0 14px">The Health log file has one row per note, oldest first: date, time, label (symptom, event or observation), note and edited (the day and time of the last edit, empty if the note was never edited). It is a separate file: it is not mixed into the food tables, and the date column links it to them.</p>
-      <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button><button class="btn" data-act="export-health">Health log (CSV)</button></div></div>
+      <p class="muted small" style="margin:0 0 14px">The Water intake file has one row per recording, oldest first: date, time and water_ml. A row with an empty time is an amount that was logged before water had a time. In the daily totals file, water_intake_ml is the whole water of the day, with and without a time.</p>
+      <div class="row gap"><button class="btn" data-act="export-entries">Entries (CSV)</button><button class="btn" data-act="export-days">Daily totals (CSV)</button><button class="btn" data-act="export-health">Health log (CSV)</button><button class="btn" data-act="export-water">Water intake (CSV)</button></div></div>
     <div class="card"><div class="card-t">Storage</div>
       <p class="muted small" style="margin:6px 0 4px">Storage type: ${Store.mode === 'idb' ? 'IndexedDB' : 'localStorage (fallback)'}.</p>
       <p class="small" id="persist-state" style="margin:0 0 14px">Checking…</p>
@@ -3197,7 +3387,7 @@ function nutInputs(food) {
 /* Show an error right under the field, open any folded group around it, and put the cursor there. */
 function fieldError(input, msg, focus = true) {   // focus = false after waiting for the network: focus() outside the tap leaves the field "focused" without a keyboard on iOS
   const host = input.closest('.nin, label.f') || input;
-  $$('.field-err', host.parentNode).forEach((x) => x.remove());
+  $$('.field-err:not([data-static])', host.parentNode).forEach((x) => x.remove());   // a static message of another field of the same sheet (data-static, shown or hidden by its own code) is not ours to remove
   host.insertAdjacentHTML('afterend', `<p class="note field-err" role="alert">${esc(msg)}</p>`);
   input.setAttribute('aria-invalid', 'true');
   for (let d = input.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
@@ -3945,7 +4135,7 @@ const num6 = (v) => (Number.isFinite(v) ? prec(v) : '');
 const BOM = '﻿';
 
 function exportJson() {
-  const clean = JSON.parse(JSON.stringify({ app: 'tapnaplo', version: 1, exported: new Date().toISOString(), log: S.log, foods: S.foods, meta: S.meta, health: S.health }, (k, v) => (k[0] === '_' ? undefined : v)));   // health: the Health log notes (version 25)
+  const clean = JSON.parse(JSON.stringify({ app: 'tapnaplo', version: 1, exported: new Date().toISOString(), log: S.log, foods: S.foods, meta: S.meta, health: S.health, wlog: S.wlog }, (k, v) => (k[0] === '_' ? undefined : v)));   // health: the Health log notes (version 25); wlog: the water recordings with a time (version 34)
   S.meta.backup = Date.now(); save();
   download(`nutrilog-backup-${ymd(new Date())}.json`, JSON.stringify(clean), 'application/json');
   toast('Backup downloaded'); if (S.tab === 'data') render();
@@ -3996,8 +4186,18 @@ function exportHealth() {
   for (const n of rows) lines.push(csvLine([n.d, n.tm, n.label, n.x, n.e ? `${ymd(new Date(n.e))} ${hm(new Date(n.e))}` : '']));
   download(`nutrilog-health-log-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
+/* Water intake as a table for analysis: one row per recording, oldest first. time is empty for the amount of a day that was logged before water had a time (version 24). */
+function exportWater() {
+  const rows = [];
+  for (const [d, ml] of Object.entries(S.meta.water || {})) rows.push({ d, tm: '', t: 0, id: '', ml });
+  for (const r of S.wlog) rows.push({ d: r.d, tm: r.tm, t: r.t, id: r.id, ml: r.ml });
+  rows.sort((a, b) => a.d.localeCompare(b.d) || a.tm.localeCompare(b.tm) || a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const lines = [csvLine(['date', 'time', 'water_ml'])];
+  for (const r of rows) lines.push(csvLine([r.d, r.tm, r.ml]));
+  download(`nutrilog-water-intake-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
+}
 function exportDays() {
-  const days = [...new Set([...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...Object.keys(S.meta.water || {})])].sort();   // a day with only water gets a row too
+  const days = [...new Set([...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...waterDayList()])].sort();   // a day with only water gets a row too
   const per = days.map((d) => ({ d, T: totalsFor(entriesOf(d)) }));
   const withMax = new Set();
   per.forEach(({ T }) => { for (let i = 0; i < NUT_N; i++) if (T.cnt[i] && T.hi[i] - T.lo[i] > 1e-9) withMax.add(i); });
@@ -4023,7 +4223,16 @@ function importJson(file) {
       const hasH = hasOwn(j, 'health');
       if (hasH && !Array.isArray(j.health)) throw new Error('the Health log part of this file is not a list of notes.');
       const hc = hasH ? cleanHealth(j.health) : null;
-      const counts = `${nE === 1 ? '1 entry' : nE + ' entries'}${hc ? ',' : ' and'} ${nF === 1 ? '1 food' : nF + ' foods'}${hc ? ` and ${plural(hc.list.length, 'Health log note')}` : ''}`;
+      /* Water recordings (version 34): the same rule. A file that has a "wlog" part (even an empty one) replaces them; a file made before version 34 has none and leaves them as they are. */
+      const hasW = hasOwn(j, 'wlog');
+      if (hasW && !Array.isArray(j.wlog)) throw new Error('the water recordings part of this file is not a list.');
+      const wc = hasW ? cleanWlog(j.wlog) : null;
+      const parts = [nE === 1 ? '1 entry' : nE + ' entries', nF === 1 ? '1 food' : nF + ' foods'];
+      if (hc) parts.push(plural(hc.list.length, 'Health log note'));
+      if (wc) parts.push(plural(wc.list.length, 'water recording'));
+      const counts = parts.length === 2 ? parts.join(' and ') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+      const waterText = wc ? (wc.dropped ? ` ${plural(wc.dropped, 'water recording')} in the file ${wc.dropped === 1 ? 'is' : 'are'} not valid and will be skipped.` : '')
+        : S.wlog.length ? (S.wlog.length === 1 ? ' Your water recording is not in this file, so it stays as it is.' : ` Your ${S.wlog.length} water recordings are not in this file, so they stay as they are.`) : '';
       const healthText = hc ? (hc.dropped ? ` ${plural(hc.dropped, 'note')} in the file ${hc.dropped === 1 ? 'is' : 'are'} not valid and will be skipped.` : '')
         : S.health.length ? (S.health.length === 1 ? ' Your Health log note is not in this file, so it stays as it is.' : ` Your ${S.health.length} Health log notes are not in this file, so they stay as they are.`) : '';
       /* Reference intake (version 26): a file with a "ref" part in its meta (even null) replaces the profile; a file made before version 26 has none and leaves the profile as it is;
@@ -4035,12 +4244,13 @@ function importJson(file) {
         : !hasR && S.meta.ref ? ' Your reference intake settings are not in this file, so they stay as they are.' : '';
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
-        text: `This replaces everything in the app with the backup: ${counts}.${healthText}${refText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
+        text: `This replaces everything in the app with the backup: ${counts}.${healthText}${waterText}${refText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
           const keepRef = hasR && !refBad ? refFile : cleanRef(S.meta.ref);
           S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water); S.meta.ref = keepRef;
           if (hc) S.health = hc.list;
-          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : '') + (refBad ? ' · reference intake settings skipped: not valid' : ''));
+          if (wc) S.wlog = wc.list;
+          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : '') + (wc && wc.dropped ? ` · ${plural(wc.dropped, 'water recording')} skipped: not valid` : '') + (refBad ? ' · reference intake settings skipped: not valid' : ''));
         },
       });
     } catch (err) { toast('Could not restore: ' + err.message); }
@@ -4256,12 +4466,14 @@ function shareSnapshot(from, to, withRef = false) {
     (days[e.d] = days[e.d] || []).push([e.m, r, timeOf(e), e.a]);
     items++;
   }
-  const water = {};   // the water intake of the shared days; the key is left out when there is none, so a link without water looks exactly as before
-  for (const [d, ml] of Object.entries(S.meta.water || {})) if (d >= from && d <= to) water[d] = ml;
-  const waterDays = Object.keys(water).length;
+  const water = {}, wt = {};   // the water intake of the shared days (the whole total of a day); the keys are left out when there is none, so a link without water looks exactly as before
+  const wr = waterRange(from, to);
+  for (const d of wr.days) water[d] = wr.ml[d];
+  for (const r of S.wlog.filter((x) => x.d >= from && x.d <= to).sort((a, b) => a.d.localeCompare(b.d) || drinkCmp(a, b))) (wt[r.d] = wt[r.d] || []).push([r.tm, r.ml]);   // wt: the recordings that have a time, [HH:MM, ml] per day; what is left of the total has no time
+  const waterDays = Object.keys(water).length, waterTimes = Object.values(wt).reduce((s, l) => s + l.length, 0);
   const ref = withRef ? cleanRef(S.meta.ref) : null;   // the reference intake profile, only when the person chose to include it (it shows sex, pregnancy and nursing)
-  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days, ...(waterDays ? { water } : {}), ...(ref ? { ref } : {}) });
-  return { json, items, skipped, dayCount: Object.keys(days).length, waterDays, withRef: !!ref };
+  const json = JSON.stringify({ app: SHARE_APP, v: SHARE_V, made: Date.now(), from, to, refs, foods, nova, days, ...(waterDays ? { water } : {}), ...(waterTimes ? { wt } : {}), ...(ref ? { ref } : {}) });
+  return { json, items, skipped, dayCount: Object.keys(days).length, waterDays, waterTimes, withRef: !!ref };
 }
 const shareBase = () => location.href.replace(/[?#].*$/, '');
 async function shareLink(from, to, withRef = false) {
@@ -4308,7 +4520,7 @@ function openShare() {
     if (my !== seq) return;   // the choice changed while the link was being made
     if (!r.items && !r.waterDays) { info.textContent = 'There are no diary entries in these days. Choose other days.'; return; }
     url = r.url;
-    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')}${r.waterDays ? ` · water intake on ${plural(r.waterDays, 'day')}` : ''}${r.withRef ? ' · with reference intake settings' : ''} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
+    info.textContent = `${plural(r.dayCount, 'day')} with entries · ${plural(r.items, 'item')}${r.waterDays ? ` · water intake on ${plural(r.waterDays, 'day')}${r.waterTimes ? ' (with times)' : ''}` : ''}${r.withRef ? ' · with reference intake settings' : ''} · link length ${r.url.length.toLocaleString(LOC)} characters${r.skipped ? ` · ${plural(r.skipped, 'item')} left out because the food data is not loaded` : ''}`;
     long.hidden = r.url.length <= SHARE_LINK_LONG;
     ready(true);
   }
@@ -4388,6 +4600,17 @@ function shareCheck(r) {
     if (!plain(r.water) || Object.keys(r.water).length > 400) return bad;
     for (const dd of Object.keys(r.water)) { const v = r.water[dd]; if (day(dd) && dd >= r.from && dd <= r.to && Number.isInteger(v) && v >= 1 && v <= WATER_MAX_ML) water[dd] = v; }
   }
+  const wt = {};   // optional: the recordings of a day that have a time, [HH:MM, ml]; a day whose list is not valid, or adds up to more than the total of that day, is left out (that day then shows its total without times)
+  if (r.wt !== undefined) {
+    if (!plain(r.wt) || Object.keys(r.wt).length > 400) return bad;
+    for (const dd of Object.keys(r.wt)) {
+      const list = r.wt[dd];
+      if (!day(dd) || dd < r.from || dd > r.to || !Object.prototype.hasOwnProperty.call(water, dd) || !Array.isArray(list) || !list.length || list.length > 500) continue;
+      if (!list.every((x) => Array.isArray(x) && x.length === 2 && validHm(x[0]) && Number.isInteger(x[1]) && x[1] >= 1 && x[1] <= WATER_MAX_ML)) continue;
+      if (list.reduce((s, x) => s + x[1], 0) > water[dd]) continue;
+      wt[dd] = list.map((x) => [x[0], x[1]]);
+    }
+  }
   const ref = r.ref === undefined || r.ref === null ? null : cleanRef(r.ref);   // optional reference intake profile; a damaged one is left out and the link still opens, only without the bars
   if (!plain(r.days)) return bad;
   const entries = [];
@@ -4403,7 +4626,7 @@ function shareCheck(r) {
       entries.push({ id: 'v' + (entries.length + 1), d: dd, m, f: r.refs[ri], a, tm });   // no t: the order of the link is kept (sorting is stable), and the time stays what the sender saw
     }
   }
-  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova, water, ref } };
+  return { data: { from: r.from, to: r.to, made: Number.isFinite(r.made) ? r.made : 0, entries, foods, nova, water, wt, ref } };
 }
 const fmtShort = (s, withYear = true) => parseYmd(s).toLocaleDateString(LOC, withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
 /* the note at the top of both tabs of a shared copy */
@@ -4436,7 +4659,13 @@ async function initViewer() {
     if (res.error) { showShareError(res.error); return; }
     const { data } = res;
     Object.assign(VIEW, { from: data.from, to: data.to, made: data.made });
-    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.water = data.water; S.meta.ref = data.ref;   // in memory only: save() does nothing in a shared copy
+    S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.ref = data.ref;   // in memory only: save() does nothing in a shared copy
+    S.meta.water = {}; S.wlog = [];   // the total of a day minus its recordings that have a time is the amount without a time
+    for (const dd of Object.keys(data.water)) {
+      const list = data.wt[dd] || [], left = data.water[dd] - list.reduce((s, x) => s + x[1], 0);
+      if (left > 0) S.meta.water[dd] = left;
+      for (const [tm, ml] of list) S.wlog.push({ id: 'v' + (S.wlog.length + 1), t: S.wlog.length + 1, d: dd, tm, ml });
+    }
     S.day = [...data.entries.map((e) => e.d), ...Object.keys(data.water)].reduce((m, d) => (d > m ? d : m), '') || data.to;   // the last day that has entries or water
     S.tab = 'log';
     RP.kind = 'custom'; RP.custom = { from: data.from, to: data.to }; RP.anchor = data.to;   // the Report starts with all the shared days (in memory only)
@@ -4459,7 +4688,7 @@ document.addEventListener('click', (ev) => {
     else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
     else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
     else if (a === 'rp-step') rpGo(+t.dataset.n);
-    else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step') rpTrendAct(a, t);
+    else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step' || a === 'rp-whour-step') rpTrendAct(a, t);
     else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d) && d >= VIEW.from && d <= VIEW.to) { S.day = d; S.tab = 'log'; render(); window.scrollTo(0, 0); } }
     return;
   }
@@ -4468,13 +4697,15 @@ document.addEventListener('click', (ev) => {
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
   else if (a === 'rp-step') rpGo(+t.dataset.n);
-  else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step') rpTrendAct(a, t);
+  else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket' || a === 'rp-hour-step' || a === 'rp-whour-step') rpTrendAct(a, t);
   else if (a === 'rp-today') { RP.anchor = ymd(new Date()); render(); }
   else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d)) { S.day = d; S.tab = 'log'; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); } }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
   else if (a === 'water-add') waterAdd(S.day, Math.round(Number(t.dataset.dl) * 100));
   else if (a === 'water-other') openWater();
+  else if (a === 'water-edit') { const r = S.wlog.find((x) => x.id === t.dataset.id); if (r) openWater(r); }
+  else if (a === 'water-edit-legacy') { if (waterLegacy(S.day)) openWater('legacy'); }
   else if (a === 'ref-quick') refQuick(t.dataset.sex);
   else if (a === 'ref-change') openRefSheet();
   else if (a === 'health-add') openHealthForm(null);
@@ -4496,6 +4727,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'export-entries') exportEntries();
   else if (a === 'export-days') exportDays();
   else if (a === 'export-health') exportHealth();
+  else if (a === 'export-water') exportWater();
   else if (a === 'share') openShare();
   else if (a === 'refresh-app') refreshApp();
   else if (a === 'persist') {
@@ -4505,6 +4737,7 @@ document.addEventListener('click', (ev) => {
 /* 'toggle' does not bubble, so listen while it travels down (third argument true) */
 document.addEventListener('toggle', (ev) => {
   if (ev.target.id === 'novafold') novaOpen = ev.target.open;
+  if (ev.target.id === 'wlist') waterOpen = ev.target.open;   // the recordings of the day stay open while the card is drawn again
   const sec = ev.target.dataset && ev.target.dataset.sec;   // the parts of the Report stay open or closed (on this device only; a shared copy keeps it in memory)
   if (sec && hasOwn(RP.open, sec) && RP.open[sec] !== ev.target.open) {
     RP.open[sec] = ev.target.open;
@@ -4594,7 +4827,7 @@ async function init() {
   if (VIEW) { await initViewer(); return; }   // a shared copy: the storage of this browser is not opened, Sync does not start
   try {
     await Promise.all([Store.open(), loadCatalog()]);
-    const [log, foods, meta, sy, health] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health')]);
+    const [log, foods, meta, sy, health, wlog] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health'), Store.get('wlog')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
@@ -4602,12 +4835,15 @@ async function init() {
     S.meta.ref = cleanRef(S.meta.ref);   // old saves have no profile; a damaged one is no profile
     const hc = cleanHealth(health);   // old saves have no notes; a damaged item is left out and said so below
     S.health = hc.list;
+    const wc = cleanWlog(wlog);   // old saves have no water recordings; a damaged item is left out and said so below
+    S.wlog = wc.list;
     if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
     rpLoad();   // the period and the open parts of the Report, as left on this device
     if (syncStamp()) await Store.set('sync', syncPersist());   // changes made while the app was closed, and the first start with Sync built in
     render();
     if (hc.dropped) toast(`${plural(hc.dropped, 'Health log note')} could not be read and ${hc.dropped === 1 ? 'was' : 'were'} skipped.`);
+    else if (wc.dropped) toast(`${plural(wc.dropped, 'water recording')} could not be read and ${wc.dropped === 1 ? 'was' : 'were'} skipped.`);
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
     syncStart();
   } catch (err) {
@@ -4621,7 +4857,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();
