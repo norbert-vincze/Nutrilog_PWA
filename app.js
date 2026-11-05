@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '29 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '30 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -1721,7 +1721,7 @@ const RP_MONTHS = { month: 1, m3: 3, m6: 6, year: 12 };
 const RP_MIN_DAY = '2000-01-01';
 const RP_TOP_FOODS = 12;     // foods listed in "Added up from" of a row; the rest is one line with their sum
 const RP_NAMES_MAX = 15;     // names listed after "No data for:"
-const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, nutrients: false, quality: false } };
+const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, quality: false } };
 function rpLoad() {   // the choice of this device (not in the backup, not synced); a damaged value is ignored
   try {
     const raw = JSON.parse(localStorage.getItem('nutrilog.period') || 'null');
@@ -1929,6 +1929,238 @@ function rpNutrHtml(P) {
   }).join('');
   return `<div id="refcard">${refCardHtml()}</div>${intro}${groups}`;
 }
+/* ---- Trend (version 30): one measure as bars over the period ---- */
+/* One bar is one day (periods up to 31 days), one week (up to 190 days, Monday to Sunday, the outer weeks may be cut) or one month. The value of a bar is the average per logged day
+   inside it, with the same rules as the rest of the Report: a bar with no logged day is a gap (not a 0), a bar whose items have no data for the measure is "no data" (not a 0),
+   a striped bar is a lower value (some items have no data), a light cap is a range ("<x" values). Nothing is stored except the measure chosen on this device. */
+const RP_MEASURE_KEY = 'nutrilog.reportMeasure';
+const RP_WATER = 'water_intake', RP_OMEGA = 'omega_ratio';
+let rpMeasure = null;      // the measure of this device; a shared copy keeps it in memory only
+let RP_TREND = null;       // the Trend on the screen: { P, r, m, info, bars, sel, ymax, ref }
+const rpMeasureOk = (m) => typeof m === 'string' && (m === RP_WATER || m === RP_OMEGA || hasOwn(IDX, m));
+function curMeasure() {
+  if (rpMeasure === null) {
+    rpMeasure = 'kcal';
+    if (!VIEW) try { const m = localStorage.getItem(RP_MEASURE_KEY); if (rpMeasureOk(m)) rpMeasure = m; } catch { /* private mode: Energy */ }
+  }
+  return rpMeasureOk(rpMeasure) ? rpMeasure : 'kcal';
+}
+function rpMeasureInfo(m) {
+  if (m === RP_WATER) return { label: 'Water intake', unit: 'mL', i: -1 };
+  if (m === RP_OMEGA) return { label: 'Omega-6 : omega-3 ratio', unit: ': 1', i: -1 };
+  const i = IDX[m];
+  return { label: labelOf(i), unit: UNITS[i], i };
+}
+function rpBuckets(r) {
+  const unit = r.days <= 31 ? 'day' : r.days <= 190 ? 'week' : 'month', out = [], min = (a, b) => (a < b ? a : b);
+  if (unit === 'day') for (let d = r.from; d <= r.to; d = addDays(d, 1)) out.push({ unit, from: d, to: d });
+  else if (unit === 'week') for (let f = weekFirst(r.from); f <= r.to; f = addDays(f, 7)) out.push({ unit, from: f < r.from ? r.from : f, to: min(addDays(f, 6), r.to) });
+  else for (let m = r.from.slice(0, 8) + '01'; m <= r.to; m = monthShift(m, 1)) out.push({ unit, from: m < r.from ? r.from : m, to: min(monthLast(m), r.to) });
+  return out;
+}
+function rpBucketLabel(b) {
+  if (b.unit === 'day') return { short: fmtShort(b.from, false), long: dayLabel(b.from) };
+  if (b.unit === 'month') { const d = parseYmd(b.from); return { short: d.toLocaleDateString(LOC, { month: 'short', year: 'numeric' }), long: d.toLocaleDateString(LOC, { month: 'long', year: 'numeric' }) }; }
+  const a = parseYmd(b.from), z = parseYmd(b.to);
+  const s = b.from === b.to ? fmtShort(b.from, false) : a.getMonth() === z.getMonth() ? `${a.getDate()}–${fmtShort(b.to, false)}` : `${fmtShort(b.from, false)} – ${fmtShort(b.to, false)}`;
+  return { short: s, long: 'Week of ' + s };
+}
+function rpTrendBars(P, r, m) {
+  const info = rpMeasureInfo(m);
+  let j = 0;
+  return rpBuckets(r).map((b, k) => {
+    while (j < P.days.length && P.days[j] < b.from) j++;
+    const idx = [];
+    for (let q = j; q < P.days.length && P.days[q] <= b.to; q++) idx.push(q);
+    const lab = rpBucketLabel(b);
+    const bar = { k, unit: b.unit, from: b.from, to: b.to, short: lab.short, long: lab.long, logged: idx.length, items: 0, state: 'none', lo: 0, hi: 0, partial: false, est: false, range: false, open: false };
+    if (m === RP_WATER) {   // the average of the days with water logged in the bar
+      const wd = P.waterDays.filter((d) => d >= b.from && d <= b.to);
+      bar.logged = wd.length;
+      if (wd.length) { const v = Math.round(wd.reduce((sum, d) => sum + S.meta.water[d], 0) / wd.length); Object.assign(bar, { state: 'ok', lo: v, hi: v }); }
+      return bar;
+    }
+    if (!idx.length) return bar;
+    const Tb = rpAvg(idx.map((q) => P.ts[q]));
+    bar.items = Tb.n;
+    if (m === RP_OMEGA) {
+      const es = [];
+      for (const q of idx) for (const e of P.by.get(P.days[q])) es.push(e);
+      const o = omegaRatio(es, Tb);
+      if (o.state !== 'ok') { bar.state = o.state === 'undef' ? 'undef' : 'nodata'; return bar; }
+      return Object.assign(bar, { state: 'ok', lo: o.lo, hi: o.hi, partial: o.partial, est: o.est, open: !Number.isFinite(o.hi), range: Number.isFinite(o.hi) && o.hi - o.lo > Math.max(o.lo * 0.1, 1e-9) });
+    }
+    const i = info.i, cnt = Tb.cnt[i];
+    if (!cnt) { bar.state = 'nodata'; return bar; }
+    const lo = Tb.lo[i], hi = Tb.hi[i];
+    return Object.assign(bar, { state: 'ok', lo, hi, partial: cnt < Tb.n, est: Tb.est[i] > 0, range: hi - lo > Math.max(lo * 0.1, 1e-9) });
+  });
+}
+function rpNiceMax(x) {
+  if (!(x > 0)) return 1;
+  const e = 10 ** Math.floor(Math.log10(x)), f = x / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+}
+const rpTick = (x) => Number(x.toPrecision(3)).toLocaleString(LOC);
+/* the value of a bar as text with its marks (the same marks as the rows: ≥ lower value, ~ estimate, a range; ≈ for the ratio worked out from part of the fatty acids) */
+function rpBarVal(b, m, info) {
+  if (b.state !== 'ok') return '';
+  if (m === RP_WATER) return `${fmt(b.lo)} mL`;
+  const core = b.open ? '≥ ' + fmt(b.lo) : b.range ? fmt(b.lo) + '–' + fmt(b.hi) : fmt(b.lo);
+  if (m === RP_OMEGA) return `${b.partial ? '≈ ' : ''}${b.est ? '~' : ''}${core} : 1`;
+  return `${b.partial ? '≥ ' : ''}${b.est ? '~' : ''}${core} ${info.unit}`;
+}
+function rpBarRead(b, m, info) {
+  const bits = [b.long];
+  if (b.state === 'none') bits.push(m === RP_WATER ? 'no water logged' : 'no entries');
+  else if (b.state === 'nodata') bits.push(`no data for ${info.label}`);
+  else if (b.state === 'undef') bits.push('ratio not defined');
+  else bits.push(rpBarVal(b, m, info));
+  if (b.unit !== 'day' && b.logged) bits.push(m === RP_WATER ? `${plural(b.logged, 'day')} with water logged` : plural(b.logged, 'logged day'));
+  if (m !== RP_WATER && b.items) bits.push(plural(b.items, 'item'));
+  return bits.join(' · ');
+}
+/* a measure that has an EFSA value on its own (not Vitamin A, B1, niacin: those are compared in other units or with the energy) gets a reference line */
+function rpTrendRef(m) {
+  const p = S.meta.ref;
+  if (!p || !hasOwn(DRV, m) || !hasOwn(IDX, m)) return null;
+  const d = DRV[m];
+  if (d.comps || d.perMJ) return null;
+  return { v: d.v(p), type: refType(d, p), d, p };
+}
+function rpTrendMake(P, r) {
+  const m = curMeasure(), info = rpMeasureInfo(m), bars = rpTrendBars(P, r, m);
+  const okBars = bars.filter((b) => b.state === 'ok'), seen = bars.filter((b) => b.state !== 'none').length;
+  const u = bars[0] ? bars[0].unit : 'day';
+  const unitLine = m === RP_WATER ? `mL a day, average of the days with water logged · one bar = one ${u}`
+    : m === RP_OMEGA ? `ratio of the totals · one bar = one ${u}`
+    : `${esc(info.unit)} a day${u === 'day' ? '' : ', average of the logged days'} · one bar = one ${u}`;
+  const head = `<div class="rp-trend-h"><button type="button" class="chip-btn rp-measure" data-act="rp-measure" aria-haspopup="dialog">${esc(info.label)}<span class="rp-caret" aria-hidden="true"></span></button><span class="muted small">${unitLine}</span></div>`;
+  const dead = (msg) => { RP_TREND = { P, r, m, info, bars, sel: 0, none: true }; return `${head}<p class="small muted rp-trend-none">${msg}</p>`; };
+  if (seen < 2) return dead(m === RP_WATER ? 'A trend needs at least two days with water logged in this period.' : 'A trend needs at least two days with entries in this period.');
+  if (!okBars.length) return dead(`No item in this period has data for ${esc(info.label)}, so there is nothing to draw. This is not zero.`);
+  const ref = rpTrendRef(m);
+  const top = Math.max(...okBars.map((b) => (Number.isFinite(b.hi) ? b.hi : b.lo)), ref ? ref.v : 0);
+  const ymax = rpNiceMax(top * 1.05);
+  let sel = -1;
+  for (let k = bars.length - 1; k >= 0; k--) if (bars[k].state !== 'none') { sel = k; break; }
+  RP_TREND = { P, r, m, info, bars, sel, ymax, ref };
+  const pct = (x) => Math.max(0, Math.min(100, x / ymax * 100));
+  const barHtml = bars.map((b) => {
+    const cls = b.state === 'none' ? 'none' : b.state !== 'ok' ? 'nodata' : `${b.partial ? 'part' : 'full'}${b.range || b.open ? ' cap' : ''}`;
+    const h = b.state === 'ok' ? pct(b.lo) : 0, t = b.state === 'ok' ? (b.open ? 100 : pct(b.hi)) : 0;
+    return `<div class="rp-bar ${cls}${b.k === sel ? ' sel' : ''}" data-k="${b.k}" style="--h:${h.toFixed(2)}%;--t:${t.toFixed(2)}%"></div>`;
+  }).join('');
+  const hi = okBars.reduce((a, b) => (b.lo > a.lo ? b : a)), lo = okBars.reduce((a, b) => (b.lo < a.lo ? b : a));
+  const label = `Bar chart of ${info.label}, ${bars.length} bars, one per ${u}, from ${bars[0].short} to ${bars[bars.length - 1].short}. ${okBars.length} of them have a value. Highest: ${rpBarVal(hi, m, info)} on ${hi.long}. Lowest: ${rpBarVal(lo, m, info)} on ${lo.long}. Use the left and right arrow keys, or the Previous bar and Next bar buttons, to read the bars one by one. The table below has all values.`;
+  const xs = [bars[0].short, bars.length > 2 ? bars[Math.floor((bars.length - 1) / 2)].short : '', bars[bars.length - 1].short];
+  const has = (f) => bars.some(f);
+  const leg = [
+    has((b) => b.state === 'ok' && !b.partial) ? `<li><i class="rp-sw full" aria-hidden="true"></i>${m === RP_WATER ? 'Average of the days with water logged' : 'Solid bar: every item has data'}</li>` : '',
+    has((b) => b.state === 'ok' && b.partial) ? `<li><i class="rp-sw part" aria-hidden="true"></i>${m === RP_OMEGA ? '≈ Striped bar: worked out from the values that exist' : 'Striped bar: a lower value (≥), some items have no data'}</li>` : '',
+    has((b) => b.state === 'ok' && (b.range || b.open)) ? '<li><i class="rp-sw cap" aria-hidden="true"></i>Outlined top: a range, from values given as “below x”</li>' : '',
+    has((b) => b.state === 'none') ? `<li><i class="rp-sw none" aria-hidden="true"></i>Dashed base: ${m === RP_WATER ? 'no water logged' : 'no entries'} (not a 0)</li>` : '',
+    has((b) => b.state === 'nodata' || b.state === 'undef') ? '<li><i class="rp-sw nodata" aria-hidden="true"></i>Dotted stub: logged, but no data for this measure (not a 0)</li>' : '',
+    ref ? `<li><i class="rp-sw ref ${ref.type === 'PRI' ? 'pri' : ref.type === 'AI' ? 'ai' : 'sai'}" aria-hidden="true"></i>Line: reference intake ${esc(refShort(ref.d, ref.p))} (${ref.type}${ref.type === 'SAI' ? ', not a target' : ''}). A bar below it is not a deficiency.</li>` : '',
+  ].join('');
+  const showDays = u !== 'day';
+  const rows = bars.map((b) => {
+    const val = b.state === 'none' ? (m === RP_WATER ? 'no water logged' : 'no entries') : b.state === 'nodata' ? 'no data' : b.state === 'undef' ? 'not defined' : rpBarVal(b, m, info);
+    return `<tr><th scope="row">${esc(b.unit === 'week' ? b.short : b.long)}</th><td>${esc(val)}</td>${showDays ? `<td>${b.logged}</td>` : ''}<td>${m === RP_WATER ? '' : b.items}</td></tr>`;
+  }).join('');
+  const openName = u === 'day' ? 'Open day' : u === 'week' ? 'Open week' : 'Open month';
+  return `${head}
+    <div class="rp-chart">
+      <div class="rp-y" aria-hidden="true"><span style="bottom:100%">${rpTick(ymax)}</span><span style="bottom:50%">${rpTick(ymax / 2)}</span><span style="bottom:0">0</span></div>
+      <div class="rp-plot" id="rp-plot" tabindex="0" role="group" aria-label="${esc(label)}">
+        <i class="rp-gl" style="bottom:50%" aria-hidden="true"></i><i class="rp-gl" style="bottom:100%" aria-hidden="true"></i>
+        <div class="rp-bars" aria-hidden="true">${barHtml}</div>
+        ${ref ? `<i class="rp-ref ${ref.type === 'PRI' ? 'pri' : ref.type === 'AI' ? 'ai' : 'sai'}" style="bottom:${pct(ref.v).toFixed(2)}%" aria-hidden="true"></i>` : ''}
+      </div>
+      <div class="rp-x" aria-hidden="true"><span>${esc(xs[0])}</span><span>${esc(xs[1])}</span><span>${esc(xs[2])}</span></div>
+    </div>
+    <div class="rp-read">
+      <button type="button" class="icon-btn" data-act="rp-trend-step" data-n="-1" aria-label="Previous bar" ${sel <= 0 ? 'disabled' : ''}>${IC.left}</button>
+      <p class="rp-rd" id="rp-rd" aria-live="polite">${esc(rpBarRead(bars[sel], m, info))}</p>
+      <button type="button" class="icon-btn" data-act="rp-trend-step" data-n="1" aria-label="Next bar" ${sel >= bars.length - 1 ? 'disabled' : ''}>${IC.right}</button>
+    </div>
+    <button type="button" class="btn block rp-open" data-act="rp-open-bucket">${openName}</button>
+    <ul class="rp-leg">${leg}</ul>
+    <details class="fold" data-sec="trendtable" ${RP.open.trendtable ? 'open' : ''}><summary>Show as table</summary>
+      <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Trend values as a table"><table class="rp-table"><thead><tr><th scope="col">${u === 'day' ? 'Day' : u === 'week' ? 'Week' : 'Month'}</th><th scope="col">${esc(info.label)}</th>${showDays ? '<th scope="col">Logged days</th>' : ''}<th scope="col">Items</th></tr></thead><tbody>${rows}</tbody></table></div>
+    </details>`;
+}
+/* the selected bar changes without drawing the chart again (a drag must keep going) */
+function rpTrendPaint() {
+  const T = RP_TREND;
+  if (!T || T.none) return;
+  document.querySelectorAll('#rp-trend .rp-bar').forEach((el) => el.classList.toggle('sel', Number(el.dataset.k) === T.sel));
+  const rd = $('#rp-rd'); if (rd) rd.textContent = rpBarRead(T.bars[T.sel], T.m, T.info);
+  const pv = $('#rp-trend [data-act=rp-trend-step][data-n="-1"]'), nx = $('#rp-trend [data-act=rp-trend-step][data-n="1"]');
+  if (pv) pv.disabled = T.sel <= 0;
+  if (nx) nx.disabled = T.sel >= T.bars.length - 1;
+}
+function rpTrendSelect(k) {
+  const T = RP_TREND;
+  if (!T || T.none || !Number.isFinite(k)) return;
+  k = Math.max(0, Math.min(T.bars.length - 1, Math.round(k)));
+  if (k !== T.sel) { T.sel = k; rpTrendPaint(); }
+}
+function refreshTrend() {
+  const el = $('#rp-trend');
+  if (!el || !RP_TREND) { render(); return; }
+  el.innerHTML = rpTrendMake(RP_TREND.P, RP_TREND.r);
+}
+function rpSetMeasure(m) {
+  if (!rpMeasureOk(m)) return;
+  rpMeasure = m;
+  if (!VIEW) try { localStorage.setItem(RP_MEASURE_KEY, m); } catch { /* private mode */ }
+  refreshTrend();
+}
+function openRpMeasure() {
+  const cur = curMeasure(), P = RP_TREND && RP_TREND.P;
+  const btn = (id, label, i) => `<button type="button" class="rp-m" data-m="${id}" aria-pressed="${id === cur}">${esc(label)}${P && i >= 0 && P.T.cnt[i] === 0 ? '<small>no data</small>' : ''}</button>`;
+  let html = '<h3 class="rp-mh">Calculated</h3>' + btn(RP_WATER, 'Water intake', -1) + btn(RP_OMEGA, 'Omega-6 : omega-3 ratio', -1);
+  for (const [gid, gname] of GROUPS) {
+    const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
+    if (idxs.length) html += `<h3 class="rp-mh">${esc(gname)}</h3>` + idxs.map((i) => btn(KEYS[i], labelOf(i), i)).join('');
+  }
+  html += '<div class="row gap sheet-actions"><button type="button" class="btn" data-x style="flex:1">Close</button></div>';
+  const sh = openSheet('Trend measure', html);
+  sh.el.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-m]');
+    if (!b) return;
+    rpSetMeasure(b.dataset.m); sh.close();
+  });
+}
+function rpTrendAct(a, t) {
+  if (a === 'rp-measure') openRpMeasure();
+  else if (a === 'rp-trend-step') { if (RP_TREND) rpTrendSelect(RP_TREND.sel + Number(t.dataset.n)); }
+  else if (a === 'rp-open-bucket') {   // the day, the week or the month of the selected bar becomes the period of the Report
+    const T = RP_TREND, b = T && !T.none ? T.bars[T.sel] : null;
+    if (!b) return;
+    RP.kind = b.unit; RP.anchor = rpClamp(b.from); rpSave(); render(); window.scrollTo(0, 0);
+  }
+}
+/* touch, mouse and keyboard on the plot: the nearest bar is selected while a finger or the mouse button is down */
+function rpPickAt(plot, x) {
+  const T = RP_TREND;
+  if (!T || T.none) return;
+  const rc = plot.getBoundingClientRect();
+  if (rc.width > 0) rpTrendSelect(Math.floor((x - rc.left) / rc.width * T.bars.length));
+}
+document.addEventListener('pointerdown', (ev) => { const pl = ev.target.closest && ev.target.closest('.rp-plot'); if (pl) rpPickAt(pl, ev.clientX); });
+document.addEventListener('pointermove', (ev) => { if (!(ev.buttons & 1)) return; const pl = ev.target.closest && ev.target.closest('.rp-plot'); if (pl) rpPickAt(pl, ev.clientX); });
+document.addEventListener('keydown', (ev) => {
+  const T = RP_TREND;
+  if (!T || T.none || !ev.target.classList || !ev.target.classList.contains('rp-plot')) return;
+  const k = ev.key;
+  if (k === 'ArrowLeft') rpTrendSelect(T.sel - 1); else if (k === 'ArrowRight') rpTrendSelect(T.sel + 1);
+  else if (k === 'Home') rpTrendSelect(0); else if (k === 'End') rpTrendSelect(T.bars.length - 1);
+  else return;
+  ev.preventDefault();
+});
+
 /* Data quality: which days have entries, how much data the numbers rest on */
 const RP_SOURCES = [['ciqual', 'CIQUAL'], ['usda', 'USDA'], ['dmbio', 'dmBio'], ['off', 'Open Food Facts'], ['user', 'Your own foods']];
 function rpCalendarHtml(P, r) {
@@ -2008,7 +2240,9 @@ function viewReport() {
     const water = P && P.waterDays.length ? `<div class="card rp-card"><dl class="an-list">${rpWaterRow(P)}</dl></div>` : '';
     return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}`;
   }
-  return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
+  RP_TREND = null;
+  const trend = r.days >= 2 ? rpSec('trend', 'Trend', `<div class="card rp-card" id="rp-trend">${rpTrendMake(P, r)}</div>`) : '';
+  return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${trend}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
 }
 function reportHeader() {   // the title bar of the Report tab: the calendar icon sets the day the period is built around, Today jumps back to the period of today
   const today = !VIEW && RP.kind !== 'custom' && !rpRange().hasToday;
@@ -3907,6 +4141,7 @@ document.addEventListener('click', (ev) => {
     else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
     else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
     else if (a === 'rp-step') rpGo(+t.dataset.n);
+    else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket') rpTrendAct(a, t);
     else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d) && d >= VIEW.from && d <= VIEW.to) { S.day = d; S.tab = 'log'; render(); window.scrollTo(0, 0); } }
     return;
   }
@@ -3915,6 +4150,7 @@ document.addEventListener('click', (ev) => {
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
   else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
   else if (a === 'rp-step') rpGo(+t.dataset.n);
+  else if (a === 'rp-measure' || a === 'rp-trend-step' || a === 'rp-open-bucket') rpTrendAct(a, t);
   else if (a === 'rp-today') { RP.anchor = ymd(new Date()); render(); }
   else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d)) { S.day = d; S.tab = 'log'; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); } }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
@@ -4067,7 +4303,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

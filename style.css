@@ -447,3 +447,59 @@ details.rp-sec[open] > summary::after { content: "－"; }
 .ncontrib li.nc-more .nc-name { color: var(--muted); }
 .rp-sec .group > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; }   /* the closed groups inside the Report are real touch targets (the Nutrients tab keeps its own look) */
 #rc-quick .chip-btn, [data-act=rp-today] { min-height: 44px; }
+
+/* version 30: Trend (bars of one measure over the period) */
+.rp-trend-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.rp-trend-h .muted { flex: 1 1 12em; min-width: 0; }
+.rp-measure { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; text-align: left; }
+.rp-caret { flex: none; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translate(-2px, -2px); }
+.rp-trend-none { margin: 10px 0 2px; }
+.rp-chart { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 6px; margin-top: 12px; padding-top: 8px; }
+.rp-y { position: relative; height: 180px; }
+.rp-y span { position: absolute; right: 0; transform: translateY(50%); font-size: .72rem; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-plot { position: relative; height: 180px; border-bottom: 1.5px solid var(--muted); touch-action: pan-y; -webkit-user-select: none; user-select: none; border-radius: 4px; outline-offset: 3px; }
+.rp-gl { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
+.rp-bars { position: absolute; inset: 0; display: flex; align-items: stretch; }
+.rp-bar { position: relative; flex: 1 1 0; min-width: 0; border-radius: 3px; }
+.rp-bar::before { content: ""; position: absolute; bottom: 0; left: 14%; right: 14%; height: var(--h, 0%); min-height: 2px; background: var(--accent); border-radius: 3px 3px 0 0; box-sizing: border-box; }
+.rp-bar.part::before { background: repeating-linear-gradient(135deg, var(--accent) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.rp-bar.cap::after { content: ""; position: absolute; left: 14%; right: 14%; bottom: var(--h, 0%); height: calc(var(--t, 0%) - var(--h, 0%)); border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 3px 3px 0 0; background: var(--accent-soft); box-sizing: border-box; }
+.rp-bar.none::before { height: 0; min-height: 0; background: none; border-bottom: 2px dashed var(--muted); border-radius: 0; }
+.rp-bar.nodata::before { left: calc(50% - 1px); right: auto; width: 0; height: 16%; min-height: 10px; background: none; border-left: 2px dotted var(--muted); border-radius: 0; }
+.rp-bar.sel { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.rp-ref { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--ink); pointer-events: none; }
+.rp-ref.ai { border-top-style: dashed; }
+.rp-ref.sai { border-top-style: dotted; }
+.rp-x { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: .74rem; color: var(--muted); }
+.rp-x span { min-width: 0; }
+.rp-read { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 6px; margin-top: 12px; }
+.rp-rd { margin: 0; min-height: 3.2em; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.rp-open { margin-top: 8px; }
+.rp-leg { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; font-size: .84rem; color: var(--muted); }
+.rp-leg li { display: flex; align-items: flex-start; gap: 10px; line-height: 1.35; }
+.rp-sw { flex: none; position: relative; display: block; width: 20px; height: 14px; margin-top: 1px; box-sizing: border-box; }
+.rp-sw.full { background: var(--accent); border-radius: 3px 3px 0 0; }
+.rp-sw.part { background: repeating-linear-gradient(135deg, var(--accent) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px 3px 0 0; }
+.rp-sw.cap { border: 1.5px solid var(--accent); border-bottom: 0; background: var(--accent-soft); border-radius: 3px 3px 0 0; }
+.rp-sw.none { height: 0; margin-top: 12px; border-bottom: 2px dashed var(--muted); }
+.rp-sw.nodata { width: 0; margin: 1px 9px 0; border-left: 2px dotted var(--muted); }
+.rp-sw.ref { height: 0; margin-top: 8px; border-top: 2px solid var(--ink); }
+.rp-sw.ref.ai { border-top-style: dashed; }
+.rp-sw.ref.sai { border-top-style: dotted; }
+.rp-tablewrap { overflow-x: auto; margin: 4px 0 12px; border-radius: 8px; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.rp-table th, .rp-table td { padding: 8px 6px; border-top: 1px solid var(--line); text-align: right; vertical-align: top; }
+.rp-table th:first-child, .rp-table td:first-child { text-align: left; }
+.rp-table thead th { border-top: 0; color: var(--muted); font-weight: 650; font-size: .78rem; }
+.rp-table tbody th { font-weight: 600; }
+.rp-mh { margin: 16px 0 2px; font-size: .84rem; font-weight: 700; color: var(--muted); }
+.rp-mh:first-child { margin-top: 0; }
+.rp-m { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; margin-top: 6px; padding: 8px 14px; border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; text-align: left; }
+.rp-m small { margin-left: auto; font-weight: 400; color: var(--muted); }
+.rp-m[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--accent); }
+.rp-m[aria-pressed=true]::after { content: "✓"; color: var(--accent); font-weight: 700; }
+/* version 30: the table of the Trend on a very narrow screen (320 px) */
+@media (max-width: 359px) {
+  .rp-table { font-size: .8rem; }
+  .rp-table th, .rp-table td { padding: 8px 4px; }
+}

@@ -395,8 +395,9 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 - Ha az időszak még nem ért véget (például a mai hét), a **mai napig** tart, és a fejlécben ott áll: „so far”.
 - Egy nap akkor számít **naplózott napnak**, ha van legalább egy tétele. Az üres napokat az app **kihagyja**, nem számolja nullának. Ha egy héten három napot vittél fel, az átlag a három napé, nem a hété.
 
-**Mit mutat a három rész?** Az „Overview”, a „Nutrients” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod.
+**Mit mutat a négy rész?** Az „Overview”, a „Trend”, a „Nutrients” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod. Az app megjegyzi, melyik van nyitva (csak ezen a telefonon).
 - **Overview:** a naponkénti átlag kcal-ban nagy számmal (az „Average per logged day” felirat alatt), alatta a fehérje, szénhidrát, zsír, rost, cukor és só átlaga, és a vízfogyasztás átlaga. A vizet csak azokból a napokból átlagolja, amelyeken felvittél vizet. A „**Days**” szakasz napokra bontva mutatja az energiát. Egy napos időszaknál itt van az „**Open in Diary**” gomb is, ami a Diary fülön megnyitja azt a napot.
+- **Trend:** egyetlen mértéket (alapból az energiát) mutat oszlopokban, hogy lásd, hogyan alakult az időszak alatt. Részletesen lejjebb olvasod („Trend: oszlopdiagram az időszakról”). Egyetlen napos időszaknál nincs Trend, mert nincs mit összehasonlítani.
 - **Nutrients:** a Nutrients fül sorai az időszak átlagával. A sor megnyitva megmutatja, melyik ételekből jön az érték („Added up from”), hol nincs adat, és ha beállítottad az ajánlott bevitelt (16. fejezet), az EFSA-sávot az **átlagra** számolja. Egyetlen napos időszaknál a számok megegyeznek a Nutrients fülével.
 - **Data quality:** melyik napokon van tétel (kitöltött nap), hol van víz (pont), mekkora része becsült érték, honnan jön az energia (CIQUAL, USDA, dmBio, saját étel), és mely tápanyagokról van a legkevesebb adat.
 
@@ -409,9 +410,30 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 - Az **átlag alsó határ**: ha egy naplózott napon nincs adat egy tápanyagról, az a nap 0-val szerepel az összegben, de az osztóban is ott van a nap. Így a szám soha nem túloz. Ha egy időszak több napján nem mindenhol volt adat, a megnyitott sor megmutatja, hány napon volt teljes adat („Days with complete data”), és az ezekből számolt átlagot is.
 - A B1-vitamin és a niacin az EFSA szerint a nap energiájától függ. Itt csak azokat a napokat veszi, amelyeken minden tételnél van energiaadat.
 
+**Trend: oszlopdiagram az időszakról.** Az „Overview” alatti „Trend” szakasz egy mértéket mutat oszlopokban: egy oszlop egy nap (legfeljebb 31 napos időszaknál), egy hét (legfeljebb 190 napnál, hétfőtől vasárnapig) vagy egy hónap (hosszabb időszaknál). Egy hét- vagy hónap-oszlop értéke a benne lévő **naplózott napok átlaga**. Az időszak szélén a hét vagy a hónap lerövidülhet.
+
+**Lépésről lépésre:**
+1. A Report fülön koppints a „**Trend**” szakasz címére, hogy kinyisd.
+2. A diagram fölötti gombon áll, melyik mértéket látod (alapból „**Energy**”). Koppints rá: megnyílik a „**Trend measure**” ablak. Felül a „Calculated” csoportban van a „Water intake” és az „Omega-6 : omega-3 ratio”, alatta a Nutrients fül csoportjai. Koppints arra, amelyiket látni szeretnéd, az ablak bezárul. A „**Close**” gomb változtatás nélkül zárja be. Ahol az időszakban egyik tételnél sincs adat egy tápanyagról, ott a neve mellett „no data” áll. Az app megjegyzi a választást (csak ezen a telefonon, nem kerül a mentésbe, a Syncbe és a megosztott linkbe).
+3. Koppints egy oszlopra, vagy húzd végig az ujjadat a diagramon. A diagram alatt szavakkal olvasod a kijelölt oszlopot, például „Wed, 4 Nov · 150 kcal · 2 items”. A „**Previous bar**” és a „**Next bar**” nyíl is léptet. Induláskor az utolsó olyan oszlop van kijelölve, amelyben van tétel.
+4. Az „**Open day**” gomb (hét-oszlopnál „**Open week**”, hónap-oszlopnál „**Open month**”) a kijelölt oszlopot teszi a Report időszakává. Így a diagramról egy koppintással a részletekhez jutsz.
+5. A „**Show as table**” megnyitja az összes oszlop értékét táblázatban (nap vagy hét vagy hónap, érték, naplózott napok, tételek).
+
+**Az oszlopok jelentése** (a diagram alatt a „jelmagyarázat” csak azokat sorolja fel, amelyek tényleg láthatók):
+- **Tele oszlop:** minden tételnél van adat.
+- **Csíkos oszlop:** alsó határ, a számnál `≥` áll. Valamelyik tételnél hiányzik az adat, ezért a valódi érték nagyobb is lehet.
+- **Körvonalas, világos tető:** tartomány, a „<x” értékekből. A tető a felső határig ér.
+- **Szaggatott alap, oszlop nélkül:** abban a napban, hétben vagy hónapban nincs tétel (a víznél: nincs felvitt víz). Ez **nem nulla**, csak üres.
+- **Pontozott csonk:** van tétel, de egyiknél sincs adat erről a mértékről. Ez sem nulla.
+- **Vízszintes vonal:** az EFSA ajánlott bevitele (16. fejezet), ha beállítottad, és a kiválasztott tápanyagnak van saját EFSA-értéke. Folytonos vonal a PRI-nél, szaggatott az AI-nál, pontozott a SAI-nál (nátrium és klorid, ez nem cél). Az oszlop a vonal alatt nem hiányt jelent. Az A-vitaminhoz, a B1-vitaminhoz és a niacinhoz nincs vonal, mert az EFSA azokat más egységben, illetve az energiához mérve adja meg. A vonal színe nem ítélkezik.
+- **Víz:** a víz-oszlop azoknak a napoknak az átlaga, amelyeken felvittél vizet, mL-ben.
+- **Omega-6 : omega-3 ratio:** a napok összegeiből számolt arány. A `≈` jel azt jelenti, hogy csak azokból a zsírsavakból számolta, amelyekről van adat (28. verzió).
+
+**Megosztott linken** a Trend is működik, a megosztott napokból. A mérték és az időszak ott sem íródik sehová.
+
 **Ha az időszakban nincs tétel**, egy kártya közli ezt („No entries on …” vagy „No entries from … to …”), és a „**Go to Diary**” gombbal átugorhatsz a naplóba. Ha egy tétel ételének adatát nem sikerült betölteni (például az USDA-tábla hiányzik), a fejléc alatt figyelmeztető sor mondja meg, hány tételt nem számolt az app.
 
-**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja. Írni ott sem tud semmit.
+**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel együtt. Írni ott sem tud semmit.
 
 ## Ha elakadsz
 
@@ -456,6 +478,8 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 | „The note can be 1,000 characters at most. It is N characters now.” | A jegyzet túl hosszú. Rövidítsd 1000 karakterre vagy kevesebbre. A mező alatti számláló („1100 / 1000 · 100 characters too many”) megmondja, mennyivel. |
 | „The date cannot be in the future.” | A jegyzet napja csak a mai vagy egy korábbi nap lehet. |
 | „N Health log notes could not be read and were skipped.” (induláskor) | A telefon tárhelyében sérült jegyzet volt, az app kihagyta. A többi megmaradt. Ha van friss mentésed, a „Restore from file” visszahozza a jegyzeteket. |
+| A Trend helyén azt írja: „A trend needs at least two days with entries in this period.” | Az időszakban csak egy naplózott nap van, egyetlen oszlopból nem látszik alakulás. Válassz hosszabb időszakot a „Week”, a „Month” vagy a „Custom” gombbal, vagy vigyél fel több napot. A víznél két olyan nap kell, amelyen felvittél vizet. |
+| „No item in this period has data for …” a Trend helyén | Az időszak egyik tételénél sincs adat arról a tápanyagról, ezért nincs mit rajzolni. Ez nem nulla. Válassz másik mértéket: a „Trend measure” ablakban a „no data” feliratú tápanyagokról nincs adat. |
 | A Report fülön a „Month” a mai hónapnak csak egy részét mutatja | Nem hiba: az időszak a mai napig tart, a fejlécben „so far” áll. A következő napokkal bővül. |
 | A Report átlaga kisebb, mint amit egy naplózott napon vártál | Az átlag a naplózott napokra számol, az üres napokat kihagyja. Ha egy sor előtt `≥` áll, valamelyik tételnél hiányzik az adat, a valódi átlag nagyobb is lehet. Nyisd meg a sort: az „Added up from” megmutatja, mely ételekből jön. |
 | „N entries in this period are not counted” a Report fülön | Ezeknek a tételeknek az ételadata nem töltődött be (például az USDA- vagy a dmBio-tábla). Kapcsold be az internetet, majd Data fül → „Reload app files”. |
