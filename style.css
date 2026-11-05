@@ -548,3 +548,14 @@ details.rp-sec[open] > summary::after { content: "－"; }
   .rp-nt-table th, .rp-nt-table td { padding: 8px 1px; }
   .rp-nt-table th:first-child, .rp-nt-table td:first-child { min-width: 3.4rem; }
 }
+
+/* version 32: legends of the bars in the Report and of the reference intake bars (the swatches are the real bars in small, so the signs look exactly alike) */
+.rp-leg-h { margin: 12px 0 0; }
+.rp-leg .rp-swt { flex: none; width: 28px; margin-top: 5px; }
+.rp-leg .rp-swt.none, .rp-leg .rp-swt.nodata { margin-top: 8px; }
+.rp-leg .rtrack.rp-swt { margin-top: 4px; }
+.rp-leg .rp-swt.full:empty { box-shadow: inset 0 0 0 1px var(--line); }
+.rp-leg .rp-swn { flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.rp-leg.row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.rp-leg.row li { min-width: 0; }
+.rp-leg li > span:not(.rp-swt) { min-width: 0; overflow-wrap: anywhere; }

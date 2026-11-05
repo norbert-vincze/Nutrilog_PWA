@@ -369,6 +369,7 @@ A sáv 100%-nál megáll, a szám tovább nő. Egyetlen szín sem „ítél”: 
 - 18 év alattiaknak az app nem mutat értéket, mert az EFSA-nak ott más a táblázata.
 - Ez tájékoztató, nem orvosi vagy dietetikai tanács. Ha terhes vagy, szoptatsz, vagy betegség miatt más a szükségleted, a dietetikusod értékei mérvadók.
 - A „**About reference intakes**” lenyíló részben (a kártyán) a PRI, az AI és az SAI magyarázata és a forrás van.
+- A kártyán a **jelmagyarázat** (32. verzió) megmondja, mit jelent a folytonos, a szaggatott és a pontozott sáv: folytonos = PRI, szaggatott = AI, pontozott = SAI (ez nem cél). Csak azok a fajták szerepelnek benne, amelyekből az adott napon vagy időszakban tényleg van sáv a soroknál. Alatta áll: a sáv 100%-nál megáll, a mellette lévő százalék tovább megy. Ha nincs sáv (nincs beállítás, üres nap, vagy nincs olyan tápanyag, amelyiknek van értéke és adata), jelmagyarázat sincs.
 
 **Mit tárol az app a beállításokból?** Csak a választásaidat (Sex, Age, Menopause, Zinc), a **korodat vagy a születési dátumodat nem**.
 - **A telefonon**, és a mentésfájlban (JSON, `meta.ref`). A „Restore from file” a fájlban lévő beállításokra cserél. Ha a mentés a 26-os verzió előtt készült (nincs benne beállítás), a te beállításaid megmaradnak, és a megerősítő ablak ezt kiírja. Ha a fájlban sérült beállítás van, az app kihagyja, és megmondja.
@@ -453,6 +454,15 @@ Három különlegesség: a **vízfogyasztásnak** és az **omega-6 : omega-3 ar�
 
 **Food processing (NOVA): mennyire feldolgozott az, amit eszel.** Felül egy kártya az időszak energiájának megoszlásáról NOVA 1 – 4 és „Unclassified” (besorolatlan) szerint, ugyanúgy, mint a Nutrients fülön. A százalék az **egész időszak összes tételéből együtt** készül (nem a napi százalékok átlaga), és csak azok a tételek számítanak, amelyeknél van energiaadat (a kártya alján áll, hány tételt hagy ki). Az 1 százaléknál kisebb rész „<1%”, nem 0%. A csoportokat **itt nem állíthatod**, csak olvasod őket: ha egy étel „Unclassified”, a kártya alján a hint megmondja, hogy a **Nutrients** fülön a „**Set NOVA groups**” alatt tudod besorolni.
 Ha az időszak legalább két napos, alatta az „**Over time**” kártya: **egy sáv egy nap** (legfeljebb 31 napos időszaknál), **egy hét** vagy **egy hónap**, benne a NOVA-csoportok színei (ugyanazok, mint fent, mindegyik szegmensnek vékony körvonala van, hogy a világos színek is látsszanak). A sáv jobb oldalán a **NOVA 4**, az ultrafeldolgozott ételek aránya áll. Hét- és hónap-sávnál a százalék a benne lévő naplózott napokra szól, a név alatt áll, hány napról. Ahol nincs tétel, szaggatott vonal áll „no entries” felirattal (ez nem 0%), ahol nincs energiaadat, pontozott vonal. A „**Show as table**” táblázatban is megadja ugyanezt (Day vagy Week vagy Month, NOVA 1, 2, 3, 4 és „No group”).
+
+**Jelmagyarázat mindenhol, ahol sáv van (32. verzió).** A Trend alatt már eddig is állt, mostantól a **Meals and weekdays**, a **Foods** és a **Food processing (NOVA)** „Over time” kártyája alatt is ott van, ugyanolyan stílusban, és a Nutrients fül sávjaihoz is van (16. fejezet). Mindig **csak azokat a jeleket sorolja fel, amelyek az adott kártyán tényleg látszanak**, vagyis nincs benne csíkos jel, ha nincs csíkos sáv. A jelek kicsiben ugyanazok a sávok, mint a kártyán:
+- **Teli sáv:** minden tételnek van energiaadata. A hossza az étkezésnél az ismert energiából vett rész, a hétköznapoknál a lista legmagasabb átlagához mért arány, a Foods-nál az étel része az összegből.
+- **Csíkos sáv:** alsó érték (`≥`), valamelyik tételnél nincs energiaadat.
+- **Szaggatott vonal:** nincs tétel („no entries”, „no logged day”). Ez nem nulla.
+- **Pontozott vonal:** van tétel, de egyiknek sincs adata. Ez sem nulla.
+- **Üres sáv** (Foods): nincs mit rajzolni, mert az érték 0, vagy csak „<x”-ként ismert.
+- **Színes négyzet** (NOVA „Over time”): a sávokban látható NOVA-csoportok színe, csak az szerepel, amelyik tényleg van valamelyik sávban.
+A megosztott linken ugyanezek a jelmagyarázatok jelennek meg. A „Meals and weekdays” kártyán **három** van: az étkezések, a hétköznapok és a hétfő–péntek / szombat–vasárnap sávjai alatt, mert mindegyiknél másképp mérjük a hosszt.
 
 **Ha az időszakban nincs tétel**, egy kártya közli ezt („No entries on …” vagy „No entries from … to …”), és a „**Go to Diary**” gombbal átugorhatsz a naplóba. Ha egy tétel ételének adatát nem sikerült betölteni (például az USDA-tábla hiányzik), a fejléc alatt figyelmeztető sor mondja meg, hány tételt nem számolt az app.
 

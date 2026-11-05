@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '31 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '32 · 5 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -1433,12 +1433,15 @@ function refCompare(key, es, T, p, div = 1) {   // div: see refAmount (the Repor
 /* the reference as a short text: "950 mg", or "0.1 mg per MJ" */
 const refShort = (d, p) => `${fmt(d.v(p))} ${d.u}${d.perMJ ? ' per MJ' : ''}`;
 /* the thin bar and the line under a nutrient row. PRI: solid bar; AI: dashed bar (the value rests on less evidence); SAI: dotted bar (not a target). */
+let REF_SEEN = null;   // while a view is built: the kinds (PRI, AI, SAI) of the bars that were drawn, for the legend (version 32)
+function refCollect(build) { REF_SEEN = new Set(); try { return [build(), REF_SEEN]; } finally { REF_SEEN = null; } }
 function refLineHtml(c, label, p) {
   const d = c.d, cls = c.type === 'PRI' ? 'pri' : c.type === 'AI' ? 'ai' : 'sai';
   if (c.state !== 'ok') {
     const why = c.state === 'energy' ? 'needs complete energy data' : 'no data to compare';   // c.per (the Report, a period): the same words
     return `<span class="rline"><span class="rtxt" aria-hidden="true">Reference ${esc(refShort(d, p))} · ${c.type} · ${why}</span><span class="sr-only">${esc(label)}: ${why}. Reference intake ${esc(fmt(d.v(p)))} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? ' per megajoule' : ''} (${REF_TYPE_WORDS[c.type]}).</span></span>`;
   }
+  if (REF_SEEN) REF_SEEN.add(c.type);   // a bar is drawn
   const lead = `${c.partial ? '≥ ' : ''}${c.est ? '~' : ''}`;
   const pc = c.range ? `${pctText(c.pctLo)}–${pctText(c.pctHi)}` : pctText(c.pctLo);
   const w = Math.max(0, Math.min(100, c.pctLo));
@@ -1488,7 +1491,7 @@ function refQuick(sex) {
   setRef(cleanRef({ sex, age: '25', ...(sex === 'f' ? { meno: 'pre' } : {}), zinc: 600 }), 'Reference intake is on');
 }
 const refProfileText = (p) => [REF_SEX_NAME[p.sex], p.age === '18' ? '18–24 years' : '25 years and over', ...(p.sex === 'f' ? [p.meno === 'post' ? 'past menopause' : 'before menopause'] : []), `zinc: phytate ${p.zinc.toLocaleString(LOC)} mg`].join(' · ');
-function refCardHtml() {
+function refCardHtml(seen) {   // seen: the kinds of bars on the screen (a Set), for the legend; none on an empty day
   const p = S.meta.ref;
   if (!p && VIEW) return '';
   const about = `<details class="fold"><summary>About reference intakes</summary>
@@ -1504,9 +1507,11 @@ function refCardHtml() {
       <p class="muted small">See your intake next to the EFSA reference values for adults. Choose one to start; you can change the details afterwards.</p>
       <div class="ref-pick"><button type="button" class="btn primary" data-act="ref-quick" data-sex="m">Male</button><button type="button" class="btn primary" data-act="ref-quick" data-sex="f">Female</button></div></div>${about}`;
   }
+  const legend = seen && seen.size ? rpLegendHtml([seen.has('PRI') && [RP_SW.pri, 'Solid bar: PRI, population reference intake'], seen.has('AI') && [RP_SW.ai, 'Dashed bar: AI, adequate intake. EFSA’s value rests on less evidence'],
+    seen.has('SAI') && [RP_SW.sai, 'Dotted bar: SAI, safe and adequate intake. Not a target']]) + '<p class="hint rp-legend">A bar stops at 100%. The percent next to it goes on.</p>' : '';
   return `<div class="card ref-card"><div class="ref-top"><div class="card-t">Reference intake</div>${VIEW ? '' : '<button type="button" class="chip-btn accent" data-act="ref-change" aria-label="Change the reference intake settings">Change</button>'}</div>
       <p class="small">EFSA values for adults: ${esc(refProfileText(p))}</p>
-      <p class="muted small">Reference values are long-term daily averages. One day below them is not a deficiency.</p></div>${about}`;
+      <p class="muted small">Reference values are long-term daily averages. One day below them is not a deficiency.</p>${legend}</div>${about}`;
 }
 function openRefSheet() {
   const st = S.meta.ref ? { ...S.meta.ref } : { sex: 'f', age: '25', meno: 'pre', zinc: 600 };
@@ -1629,7 +1634,7 @@ function viewNutr() {
   const T = totalsFor(es);
   const note = '<div class="banner">Missing data is not zero. Totals only include items that have data (the badge on the right shows how many items out of all), so they are lower estimates. Ranges come from values reported as “&lt; x” (below the detection limit).</div>'
     + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value: energy calculated from protein, carbohydrate and fat, dmBio values estimated from the ingredient list, or values you marked as estimates in your own foods (for example from an AI answer). Open a row to see which items and how confident the estimate is.</div>' : '');
-  const out = GROUPS.map(([gid, gname, open]) => {
+  const [out, seen] = refCollect(() => GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
     if (!idxs.length) return '';
     const rows = idxs.map((i) => {
@@ -1652,8 +1657,8 @@ function viewNutr() {
     const list = `<div class="nlist">${rows}</div>`;
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>`
       : `<details class="group"><summary>${gname}</summary>${list}</details>`;
-  }).join('');
-  return viewNote() + `<div id="refcard">${refCardHtml()}</div>` + note + `<div id="nova">${novaHtml(es)}</div>` + out;
+  }).join(''));
+  return viewNote() + `<div id="refcard">${refCardHtml(seen)}</div>` + note + `<div id="nova">${novaHtml(es)}</div>` + out;
 }
 
 /* NOVA summary card and the list for setting a group by hand. Drawn again on its own after every tap (see novaTap). */
@@ -1929,13 +1934,13 @@ function rpNutrHtml(P) {
   const p = S.meta.ref, T = P.T, nd = P.nd;
   const intro = `<div class="banner">${nd === 1 ? 'Values of the one logged day.' : `Averages per logged day: the sum of the ${nd} logged days divided by ${nd}. Days without entries are left out.`} Missing data is not zero: only items with data are added, so a ≥ value is a lower value. The badge shows the share of items that have data. Open a row to see what it adds up from.${p ? ' Reference values are long-term daily averages. A period below them is not a deficiency.' : ''}</div>`
     + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value. Open a row to see which items.</div>' : '');
-  const groups = GROUPS.map(([gid, gname, open]) => {
+  const [groups, seen] = refCollect(() => GROUPS.map(([gid, gname, open]) => {
     const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
     if (!idxs.length) return '';
     const list = `<div class="nlist">${idxs.map((i) => rpRowHtml(i, P, p)).join('')}</div>`;
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>` : `<details class="group"><summary>${gname}</summary>${list}</details>`;
-  }).join('');
-  return `<div id="refcard">${refCardHtml()}</div>${intro}${groups}`;
+  }).join(''));
+  return `<div id="refcard">${refCardHtml(seen)}</div>${intro}${groups}`;
 }
 /* ---- Trend (version 30): one measure as bars over the period ---- */
 /* One bar is one day (periods up to 31 days), one week (up to 190 days, Monday to Sunday, the outer weeks may be cut) or one month. The value of a bar is the average per logged day
@@ -2180,6 +2185,22 @@ const RP_WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const RP_TOP_SOURCES = 10;     // foods listed in the Foods section; the rest is one line
 /* one row of a distribution: name (HTML) and a small line under it, the value, the share (optional) and a thin bar; bk: full | part (striped = a lower value) | none (dashed) | nodata (dotted) */
 const rpDrow = (o) => `<${o.tag || 'div'} class="rp-drow"><div class="rp-dh"><span class="rp-dn">${o.name}${o.sub ? `<small>${o.sub}</small>` : ''}</span><span class="rp-dv${o.val ? '' : ' none'}">${o.val || o.none}</span>${o.pct === undefined ? '' : `<span class="rp-dp">${o.pct}</span>`}</div><div class="rp-dbar ${o.bk}" aria-hidden="true">${o.w > 0 ? `<i style="width:${Math.min(100, o.w).toFixed(1)}%"></i>` : ''}</div></${o.tag || 'div'}>`;
+/* Legend (version 32): the signs of the bars, drawn with the classes of the real bars, one line each. Only the signs that are on the card are listed (the caller decides). */
+const RP_SW = {
+  full: '<span class="rp-dbar full rp-swt" aria-hidden="true"><i style="width:68%"></i></span>',
+  part: '<span class="rp-dbar part rp-swt" aria-hidden="true"><i style="width:68%"></i></span>',
+  empty: '<span class="rp-dbar full rp-swt" aria-hidden="true"></span>',
+  none: '<span class="rp-dbar none rp-swt" aria-hidden="true"></span>',
+  nodata: '<span class="rp-dbar nodata rp-swt" aria-hidden="true"></span>',
+  pri: '<span class="rtrack pri rp-swt" aria-hidden="true"><i class="rfill" style="width:68%"></i></span>',
+  ai: '<span class="rtrack ai rp-swt" aria-hidden="true"><i class="rfill" style="width:68%"></i></span>',
+  sai: '<span class="rtrack sai rp-swt" aria-hidden="true"><i class="rfill" style="width:68%"></i></span>',
+};
+const rpSwNova = (k) => `<i class="rp-swn" style="background:${NOVA_COLORS[k]}" aria-hidden="true"></i>`;
+function rpLegendHtml(items, cls = '') {   // items: [swatch, text] or a falsy value; nothing at all when no sign is left
+  const li = items.filter(Boolean).map(([sw, t]) => `<li>${sw}<span>${t}</span></li>`).join('');
+  return li ? `<ul class="rp-leg rp-leg-h${cls ? ' ' + cls : ''}">${li}</ul>` : '';
+}
 function rpMealAgg(P) {   // per meal: energy lower / upper value over the period, items, items with energy data, estimates, the days it has entries
   const mk = (id, name) => ({ id, name, lo: 0, hi: 0, n: 0, cnt: 0, est: 0, days: new Set() });
   const rows = MEALS.map((m) => mk(m.id, m.name)), other = mk('', 'No meal'), byId = new Map(rows.map((o) => [o.id, o]));
@@ -2216,13 +2237,20 @@ function rpMealsHtml(P) {
   const bars = (list) => { const top = Math.max(0, ...list.filter((x) => x.state === 'ok').map((x) => x.lo)); return list.map((x) => rpDrow({ name: esc(x.name), sub: x.days ? plural(x.days, 'logged day') : '',
     val: x.state === 'ok' ? `${esc(x.txt)}<em>kcal</em>` : '', none: x.state === 'none' ? 'no logged day' : 'no energy data', w: x.state === 'ok' && top > 0 ? x.lo / top * 100 : 0,
     bk: x.state === 'ok' ? (x.partial ? 'part' : 'full') : x.state })).join(''); };
+  const legend = (list, lenText, noneText, nodataText) => [   // list: rows with state ok | none | nodata and partial
+    list.some((x) => x.state === 'ok' && !x.partial) && [RP_SW.full, `Solid bar: every item has energy data. ${lenText}`],
+    list.some((x) => x.state === 'ok' && x.partial) && [RP_SW.part, 'Striped bar: a lower value (≥), some items have no energy data'],
+    list.some((x) => x.state === 'none') && [RP_SW.none, `Dashed line: ${noneText} (not a 0)`],
+    list.some((x) => x.state === 'nodata') && [RP_SW.nodata, `Dotted line: ${nodataText} (not a 0)`],
+  ];
   const weekdays = nd < 2 ? '<p class="small muted" style="margin:6px 0 0">Weekday averages need at least two logged days in the period.</p>'
-    : `<div class="rp-dist">${bars(wd.days)}</div><h4 class="rp-h">Weekdays and weekend</h4><div class="rp-dist">${bars([wd.wk, wd.we])}</div>
+    : `<div class="rp-dist">${bars(wd.days)}</div>${rpLegendHtml(legend(wd.days, 'The length is compared with the highest average in this list', 'no logged day', 'logged, but no energy data'))}<h4 class="rp-h">Weekdays and weekend</h4><div class="rp-dist">${bars([wd.wk, wd.we])}</div>${rpLegendHtml(legend([wd.wk, wd.we], 'The length is compared with the higher average of the two', 'no logged day', 'logged, but no energy data'))}
       <p class="hint rp-expl">Each line is the average energy of the logged days that fall on that weekday. A weekday without a logged day is left out, it is not 0. With few days one day can move a line a lot, so look at the number of days. A striped bar is a lower value (≥).</p>`;
   return `<div class="card rp-card">
       <h4 class="rp-h">Energy by meal</h4>
       <p class="muted small" style="margin:0">Average per logged day, and the share of each meal.</p>
       <div class="rp-dist" id="rp-meals">${mealHtml}</div>
+      ${rpLegendHtml(legend(meals, 'The length is the meal’s share of the known energy', 'no entries', 'logged, but none has energy data'))}
       <p class="hint rp-expl">A day on which a meal has no entries counts as 0 kcal for that meal, because nothing was logged there. Items without energy data are not counted as 0, so a ≥ means some are missing. The shares are parts of the energy that is known${noE ? `; ${plural(noE, 'item')} without energy data ${noE === 1 ? 'is' : 'are'} not in them` : ''}. A striped bar is a lower value.</p>
       <h4 class="rp-h">Energy by weekday</h4>${weekdays}
     </div>`;
@@ -2256,6 +2284,8 @@ function rpFoodsMake(P) {
   return `${head(`${unit} added up over ${plural(nd, 'logged day')}`)}
     <h4 class="rp-h">Biggest sources of ${esc(info.label)}</h4>
     <ol class="rp-dist rp-foodlist">${rows}${more}</ol>
+    ${rpLegendHtml([sumLo > 0 && [RP_SW.full, 'Bar: the food’s share of the total of all foods with data, worked out from lower values'],
+    (top.some((p) => !(p.lo > 0)) || (rest.length > 0 && !(rest.reduce((a, p) => a + p.lo, 0) > 0))) && [RP_SW.empty, 'Empty bar: nothing to draw, the value is 0 or only “below x” is known']])}
     <p class="small rp-foodtot">All foods with data: <b>${nutValHtml(sumLo, sumHi, anyEst)} ${unit}</b></p>
     <p class="hint rp-expl">Each food is all its entries of the period added up. A share is the part of that total, worked out from lower values; the shares add up to 100%.${parts.some((p) => p.lo === 0 && p.hi > 0) ? ' A food known only as “below x” has no share.' : ''} Only foods that have data for ${esc(info.label)} are in the list.</p>
     ${miss.length ? `<p class="small rp-foodmiss">No data for: ${nameList(miss)}. ${[...new Set(miss)].length === 1 ? 'It is' : 'They are'} not in the list or the shares, and not zero.</p>` : ''}`;
@@ -2304,6 +2334,11 @@ function rpNovaHtml(P, r) {
   return dist + `<div class="card rp-card">${h}
       <p class="muted small" style="margin:0 0 6px">One bar for each ${u}: its energy by NOVA group, colours as above. The number at the right is the share of NOVA 4, ultra-processed.${u === 'day' ? '' : ' The share is of the logged days in the bar.'}</p>
       <ol class="rp-nt">${rows}</ol>
+      ${rpLegendHtml([
+    ...nm.map((n, k) => bars.some((b) => b.state === 'ok' && b.vals[k] > 0) && [rpSwNova(k), n]),
+    bars.some((b) => b.state === 'none') && [RP_SW.none, 'Dashed line: no entries (not a 0%)'],
+    bars.some((b) => b.state === 'nodata') && [RP_SW.nodata, 'Dotted line: logged, but no energy to split (not a 0%)'],
+  ], 'row')}
       <details class="fold" data-sec="novatable" ${RP.open.novatable ? 'open' : ''}><summary>Show as table</summary>
         <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Energy by NOVA group over time as a table"><table class="rp-table rp-nt-table"><thead><tr><th scope="col">${u === 'day' ? 'Day' : u === 'week' ? 'Week' : 'Month'}</th>${[1, 2, 3, 4].map((n) => `<th scope="col"><span class="sr-only">NOVA </span>${n}</th>`).join('')}<th scope="col" aria-label="Unclassified">No group</th></tr></thead><tbody>${trows}</tbody></table></div>
       </details>

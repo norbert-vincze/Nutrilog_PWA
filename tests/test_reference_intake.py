@@ -572,7 +572,7 @@ async def main():
                 await page.evaluate("window.scrollTo(0, document.querySelector('.group').offsetTop - 40)")
                 await page.screenshot(path=os.path.join(SHOTS, f'ref_rows_{theme}.png'))
         await page.evaluate("window.scrollTo(0, 0)")
-        classes = await T("() => [...new Set([...document.querySelectorAll('.rtrack')].map((t) => t.className))].sort()")
+        classes = await T("() => [...new Set([...document.querySelectorAll('.rline .rtrack')].map((t) => t.className))].sort()")   # the bars of the rows (the legend of version 32 has small copies of them)
         check('all three bar styles are on this page (pri, ai, sai) and nothing else', sorted(classes) == ['rtrack ai', 'rtrack pri', 'rtrack sai'], classes)
         check('no colour judges the percent: the fill is the same accent colour at 5% and at 500% (no red, no green)', await T("() => new Set([...document.querySelectorAll('.rtrack.pri .rfill')].map((f) => getComputedStyle(f).backgroundColor)).size") == 1)
         wide = await T("() => ({ page: document.documentElement.scrollWidth <= window.innerWidth, rows: [...document.querySelectorAll('.nrow .rline')].every((l) => { const r = l.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }), tabs: document.querySelectorAll('#tabbar .tab').length })")
