@@ -280,7 +280,7 @@ async def main():
         await go_health()
         await page.click(f'[data-id={nid}]'); await page.wait_for_selector('#hedit'); await page.wait_for_timeout(300)
         title = await page.inner_text('.sheet-h h2')
-        check('the note opens: the title is the long date and the time', title.endswith(', 16:25') and 'October' in title, title)
+        check('the note opens: the title is the long date and the time', title.endswith(', 16:25') and (D + timedelta(days=-2)).strftime('%B') in title, title)   # the month of that day, not a fixed month (this check once failed in November)
         body = await page.inner_text('.health-text')
         check('the full text is shown with its line breaks (and tags as text)', body == 'Line one\n\nLine two with <b>tags</b> & "quotes"\n  indented line', repr(body))
         ws = await T("() => getComputedStyle(document.querySelector('.health-text')).whiteSpace")

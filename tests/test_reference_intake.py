@@ -199,7 +199,7 @@ async def main():
         # =========================================================== 3 the card and the profile
         await seed([own('u:a', 'Food A', {'kcal': 250, 'calcium': 237.5, 'iron': 4})], [('u:a', 200)], None)
         check('no profile: the Nutrients tab shows the "Reference intake" card with Male and Female, and no bars', await page.locator('#refcard .ref-card').count() == 1 and (await page.locator('#refcard [data-act=ref-quick]').all_inner_texts()) == ['Male', 'Female'] and await page.locator('.rline').count() == 0)
-        check('no profile: no EPA + DHA row, and the card says what it is for', await page.locator('.nrow:has-text("EPA + DHA")').count() == 0 and 'EFSA' in await page.inner_text('#refcard'))
+        check('no profile: no EPA + DHA row, and the card says what it is for', await page.locator('.nrow > summary > span:text-is("EPA + DHA")').count() == 0 and 'EFSA' in await page.inner_text('#refcard'))
         check('no profile: the card is the first thing under the header, above the explanation banners', await T("() => { const c = document.querySelector('#refcard'), b = document.querySelector('.banner'); return !!(c.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }"))
         await page.tap('[data-act=ref-quick][data-sex=f]'); await page.wait_for_selector('.rline')
         await page.wait_for_timeout(300)

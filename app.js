@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '27 · 2 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '28 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -1533,6 +1533,79 @@ function openRefSheet() {
   paint();
 }
 
+/* ---- Omega-6 : omega-3 ratio (version 28, Norbert asked on 2026-11-05) ----
+   A calculated row of "Fatty acids & cholesterol", right under DHA (and under the EPA + DHA reference row when a profile is set).
+   omega-6 = linoleic + arachidonic acid, omega-3 = alpha-linolenic acid + EPA + DHA: the five fatty acids the data has (other omega fatty acids are not in it).
+   It is worked out from the day's totals of those rows (so the numbers can be checked above it), and only items with data count: an item with no data
+   for a fatty acid is left out, never counted as 0. No ratio without data on both sides. "≈" in front when some item lacks one of the five (the real ratio can
+   be different), "~" when part of a value is an estimate, "≥ x" when the omega-3 total is only known to be below a limit, a range from "<x" values like everywhere. */
+const OMEGA6 = ['fa_18_2_9c_12c_n_6', 'fa_20_4_5c_8c_11c_14c_n_6'], OMEGA3 = ['fa_18_3_c9_c12_c15_n_3', EPA_KEY, DHA_KEY];
+const OMEGA_NAMES = { fa_18_2_9c_12c_n_6: 'Linoleic acid', fa_20_4_5c_8c_11c_14c_n_6: 'Arachidonic acid', fa_18_3_c9_c12_c15_n_3: 'Alpha-linolenic acid', [EPA_KEY]: 'EPA', [DHA_KEY]: 'DHA' };
+function omegaRatio(es, T) {
+  const n = T.n;
+  const side = (keys) => {
+    const have = keys.map((k) => IDX[k]).filter((i) => T.cnt[i] > 0);
+    return { have, lo: have.reduce((s, i) => s + T.lo[i], 0), hi: have.reduce((s, i) => s + T.hi[i], 0) };
+  };
+  const a = side(OMEGA6), b = side(OMEGA3);
+  const five = [...OMEGA6, ...OMEGA3];
+  const partial = five.some((k) => T.cnt[IDX[k]] < n);
+  const est = [...a.have, ...b.have].some((i) => T.est[i] > 0);
+  let any = 0, full = 0;
+  const gaps = new Map();   // food id -> {name, miss: [names of the fatty acids it has no data for]}
+  for (const e of es) {
+    const f = getFood(e.f); if (!f) continue;
+    const v = vecOf(f), miss = five.filter((k) => Number.isNaN(v.lo[IDX[k]]));
+    if (miss.length < five.length) any++;
+    if (!miss.length) full++;
+    else if (!gaps.has(f.id)) gaps.set(f.id, { name: f.name, miss: miss.map((k) => OMEGA_NAMES[k]), none: miss.length === five.length });
+  }
+  let state = 'ok', lo = 0, hi = 0, why = '';
+  if (!a.have.length || !b.have.length) state = 'nodata';
+  else if (b.hi === 0) { state = 'undef'; why = 'Omega-3 is 0 in the data, so there is no ratio.'; }
+  else {
+    lo = a.lo / b.hi; hi = b.lo > 0 ? a.hi / b.lo : Infinity;
+    if (!Number.isFinite(hi) && lo === 0) { state = 'undef'; why = 'The values are only known to be below a limit, so no ratio can be given.'; }
+  }
+  return { state, why, lo, hi, partial, est, a, b, any, full, gaps: [...gaps.values()], n };
+}
+function omegaRowHtml(es, T) {
+  const r = omegaRatio(es, T), n = T.n;
+  let val, cls, pill = `${r.any}/${n}`;
+  if (r.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = `0/${n}`; }
+  else if (r.state === 'undef') { val = '<span class="nval none">not defined</span>'; cls = 'part'; }
+  else {
+    const range = Number.isFinite(r.hi) && r.hi - r.lo > Math.max(r.lo * 0.1, 1e-9);
+    const num = !Number.isFinite(r.hi) ? '≥ ' + fmt(r.lo) : range ? fmt(r.lo) + '–' + fmt(r.hi) : fmt(r.lo);
+    val = `<span class="nval">${r.partial ? '<span aria-hidden="true">≈ </span><span class="sr-only">approximately </span>' : ''}${r.est ? '<span aria-hidden="true">~</span><span class="sr-only">estimated </span>' : ''}${num}<em>: 1</em></span>`;
+    cls = r.partial ? 'part' : 'full';
+  }
+  const part = (label, keys, side) => {
+    const bits = keys.map((k) => {
+      const i = IDX[k], c = T.cnt[i];
+      if (!c) return `${OMEGA_NAMES[k]}: no data`;
+      const rg = T.hi[i] - T.lo[i] > Math.max(T.lo[i] * 0.1, 1e-9);
+      return `${OMEGA_NAMES[k]} ${c < n ? '≥ ' : ''}${rg ? fmt(T.lo[i]) + '–' + fmt(T.hi[i]) : fmt(T.lo[i])} g`;
+    });
+    const low = keys.some((k) => T.cnt[IDX[k]] < n);   // a fatty acid is missing somewhere: the total is a lower value
+    const tot = side.have.length ? `${low ? '≥ ' : ''}${fmt(side.lo)}${side.hi - side.lo > Math.max(side.lo * 0.1, 1e-9) ? '–' + fmt(side.hi) : ''} g` : 'no data';
+    return `${label}: ${tot} (${bits.join('; ')})`;
+  };
+  const lines = [
+    'Omega-6 divided by omega-3, worked out from the totals of the fatty acid rows: omega-6 = linoleic + arachidonic acid, omega-3 = alpha-linolenic acid + EPA + DHA. Other omega fatty acids are not in the data. Nutrilog shows no target for this ratio.',
+    part('Omega-6', OMEGA6, r.a), part('Omega-3', OMEGA3, r.b),
+  ];
+  if (r.state === 'nodata') lines.push('A ratio needs data for at least one omega-6 and one omega-3 fatty acid.');
+  if (r.state === 'undef') lines.push(r.why);
+  lines.push(r.gaps.length
+    ? 'No data for: ' + r.gaps.map((g) => `${cap(g.name)} (${g.none ? 'none of the five' : g.miss.join(', ')})`).join('; ')
+    : 'Every item has data for all five fatty acids.');
+  if (r.state === 'ok' && r.partial) lines.push('≈ means the ratio is worked out from the values that exist. An item with no data for a fatty acid is left out, it is not counted as 0, so the real ratio can be different.');
+  const estd = [...new Set([...OMEGA6, ...OMEGA3].flatMap((k) => T.estNames[IDX[k]]))];
+  if (estd.length) lines.push('Estimate, not a label value: ' + estd.map(cap).join('; '));
+  return `<details class="nrow ratio-row" data-key="omega_ratio"><summary><span>Omega-6 : omega-3 ratio</span>${val}<span class="pill ${cls}">${pill}</span></summary>${lines.map((t) => `<div class="ndetail">${esc(t)}</div>`).join('')}</details>`;
+}
+
 /* ---- Nutrients ---- */
 function viewNutr() {
   const es = entriesOf(S.day);
@@ -1558,7 +1631,8 @@ function viewNutr() {
       const line = rc ? refLineHtml(rc, labelOf(i), p) : '';
       const rdet = rc ? refDetailHtml(rc, p) : p && key === 'beta_carotene' ? '<div class="ndetail">Counted in Vitamin A: one sixth of its amount (6 µg beta-carotene = 1 µg retinol equivalent).</div>' : '';
       return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${cnt}/${n}</span>${line}</summary>${partsHtml(es, i)}${rdet}${detail}</details>`
-        + (p && key === DHA_KEY ? refSumRowHtml('epa_dha', 'EPA + DHA', es, T, p) : '');
+        + (p && key === DHA_KEY ? refSumRowHtml('epa_dha', 'EPA + DHA', es, T, p) : '')
+        + (key === DHA_KEY ? omegaRowHtml(es, T) : '');
     }).join('');
     const list = `<div class="nlist">${rows}</div>`;
     return open ? `<section class="group"><h3>${gname}</h3>${list}</section>`
@@ -3598,7 +3672,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3 };
 init();
 
 })();

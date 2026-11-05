@@ -280,7 +280,7 @@ async def main():
         check('for every row with a list, the lower values of the parts add up to the lower value of the row', len(sums) >= 8 and bad == [], [len(sums), bad])
 
         # every row with data has a list, and a list has no more lines than the row has items with data
-        cnts = await T("""() => [...document.querySelectorAll('details.nrow')].map((r) => [r.querySelector('summary > span').textContent, +r.querySelector('.pill').textContent.split('/')[0], r.querySelectorAll('.ncontrib li').length])""")
+        cnts = await T("""() => [...document.querySelectorAll('details.nrow:not(.ratio-row)')].map((r) => [r.querySelector('summary > span').textContent, +r.querySelector('.pill').textContent.split('/')[0], r.querySelectorAll('.ncontrib li').length])""")
         bad = [c for c in cnts if (c[1] == 0) != (c[2] == 0) or c[2] > c[1]]
         check('a row with data has a list, a row without data has none, and no list has more lines than items with data', bad == [], bad)
 
