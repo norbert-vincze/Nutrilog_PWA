@@ -32,12 +32,12 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '28 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '29 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
    The data sits in the part after the #, which a browser never sends to a server. In this mode the app does not open the storage of this
-   browser, saves nothing, does not sync, and shows only the Diary and Nutrients tabs without any way to change them: whoever opens the link
+   browser, saves nothing, does not sync, and shows only the Diary, Nutrients and Report tabs without any way to change them: whoever opens the link
    (for example a dietitian) may use Nutrilog herself on the same address, and her own diary must stay untouched. */
 const SHARE_PREFIX = '#share=';
 const VIEW = location.hash.startsWith(SHARE_PREFIX) ? { token: location.hash.slice(SHARE_PREFIX.length), from: '', to: '', made: 0 } : null;
@@ -95,6 +95,7 @@ const IC = {
   cal: SV('<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/>'),
   close: SV('<path d="m6 6 12 12M18 6 6 18"/>'),
   health: SV('<path d="M3 12h4l2.2-6 4 12 2.3-6H21"/>'),
+  report: SV('<path d="M5 20v-7M12 20V5M19 20V10"/>'),
 };
 
 /* ================= storage ================= */
@@ -553,10 +554,20 @@ function partsFor(es, i) {
   }
   return [...by.values()].sort((x, y) => y.lo - x.lo || y.hi - x.hi || x.f.name.localeCompare(y.f.name));
 }
-function partsHtml(es, i) {
+/* opt (version 29, the Report tab; without it the output is what it always was): limit = at most this many foods, the rest in one line "N more foods" whose value is their sum (so the lines still add up);
+   days = the number of logged days the entries come from, when it is more than 1 the heading says so and gives the sum of all the lines */
+function partsHtml(es, i, opt) {
   const parts = partsFor(es, i);
   if (!parts.length) return '';
-  return `<div class="ncontrib"><div class="nc-h">Added up from</div><ul>${parts.map((p) => `<li><span class="nc-name">${esc(cap(p.f.name))}<small> · ${esc(fmt(p.a))} ${esc(unitOf(p.f))}${p.n > 1 ? ` · ${p.n} entries` : ''}</small></span><span class="nc-val">${nutValHtml(p.lo, p.hi, p.est)}<em>${esc(UNITS[i])}</em></span></li>`).join('')}</ul></div>`;
+  const li = (p) => `<li><span class="nc-name">${esc(cap(p.f.name))}<small> · ${esc(fmt(p.a))} ${esc(unitOf(p.f))}${p.n > 1 ? ` · ${p.n} entries` : ''}</small></span><span class="nc-val">${nutValHtml(p.lo, p.hi, p.est)}<em>${esc(UNITS[i])}</em></span></li>`;
+  let shown = parts, more = '', head = '';
+  if (opt && opt.limit && parts.length > opt.limit) {
+    shown = parts.slice(0, opt.limit);
+    const rest = parts.slice(opt.limit);
+    more = `<li class="nc-more"><span class="nc-name">${plural(rest.length, 'more food')}</span><span class="nc-val">${nutValHtml(rest.reduce((s, p) => s + p.lo, 0), rest.reduce((s, p) => s + p.hi, 0), rest.some((p) => p.est))}<em>${esc(UNITS[i])}</em></span></li>`;
+  }
+  if (opt && opt.days > 1) head = `<small class="nc-sub"> · ${plural(opt.days, 'logged day')}, ${nutValHtml(parts.reduce((s, p) => s + p.lo, 0), parts.reduce((s, p) => s + p.hi, 0), parts.some((p) => p.est))} ${esc(UNITS[i])} in all</small>`;
+  return `<div class="ncontrib"><div class="nc-h">Added up from${head}</div><ul>${shown.map(li).join('')}${more}</ul></div>`;
 }
 
 /* ---- NOVA: how processed a food is (1 minimal … 4 ultra-processed) ----
@@ -1068,14 +1079,15 @@ function toast(msg, undo) {
 }
 
 /* ================= header, tabs, views ================= */
-const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['foods', 'My foods', IC.foods], ['health', 'Health log', IC.health], ['data', 'Data', IC.data]];
+const TABS = [['log', 'Diary', IC.diary], ['nutr', 'Nutrients', IC.nutr], ['report', 'Report', IC.report], ['foods', 'My foods', IC.foods], ['health', 'Health log', IC.health], ['data', 'Data', IC.data]];
 
-const shownTabs = () => (VIEW ? TABS.filter((t) => t[0] === 'log' || t[0] === 'nutr') : TABS);   // a shared copy has only the Diary and the Nutrients tab (the Health log is never part of it)
+const shownTabs = () => (VIEW ? TABS.filter((t) => t[0] === 'log' || t[0] === 'nutr' || t[0] === 'report') : TABS);   // a shared copy has the Diary, the Nutrients and the Report tab (the Health log is never part of it)
 function renderChrome() {
-  $('#tabbar').style.setProperty('--tabs', String(shownTabs().length));   // the tab bar has as many columns as tabs: five, or two in a shared copy
+  $('#tabbar').style.setProperty('--tabs', String(shownTabs().length));   // the tab bar has as many columns as tabs: six, or three in a shared copy
   $('#tabbar').innerHTML = shownTabs().map(([id, name, ic]) => `<button class="tab" data-act="tab" data-tab="${id}" ${S.tab === id ? 'aria-current="page"' : ''}>${ic}<span>${name}</span></button>`).join('');
   const top = $('#topbar');
-  if (VIEW) {   // the days of the shared copy only: no Today button, the arrows stop at the first and the last day, the date picker has a min and a max
+  if (S.tab === 'report') reportHeader();   // the Report has its own title bar (also in a shared copy)
+  else if (VIEW) {   // the days of the shared copy only: no Today button, the arrows stop at the first and the last day, the date picker has a min and a max
     top.innerHTML = `<div class="title"><h1>${esc(parseYmd(S.day).toLocaleDateString(LOC, { weekday: 'long' }))}</h1><p class="sub">${esc(fmtLong(S.day))}</p></div>
       <div class="hdr-actions">
         <button class="icon-btn" data-act="day" data-n="-1" aria-label="Previous day" ${S.day > VIEW.from ? '' : 'disabled'}>${IC.left}</button>
@@ -1098,7 +1110,7 @@ function renderChrome() {
 
 function render() {
   renderChrome();
-  $('#view').innerHTML = S.tab === 'log' ? viewLog() : S.tab === 'nutr' ? viewNutr() : S.tab === 'foods' ? viewFoods() : S.tab === 'health' ? viewHealth() : viewData();
+  $('#view').innerHTML = S.tab === 'log' ? viewLog() : S.tab === 'nutr' ? viewNutr() : S.tab === 'report' ? viewReport() : S.tab === 'foods' ? viewFoods() : S.tab === 'health' ? viewHealth() : viewData();
   if (S.tab === 'data') persistState();
 }
 
@@ -1379,7 +1391,7 @@ const pctText = (x) => (x > 0 && x < 1 ? '<1' : Math.round(x).toLocaleString(LOC
 const pctSpoken = (x) => (x > 0 && x < 1 ? 'less than 1' : String(Math.round(x)));
 /* The amount of one reference row: a single nutrient (from the totals of the day) or a sum of nutrients (vitamin A, EPA + DHA).
    any = items that have data for at least one part, full = items that have data for every part; miss = the items that lack a part */
-function refAmount(d, key, es, T) {
+function refAmount(d, key, es, T, div = 1) {   // div (version 29): the entries cover this many logged days and the amount is the average per day; T is then already an average
   if (!d.comps) { const i = IDX[key]; return { lo: T.lo[i], hi: T.hi[i], any: T.cnt[i], full: T.cnt[i], est: T.est[i] > 0, miss: [] }; }
   const parts = d.comps.map(([k, m]) => [IDX[k], m]);
   let lo = 0, hi = 0, any = 0, full = 0, est = false;
@@ -1397,15 +1409,15 @@ function refAmount(d, key, es, T) {
     if (got) any++;
     if (got === parts.length) full++; else miss.push(f.name);
   }
-  return { lo, hi, any, full, est, miss };
+  return { lo: lo / div, hi: hi / div, any, full, est, miss };
 }
 /* The day compared with the reference of one row: { state: 'ok' | 'nodata' | 'energy', pctLo, pctHi, ref, partial, est, range, … } or null when the row has no EFSA value.
    B1 and niacin follow the energy of the day: they need energy data for every item (otherwise the reference would be too small and the percent too big). */
-function refCompare(key, es, T, p) {
+function refCompare(key, es, T, p, div = 1) {   // div: see refAmount (the Report compares the average of a period)
   const d = DRV[key];
   if (!d || !p || !hasOwn(IDX, d.comps ? d.comps[0][0] : key)) return null;
   const base = { key, d, type: refType(d, p) };
-  const a = refAmount(d, key, es, T);
+  const a = refAmount(d, key, es, T, div);
   if (!a.any) return { ...base, state: 'nodata', miss: a.miss };
   let refLo, refHi;   // the reference that goes with the lower and with the upper amount
   if (d.perMJ) {
@@ -1423,14 +1435,14 @@ const refShort = (d, p) => `${fmt(d.v(p))} ${d.u}${d.perMJ ? ' per MJ' : ''}`;
 function refLineHtml(c, label, p) {
   const d = c.d, cls = c.type === 'PRI' ? 'pri' : c.type === 'AI' ? 'ai' : 'sai';
   if (c.state !== 'ok') {
-    const why = c.state === 'energy' ? 'needs complete energy data' : 'no data to compare';
+    const why = c.state === 'energy' ? 'needs complete energy data' : 'no data to compare';   // c.per (the Report, a period): the same words
     return `<span class="rline"><span class="rtxt" aria-hidden="true">Reference ${esc(refShort(d, p))} · ${c.type} · ${why}</span><span class="sr-only">${esc(label)}: ${why}. Reference intake ${esc(fmt(d.v(p)))} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? ' per megajoule' : ''} (${REF_TYPE_WORDS[c.type]}).</span></span>`;
   }
   const lead = `${c.partial ? '≥ ' : ''}${c.est ? '~' : ''}`;
   const pc = c.range ? `${pctText(c.pctLo)}–${pctText(c.pctHi)}` : pctText(c.pctLo);
   const w = Math.max(0, Math.min(100, c.pctLo));
   const sp = c.range ? `${pctSpoken(c.pctLo)} to ${pctSpoken(c.pctHi)}` : pctSpoken(c.pctLo);
-  const spoken = `${label}: ${c.partial ? 'at least ' : c.est ? 'about ' : ''}${sp} percent of the reference intake of ${fmt(c.ref)} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? ' for the energy of the day' : ''} (${REF_TYPE_WORDS[c.type]})${d.lineNote ? `, counting ${d.lineNote.replace(/^with /, '')}` : ''}${c.partial && c.est ? ', partly estimated' : ''}.`;
+  const spoken = `${label}: ${c.partial ? 'at least ' : c.est ? 'about ' : ''}${sp} percent of the reference intake of ${fmt(c.ref)} ${REF_UNIT_WORDS[d.u]}${d.perMJ ? (c.per ? ' for the average energy of these days' : ' for the energy of the day') : ''} (${REF_TYPE_WORDS[c.type]})${d.lineNote ? `, counting ${d.lineNote.replace(/^with /, '')}` : ''}${c.partial && c.est ? ', partly estimated' : ''}.`;
   return `<span class="rline"><span class="rtrack ${cls}" aria-hidden="true"><i class="rfill" style="width:${w}%"></i></span><span class="rtxt" aria-hidden="true">${esc(`${lead}${pc}% of ${fmt(c.ref)} ${d.u} · ${c.type}${d.lineNote ? ' · ' + d.lineNote : ''}`)}</span><span class="sr-only">${esc(spoken)}</span></span>`;
 }
 /* what the opened row says about the reference */
@@ -1439,7 +1451,8 @@ function refDetailHtml(c, p) {
   const kc = KCAL_PER_MJ.toLocaleString(LOC, { maximumFractionDigits: 1 });
   if (d.perMJ) {
     lines.push(`Reference intake: ${fmt(d.v(p))} ${d.u} per MJ of energy (${c.type}, ${who}). 1 MJ = ${kc} kcal.`
-      + (c.state === 'ok' ? ` Energy of this day: ${fmt(c.mj)} MJ (${fmt(c.kcal)} kcal), so the reference is ${fmt(c.ref)} ${d.u}.` : c.state === 'energy' ? ' A percent is shown only when every item of the day has energy data, and some items have none.' : ''));
+      + (c.state === 'ok' ? ` ${c.per ? `Average energy of the ${c.per.days} of ${c.per.of} logged days that have complete energy data` : 'Energy of this day'}: ${fmt(c.mj)} MJ (${fmt(c.kcal)} kcal), so the reference is ${fmt(c.ref)} ${d.u}.`
+        : c.state === 'energy' ? (c.per ? ' A percent is shown only for days on which every item has energy data, and no day in this period qualifies.' : ' A percent is shown only when every item of the day has energy data, and some items have none.') : ''));
   } else lines.push(`Reference intake: ${fmt(d.v(p))} ${d.u} a day (${c.type}, ${who}).`);
   const out = lines.map((t) => `<div class="ndetail">${esc(t)}</div>`);
   if (c.type === 'AI' && d.basis) out.push(`<div class="ndetail"><b>AI</b> · ${esc(d.basis)}.</div>`);
@@ -1449,16 +1462,17 @@ function refDetailHtml(c, p) {
   return out.join('');
 }
 /* the row for a sum of nutrients that has no row of its own in the table (EPA + DHA), drawn under the DHA row */
-function refSumRowHtml(key, label, es, T, p) {
-  const c = refCompare(key, es, T, p);
+const countPill = (a, n) => `${a}/${n}`;   // the badge of a row: items with data / items (the Report passes a percent instead)
+function refSumRowHtml(key, label, es, T, p, div = 1, pillOf = countPill) {   // div, pillOf: see refAmount and the Report (version 29)
+  const c = refCompare(key, es, T, p, div);
   if (!c) return '';
   const n = T.n, d = c.d;
   let val, cls, pill;
-  if (c.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = `0/${n}`; }
+  if (c.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = pillOf(0, n); }
   else {
-    const a = refAmount(d, key, es, T), range = a.hi - a.lo > Math.max(a.lo * 0.1, 1e-9);
+    const a = refAmount(d, key, es, T, div), range = a.hi - a.lo > Math.max(a.lo * 0.1, 1e-9);
     val = `<span class="nval">${a.full < n ? '≥ ' : ''}${a.est ? '~' : ''}${range ? fmt(a.lo) + '–' + fmt(a.hi) : fmt(a.lo)}<em>${esc(d.u)}</em></span>`;
-    cls = a.full === n ? 'full' : 'part'; pill = `${a.any}/${n}`;
+    cls = a.full === n ? 'full' : 'part'; pill = pillOf(a.any, n);
   }
   return `<details class="nrow"><summary><span>${esc(label)}</span>${val}<span class="pill ${cls}">${pill}</span>${refLineHtml(c, label, p)}</summary>${refDetailHtml(c, p)}</details>`;
 }
@@ -1569,10 +1583,10 @@ function omegaRatio(es, T) {
   }
   return { state, why, lo, hi, partial, est, a, b, any, full, gaps: [...gaps.values()], n };
 }
-function omegaRowHtml(es, T) {
+function omegaRowHtml(es, T, pillOf = countPill) {   // pillOf: the Report shows a percent (version 29); T may hold averages, the ratio is the same
   const r = omegaRatio(es, T), n = T.n;
-  let val, cls, pill = `${r.any}/${n}`;
-  if (r.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = `0/${n}`; }
+  let val, cls, pill = pillOf(r.any, n);
+  if (r.state === 'nodata') { val = '<span class="nval none">no data</span>'; cls = 'none'; pill = pillOf(0, n); }
   else if (r.state === 'undef') { val = '<span class="nval none">not defined</span>'; cls = 'part'; }
   else {
     const range = Number.isFinite(r.hi) && r.hi - r.lo > Math.max(r.lo * 0.1, 1e-9);
@@ -1695,6 +1709,369 @@ function refreshNova() {
   if (el) el.innerHTML = novaHtml(entriesOf(S.day));
 }
 
+/* ================= Report (version 29, Norbert asked on 2026-11-05) ================= */
+/* The Report tab shows a period (Day, Week, Month, 3 months, 6 months, Year, Custom) instead of one day: an Overview, the Nutrients with the EFSA bars on the average, and Data quality.
+   Nothing new is stored: everything is worked out from the diary and the foods (the choice of period and the open parts are only remembered on this device).
+   Rules (the same as everywhere): a day without entries is not a day of 0, it is left out of the average ("logged day" = a day with at least one item). The average of a nutrient is the sum of the logged days
+   divided by the number of logged days. Missing data is not zero: only items with data are added, so an average is a lower value ("≥") when an item has no data; "~" when part of it is an estimate;
+   a range for "<x" values; "no data" when no item has data. A logged day on which nothing has data for a nutrient counts as 0 in that sum and in that division, because then the average is a true lower bound.
+   The weeks start on Monday. A period that is not over yet ends today ("so far"). In a shared copy the periods are cut to the shared days. */
+const RP_KINDS = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['m3', '3 months'], ['m6', '6 months'], ['year', 'Year'], ['custom', 'Custom']];
+const RP_MONTHS = { month: 1, m3: 3, m6: 6, year: 12 };
+const RP_MIN_DAY = '2000-01-01';
+const RP_TOP_FOODS = 12;     // foods listed in "Added up from" of a row; the rest is one line with their sum
+const RP_NAMES_MAX = 15;     // names listed after "No data for:"
+const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, nutrients: false, quality: false } };
+function rpLoad() {   // the choice of this device (not in the backup, not synced); a damaged value is ignored
+  try {
+    const raw = JSON.parse(localStorage.getItem('nutrilog.period') || 'null');
+    if (raw && typeof raw === 'object' && RP_KINDS.some(([k]) => k === raw.kind)) {
+      const c = raw.custom;
+      if (c && isDay(c.from) && isDay(c.to) && c.from <= c.to && c.from >= RP_MIN_DAY) RP.custom = { from: c.from, to: c.to };
+      RP.kind = raw.kind === 'custom' && !RP.custom ? 'week' : raw.kind;
+    }
+  } catch { /* private mode or damaged: Week */ }
+  try {
+    const o = JSON.parse(localStorage.getItem('nutrilog.reportOpen') || 'null');
+    if (o && typeof o === 'object') for (const k of Object.keys(RP.open)) if (typeof o[k] === 'boolean') RP.open[k] = o[k];
+  } catch { /* private mode or damaged: the default */ }
+}
+function rpSave() { if (VIEW) return; try { localStorage.setItem('nutrilog.period', JSON.stringify({ kind: RP.kind, custom: RP.custom })); } catch { /* private mode */ } }
+
+const daysIn = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 864e5) + 1;      // both days included
+const monthShift = (s, n) => { const d = parseYmd(s); return ymd(new Date(d.getFullYear(), d.getMonth() + n, 1)); };   // the first day of the month n months away
+const monthLast = (s) => { const d = parseYmd(s); return ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
+const weekFirst = (s) => addDays(s, -((parseYmd(s).getDay() + 6) % 7));            // the Monday of that week
+const rpLo = () => (VIEW ? VIEW.from : RP_MIN_DAY);
+const rpHi = () => (VIEW ? VIEW.to : ymd(new Date()));
+const rpClamp = (d) => (d < rpLo() ? rpLo() : d > rpHi() ? rpHi() : d);
+/* the whole period of a kind around a day (before it is cut at today or at the shared days) */
+function rpFull(kind, anchor, custom) {
+  if (kind === 'custom') return { from: custom.from, to: custom.to };
+  if (kind === 'day') return { from: anchor, to: anchor };
+  if (kind === 'week') { const f = weekFirst(anchor); return { from: f, to: addDays(f, 6) }; }
+  return { from: monthShift(anchor, 1 - RP_MONTHS[kind]), to: monthLast(anchor) };   // the month of the day and the months before it
+}
+/* the next (dir 1) or the previous (dir -1) period that does not overlap: { anchor, custom } */
+function rpStep(kind, anchor, custom, dir) {
+  if (kind === 'custom') { const len = daysIn(custom.from, custom.to); return { anchor, custom: { from: addDays(custom.from, dir * len), to: addDays(custom.to, dir * len) } }; }
+  if (kind === 'day') return { anchor: addDays(anchor, dir), custom };
+  if (kind === 'week') return { anchor: addDays(anchor, 7 * dir), custom };
+  return { anchor: monthShift(anchor, dir * RP_MONTHS[kind]), custom };
+}
+/* what the Report shows now: the period cut at today (own diary) or at the shared days (shared copy) */
+function rpRange(st = RP) {
+  const full = rpFull(st.kind, st.anchor, st.custom), lo = rpLo(), hi = rpHi(), today = ymd(new Date());
+  const from = full.from < lo ? lo : full.from, to = full.to > hi ? hi : full.to, empty = from > to;
+  const prev = rpStep(st.kind, st.anchor, st.custom, -1), next = rpStep(st.kind, st.anchor, st.custom, 1);
+  const pf = rpFull(st.kind, prev.anchor, prev.custom), nf = rpFull(st.kind, next.anchor, next.custom);
+  return { kind: st.kind, fullFrom: full.from, fullTo: full.to, from, to, empty, days: empty ? 0 : daysIn(from, to),
+    partial: !VIEW && to < full.to, clipped: !!VIEW && (from > full.from || to < full.to),
+    prevOk: pf.to >= lo, nextOk: nf.from <= hi, hasToday: !VIEW && full.from <= today && today <= full.to };
+}
+function rpWhen(r) {   // "2–8 Nov 2026", "November 2026", "Sep – Nov 2026" …
+  const a = parseYmd(r.fullFrom), b = parseYmd(r.fullTo), sameYear = a.getFullYear() === b.getFullYear();
+  if (r.kind === 'day') return fmtLong(r.fullFrom);
+  if (r.kind === 'month') return a.toLocaleDateString(LOC, { month: 'long', year: 'numeric' });
+  if (r.kind === 'm3' || r.kind === 'm6' || r.kind === 'year') return `${a.toLocaleDateString(LOC, sameYear ? { month: 'short' } : { month: 'short', year: 'numeric' })} – ${b.toLocaleDateString(LOC, { month: 'short', year: 'numeric' })}`;
+  if (r.fullFrom === r.fullTo) return fmtShort(r.fullFrom);
+  if (sameYear && a.getMonth() === b.getMonth()) return `${a.getDate()}–${fmtShort(r.fullTo)}`;
+  return `${fmtShort(r.fullFrom, !sameYear)} – ${fmtShort(r.fullTo)}`;
+}
+const rpNote = (r) => (r.empty ? 'outside the shared days' : r.partial ? `so far, ${plural(r.days, 'day')}` : r.clipped ? `shared days only, ${plural(r.days, 'day')}` : '');
+
+/* ---- the numbers of a period ---- */
+/* The totals of the given logged days as averages per logged day (the sum divided by the number of days; one day is left as it is). Same shape as totalsFor:
+   cnt = items with data, n = items, est = items with an estimate. */
+function rpAvg(ts) {
+  const nd = ts.length, lo = new Float64Array(NUT_N), hi = new Float64Array(NUT_N), cnt = new Uint32Array(NUT_N), est = new Uint32Array(NUT_N);
+  let n = 0;
+  for (const t of ts) {
+    n += t.n;
+    for (let i = 0; i < NUT_N; i++) { lo[i] += t.lo[i]; hi[i] += t.hi[i]; cnt[i] += t.cnt[i]; est[i] += t.est[i]; }
+  }
+  if (nd > 1) for (let i = 0; i < NUT_N; i++) { lo[i] /= nd; hi[i] /= nd; }
+  return { lo, hi, cnt, est, n };
+}
+function rpStats(from, to) {
+  const by = new Map();
+  let hidden = 0;
+  for (const e of S.log) {
+    if (e.d < from || e.d > to) continue;
+    if (!getFood(e.f)) { hidden++; continue; }   // its food is not loaded (for example the USDA table): it is not counted, and the Report says so
+    const a = by.get(e.d);
+    if (a) a.push(e); else by.set(e.d, [e]);
+  }
+  const days = [...by.keys()].sort();
+  const ts = days.map((d) => totalsFor(by.get(d)));
+  const es = [];
+  for (const d of days) for (const e of by.get(d)) es.push(e);
+  const nd = days.length, T = rpAvg(ts);
+  const foods = new Map();
+  for (const e of es) if (!foods.has(e.f)) foods.set(e.f, getFood(e.f));
+  T.missing = Array.from({ length: NUT_N }, () => []); T.estNames = Array.from({ length: NUT_N }, () => []);
+  for (const f of foods.values()) {
+    const v = vecOf(f);
+    for (let i = 0; i < NUT_N; i++) {
+      if (Number.isNaN(v.lo[i])) T.missing[i].push(f.name);
+      else if (isEst(f, i, v)) T.estNames[i].push(f.q ? `${f.name} (${CONF[f.q]})` : f.name);
+    }
+  }
+  const cDays = new Uint32Array(NUT_N), cLo = new Float64Array(NUT_N), cHi = new Float64Array(NUT_N), cEst = new Uint32Array(NUT_N);   // days on which every item has data for the nutrient
+  for (const t of ts) {
+    if (!t.n) continue;
+    for (let i = 0; i < NUT_N; i++) if (t.cnt[i] === t.n) { cDays[i]++; cLo[i] += t.lo[i]; cHi[i] += t.hi[i]; cEst[i] += t.est[i]; }
+  }
+  const waterDays = Object.keys(S.meta.water || {}).filter((d) => d >= from && d <= to).sort();
+  const P = { from, to, days, nd, by, ts, es, T, cDays, cLo, cHi, cEst, hidden, waterDays, waterSum: waterDays.reduce((s, d) => s + S.meta.water[d], 0), _elig: null,
+    /* Vitamin B1 and niacin follow the energy: only the days on which every item has energy data are compared (otherwise the reference would be too small) */
+    elig() {
+      if (!P._elig) {
+        const idx = [];
+        ts.forEach((t, k) => { if (t.n > 0 && t.cnt[0] === t.n && t.lo[0] > 0 && t.hi[0] > 0) idx.push(k); });
+        const ees = [];
+        for (const k of idx) for (const e of by.get(days[k])) ees.push(e);
+        P._elig = { nd: idx.length, es: ees, T: rpAvg(idx.map((k) => ts[k])) };
+      }
+      return P._elig;
+    } };
+  return P;
+}
+/* the EFSA comparison of a row on the average of the period; the same object as refCompare gives for a day (one logged day gives exactly what the Nutrients tab shows) */
+function rpCompare(key, P, p) {
+  const d = DRV[key];
+  if (!d || !p) return null;
+  if (!d.perMJ) return refCompare(key, P.es, P.T, p, P.nd);
+  const E = P.elig();
+  let c = E.nd ? refCompare(key, E.es, E.T, p, E.nd) : refCompare(key, P.es, P.T, p, P.nd);
+  if (c && c.state === 'nodata' && E.nd && P.T.cnt[IDX[key]] > 0) c = { key, d, type: refType(d, p), state: 'energy', miss: [] };   // there is data, but not on a day that has complete energy data
+  if (c && P.nd > 1) c.per = { days: E.nd, of: P.nd };
+  return c;
+}
+/* an average with its marks: '≥ ' (an item has no data), '~' (part is an estimate), a range for "<x" values; null when no item has data */
+function rpNum(T, i) {
+  const c = T.cnt[i];
+  if (!c) return null;
+  const lo = T.lo[i], hi = T.hi[i], range = hi - lo > Math.max(lo * 0.1, 1e-9);
+  return `${c < T.n ? '≥ ' : ''}${T.est[i] ? '~' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}`;
+}
+/* share of the items that have data, as a percent: 100% only when it is exactly all, 0% only when it is none */
+function covText(a, n) {
+  if (a === n) return '100%';
+  if (!a) return '0%';
+  const x = Math.floor(a / n * 100);
+  return x < 1 ? '<1%' : x + '%';
+}
+const covPill = (a, n) => covText(a, n);
+const nameList = (names) => { const u = [...new Set(names)].map(cap); return esc(u.slice(0, RP_NAMES_MAX).join('; ')) + (u.length > RP_NAMES_MAX ? esc(` and ${u.length - RP_NAMES_MAX} more`) : ''); };
+const dayLabel = (d) => parseYmd(d).toLocaleDateString(LOC, { weekday: 'short', day: 'numeric', month: 'short' });
+
+/* ---- the sections ---- */
+function rpWaterRow(P) {
+  const k = P.waterDays.length;
+  if (!k) return '<div class="an-row"><dt>Water intake</dt><dd class="none">nothing logged</dd></div>';
+  return `<div class="an-row"><dt>Water intake<small> · average of ${plural(k, 'day')} with water logged</small></dt><dd>${Math.round(P.waterSum / k).toLocaleString(LOC)}<em>mL</em></dd></div>`;
+}
+function rpOverviewHtml(P, r) {
+  const T = P.T, n = T.n, nd = P.nd, e0 = rpNum(T, 0), noE = n - T.cnt[0];
+  const rows = ['protein', 'carbohydrate', 'fat', 'fibres', 'sugars', 'salt'].map((k) => {
+    const i = IDX[k], txt = rpNum(T, i);
+    return `<div class="an-row"><dt>${esc(labelOf(i))}</dt><dd${txt === null ? ' class="none"' : ''}>${txt === null ? 'no data' : `${esc(txt)}<em>${esc(UNITS[i])}</em>`}</dd></div>`;
+  }).join('');
+  const per = Math.round(n / nd * 10) / 10;
+  const dayRows = P.days.map((d, k) => {
+    const t = P.ts[k], txt = rpNum(t, 0);
+    return `<div class="an-row"><dt>${esc(dayLabel(d))}<small> · ${plural(t.n, 'item')}</small></dt><dd${txt === null ? ' class="none"' : ''}>${txt === null ? 'no energy data' : `${esc(txt)}<em>kcal</em>`}</dd></div>`;
+  }).join('');
+  const unlogged = r.days - nd;
+  return `<div class="card rp-card">
+      <section class="hero rp-hero"><div class="hero-label">Average per logged day</div>
+        <div class="hero-num">${e0 === null ? '–' : esc(e0)}<small>kcal</small></div>
+        <span class="chip">${nd} of ${plural(r.days, 'day')} logged${r.partial ? ' · so far' : ''}</span>
+        ${noE === n ? '<span class="chip warn">No energy data for these items</span>' : noE > 0 ? `<span class="chip warn">Lower estimate · ${plural(noE, 'item')} without energy data</span>` : ''}</section>
+      <p class="muted small rp-items">${plural(n, 'item')} in all · ${fmt(per)} a day on average</p>
+      <dl class="an-list rp-stats">${rows}${rpWaterRow(P)}</dl>
+      <p class="hint rp-expl">Each average is the sum of the logged days divided by the number of logged days (${nd}). A day without entries is left out, it is not counted as 0. Missing data is not zero either: a <b>≥</b> means some items have no data, so the real average can be higher.</p>
+      ${r.kind === 'day' ? `<button type="button" class="btn block" data-act="rp-diary" data-day="${r.from}" style="margin-top:12px">Open in Diary</button>` : ''}
+    </div>
+    <details class="fold" data-sec="days" ${RP.open.days ? 'open' : ''}><summary>Days · ${nd} logged</summary>
+      <dl class="an-list rp-days">${dayRows}</dl>
+      ${unlogged > 0 ? `<p class="hint" style="margin:8px 0 14px">${plural(unlogged, 'day')} without entries ${unlogged === 1 ? 'is' : 'are'} not listed. ${unlogged === 1 ? 'It is' : 'They are'} not counted as 0.</p>` : '<div style="height:12px"></div>'}
+    </details>`;
+}
+/* one nutrient row of the Nutrients section: the same markup as the Nutrients tab, with the average of the period and the coverage as a percent in the badge */
+function rpRowHtml(i, P, p) {
+  const T = P.T, n = T.n, nd = P.nd, cnt = T.cnt[i], unit = UNITS[i], key = KEYS[i];
+  const txt = rpNum(T, i);
+  const val = txt === null ? '<span class="nval none">no data</span>' : `<span class="nval">${txt}<em>${esc(unit)}</em></span>`;
+  const cls = cnt === n ? 'full' : cnt === 0 ? 'none' : 'part';
+  const miss = T.missing[i], estd = T.estNames[i], done = P.cDays[i];
+  const detail = (cnt > 0 && cnt < n ? `<div class="ndetail">Data for ${cnt.toLocaleString(LOC)} of ${n.toLocaleString(LOC)} items (${covText(cnt, n)}).</div>` : '')
+    + (nd > 1 && done > 0 && done < nd ? `<div class="ndetail">Days with complete data: ${done} of ${nd} · average ${nutValHtml(P.cLo[i] / done, P.cHi[i] / done, P.cEst[i] > 0)} ${esc(unit)}</div>` : '')
+    + (miss.length ? `<div class="ndetail">No data for: ${nameList(miss)}</div>` : '<div class="ndetail">Every item has data.</div>')
+    + (estd.length ? `<div class="ndetail">Estimate, not a label value: ${nameList(estd)}</div>` : '');
+  const rc = p ? rpCompare(key, P, p) : null;
+  const line = rc ? refLineHtml(rc, labelOf(i), p) : '';
+  const rdet = rc ? refDetailHtml(rc, p) : p && key === 'beta_carotene' ? '<div class="ndetail">Counted in Vitamin A: one sixth of its amount (6 µg beta-carotene = 1 µg retinol equivalent).</div>' : '';
+  return `<details class="nrow"><summary><span>${esc(labelOf(i))}</span>${val}<span class="pill ${cls}">${covPill(cnt, n)}</span>${line}</summary>${partsHtml(P.es, i, { limit: RP_TOP_FOODS, days: nd })}${rdet}${detail}</details>`
+    + (p && key === DHA_KEY ? refSumRowHtml('epa_dha', 'EPA + DHA', P.es, T, p, nd, covPill) : '')
+    + (key === DHA_KEY ? omegaRowHtml(P.es, T, covPill) : '');
+}
+function rpNutrHtml(P) {
+  const p = S.meta.ref, T = P.T, nd = P.nd;
+  const intro = `<div class="banner">${nd === 1 ? 'Values of the one logged day.' : `Averages per logged day: the sum of the ${nd} logged days divided by ${nd}. Days without entries are left out.`} Missing data is not zero: only items with data are added, so a ≥ value is a lower value. The badge shows the share of items that have data. Open a row to see what it adds up from.${p ? ' Reference values are long-term daily averages. A period below them is not a deficiency.' : ''}</div>`
+    + (T.est.some((x) => x > 0) ? '<div class="banner">A <b>~</b> in front of a value means that part of it is an estimate, not a label value. Open a row to see which items.</div>' : '');
+  const groups = GROUPS.map(([gid, gname, open]) => {
+    const idxs = KEYS.map((_, i) => i).filter((i) => groupOf(i) === gid);
+    if (!idxs.length) return '';
+    const list = `<div class="nlist">${idxs.map((i) => rpRowHtml(i, P, p)).join('')}</div>`;
+    return open ? `<section class="group"><h3>${gname}</h3>${list}</section>` : `<details class="group"><summary>${gname}</summary>${list}</details>`;
+  }).join('');
+  return `<div id="refcard">${refCardHtml()}</div>${intro}${groups}`;
+}
+/* Data quality: which days have entries, how much data the numbers rest on */
+const RP_SOURCES = [['ciqual', 'CIQUAL'], ['usda', 'USDA'], ['dmbio', 'dmBio'], ['off', 'Open Food Facts'], ['user', 'Your own foods']];
+function rpCalendarHtml(P, r) {
+  if (r.days <= SHARE_MAX_DAYS) {   // a grid of days, weeks from Monday
+    const lead = (parseYmd(r.from).getDay() + 6) % 7;
+    const cells = [], logged = new Set(P.days), water = new Set(P.waterDays);
+    const names = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    for (const nm of names) cells.push(`<li class="hd" aria-hidden="true">${nm}</li>`);
+    for (let k = 0; k < lead; k++) cells.push('<li class="pad" aria-hidden="true"></li>');
+    for (let d = r.from, k = 0; k < r.days; k++, d = addDays(d, 1)) {
+      const on = logged.has(d), w = water.has(d);
+      cells.push(`<li class="${on ? 'logged' : 'none'}${w ? ' w' : ''}"><span aria-hidden="true">${parseYmd(d).getDate()}</span><span class="sr-only">${esc(dayLabel(d))}: ${on ? 'has entries' : 'no entries'}${w ? ', water logged' : ''}</span></li>`);
+    }
+    return `<ol class="rp-cal">${cells.join('')}</ol><p class="hint rp-legend">Filled day: has entries. Outlined day: no entries. A dot: water logged.</p>`;
+  }
+  const months = [];   // a long period: one line per month
+  for (let m = r.from.slice(0, 8) + '01'; m <= r.to; m = monthShift(m, 1)) {
+    const a = m < r.from ? r.from : m, b = monthLast(m) > r.to ? r.to : monthLast(m);
+    const logged = P.days.filter((d) => d >= a && d <= b).length;
+    months.push(`<div class="an-row"><dt>${esc(parseYmd(m).toLocaleDateString(LOC, { month: 'long', year: 'numeric' }))}</dt><dd>${logged} of ${daysIn(a, b)}<em>days</em></dd></div>`);
+  }
+  return `<dl class="an-list">${months.join('')}</dl>`;
+}
+function rpQualityHtml(P, r) {
+  const T = P.T, n = T.n, nd = P.nd;
+  const share = estShare(P.es), nv = novaStats(P.es);
+  const bySrc = new Map();
+  for (const e of P.es) {
+    const f = getFood(e.f), k = RP_SOURCES.some(([s]) => s === f.src) ? f.src : 'user', v = vecOf(f).lo[0];
+    const o = bySrc.get(k) || { items: 0, kcal: 0 };
+    o.items++; if (!Number.isNaN(v)) o.kcal += v * e.a / f.basis.qty;
+    bySrc.set(k, o);
+  }
+  const srcs = RP_SOURCES.filter(([k]) => bySrc.has(k));
+  const tot = srcs.reduce((s, [k]) => s + bySrc.get(k).kcal, 0), pcs = sharePct(srcs.map(([k]) => bySrc.get(k).kcal), tot);
+  const srcRows = srcs.map(([k, name], j) => {
+    const o = bySrc.get(k), x = pcs[j], text = tot > 0 ? (x === 0 && o.kcal > 0 ? '<1' : String(x)) : null;
+    return `<div class="an-row"><dt>${esc(name)}<small> · ${plural(o.items, 'item')}</small></dt><dd${text === null ? ' class="none"' : ''}>${text === null ? 'no energy data' : `${text}<em>% of energy</em>`}</dd></div>`;
+  }).join('');
+  const least = TRACKED.filter((i) => T.cnt[i] < n).sort((a, b) => T.cnt[a] / n - T.cnt[b] / n || labelOf(a).localeCompare(labelOf(b))).slice(0, 5);
+  const leastRows = least.map((i) => `<div class="an-row"><dt>${esc(labelOf(i))}<small> · ${T.cnt[i].toLocaleString(LOC)} of ${n.toLocaleString(LOC)} items</small></dt><dd${T.cnt[i] ? '' : ' class="none"'}>${covText(T.cnt[i], n)}</dd></div>`).join('');
+  return `<div class="card rp-card">
+      <h4 class="rp-h">Days</h4>${rpCalendarHtml(P, r)}
+      <h4 class="rp-h">Items</h4>
+      <dl class="an-list">
+        <div class="an-row"><dt>Days with entries</dt><dd>${nd} of ${r.days}</dd></div>
+        <div class="an-row"><dt>Items</dt><dd>${n.toLocaleString(LOC)}</dd></div>
+        <div class="an-row"><dt>Items with energy data</dt><dd>${covText(T.cnt[0], n)}<em>${T.cnt[0].toLocaleString(LOC)} of ${n.toLocaleString(LOC)}</em></dd></div>
+        <div class="an-row"><dt>Estimated share of the values</dt><dd${share === '' ? ' class="none"' : ''}>${share === '' ? 'no data' : fmt(share) + '<em>%</em>'}</dd></div>
+        <div class="an-row"><dt>Energy not yet sorted into a NOVA group</dt><dd${nv.sum > 0 ? '' : ' class="none"'}>${nv.sum > 0 ? fmt(nv.by.u / nv.sum * 100) + '<em>%</em>' : 'no energy data'}</dd></div>
+      </dl>
+      <p class="hint rp-expl">The estimated share is the mean, over the nutrients that have data, of the part of each total that comes from estimates (the same figure as est_share in the daily CSV).</p>
+      <h4 class="rp-h">Energy by data source</h4>
+      <dl class="an-list">${srcRows}</dl>
+      <h4 class="rp-h">Nutrients with the least data</h4>
+      ${least.length ? `<dl class="an-list">${leastRows}</dl><p class="hint rp-expl">Among the ${TRACKED.length} tracked nutrients. The share of items that have data for them.</p>` : '<p class="small" style="margin:0">Every tracked nutrient has data for every item.</p>'}
+    </div>`;
+}
+const rpSec = (id, title, body) => `<details class="rp-sec" data-sec="${id}" ${RP.open[id] ? 'open' : ''}><summary>${title}</summary>${body}</details>`;
+function rpSelectorHtml() {
+  const span = VIEW ? daysIn(VIEW.from, VIEW.to) : 0, longOff = (k) => VIEW && (k === 'm3' || k === 'm6' || k === 'year') && span <= SHARE_MAX_DAYS;
+  return `<div class="seg rp-seg" role="group" aria-label="Period">${RP_KINDS.map(([k, name]) => `<button type="button" data-act="rp-kind" data-kind="${k}" aria-pressed="${RP.kind === k}"${longOff(k) ? ' disabled' : ''}>${name}</button>`).join('')}</div>`
+    + (VIEW && span <= SHARE_MAX_DAYS ? `<p class="hint rp-hint">The link has ${plural(span, 'day')}, so 3 months, 6 months and Year are not available.</p>` : '');
+}
+function viewReport() {
+  const r = rpRange();
+  const sel = rpSelectorHtml();
+  const nav = `<div class="rp-nav"><button type="button" class="icon-btn" data-act="rp-step" data-n="-1" aria-label="Previous period" ${r.prevOk ? '' : 'disabled'}>${IC.left}</button>
+      <div class="rp-when" aria-live="polite"><b>${esc(rpWhen(r))}</b>${rpNote(r) ? `<span>${esc(rpNote(r))}</span>` : ''}</div>
+      <button type="button" class="icon-btn" data-act="rp-step" data-n="1" aria-label="Next period" ${r.nextOk ? '' : 'disabled'}>${IC.right}</button></div>`;
+  const head = viewNote() + sel + nav;
+  const P = r.empty ? null : rpStats(r.from, r.to);
+  const hid = P && P.hidden ? `<div class="banner warn">${P.hidden === 1 ? '1 entry' : P.hidden.toLocaleString(LOC) + ' entries'} in this period ${P.hidden === 1 ? 'is' : 'are'} not counted: the food data is not available (for example the USDA table could not be loaded). Check your internet connection and reload the app.</div>` : '';
+  if (!P || !P.nd) {
+    const text = r.empty ? `This period is outside the shared days (${esc(fmtShort(VIEW.from))} – ${esc(fmtShort(VIEW.to))}).`
+      : r.from === r.to ? `No entries on ${esc(fmtShort(r.from))}.` : `No entries from ${esc(fmtShort(r.from, false))} to ${esc(fmtShort(r.to))}.`;
+    const water = P && P.waterDays.length ? `<div class="card rp-card"><dl class="an-list">${rpWaterRow(P)}</dl></div>` : '';
+    return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}`;
+  }
+  return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
+}
+function reportHeader() {   // the title bar of the Report tab: the calendar icon sets the day the period is built around, Today jumps back to the period of today
+  const today = !VIEW && RP.kind !== 'custom' && !rpRange().hasToday;
+  $('#topbar').innerHTML = `<div class="title"><h1>Report</h1></div>
+      <div class="hdr-actions">
+        ${today ? '<button class="chip-btn accent" data-act="rp-today">Today</button>' : ''}
+        ${RP.kind === 'custom' ? '' : `<label class="icon-btn" title="Pick a date">${IC.cal}<input type="date" id="rp-date" value="${RP.anchor}" min="${rpLo()}" max="${rpHi()}" aria-label="Day the period is built around"></label>`}
+      </div>`;
+}
+function rpSetKind(k) {
+  if (k === 'custom') { openRpCustom(); return; }
+  if (!hasOwn(RP_MONTHS, k) && k !== 'day' && k !== 'week') return;
+  RP.kind = k; RP.anchor = rpClamp(RP.anchor); rpSave(); render();
+}
+function rpGo(dir) {
+  const r = rpRange();
+  if (dir > 0 ? !r.nextOk : !r.prevOk) return;
+  const s = rpStep(RP.kind, RP.anchor, RP.custom, dir);
+  RP.anchor = s.anchor; RP.custom = s.custom;
+  if (RP.kind !== 'custom') RP.anchor = rpClamp(RP.anchor);
+  rpSave(); render(); window.scrollTo(0, 0);
+}
+/* Custom: the sheet with the two dates */
+function openRpCustom() {
+  const lo = rpLo(), hi = rpHi(), cur = RP.kind === 'custom' && RP.custom ? RP.custom : rpRange();
+  const sh = openSheet('Custom period', `
+    <p class="small muted" style="margin:0">Choose the first and the last day.${VIEW ? ' Only the days of the shared link are available.' : ''}</p>
+    <div class="chips" id="rc-quick"><button type="button" class="chip-btn" data-q="14">Last 14 days</button><button type="button" class="chip-btn" data-q="30">Last 30 days</button><button type="button" class="chip-btn" data-q="all">${VIEW ? 'Whole shared range' : 'Whole diary'}</button></div>
+    <div class="row gap" style="flex-wrap:nowrap;align-items:flex-end"><label class="f" style="flex:1;min-width:0">From<input type="date" id="rc-from" min="${lo}" max="${hi}"></label><label class="f" style="flex:1;min-width:0">To<input type="date" id="rc-to" min="${lo}" max="${hi}"></label></div>
+    <p class="note field-err" id="rc-err" role="alert" hidden></p>
+    <div class="row gap sheet-actions"><button type="button" class="btn" id="rc-cancel">Cancel</button><button type="button" class="btn primary" id="rc-apply" style="flex:1">Apply</button></div>`);
+  const from = $('#rc-from', sh.el), to = $('#rc-to', sh.el), err = $('#rc-err', sh.el);
+  from.value = cur.from; to.value = cur.to;
+  const say = (input, msg) => { err.textContent = msg; err.hidden = false; input.setAttribute('aria-invalid', 'true'); };
+  const clear = () => { err.hidden = true; from.removeAttribute('aria-invalid'); to.removeAttribute('aria-invalid'); };
+  from.addEventListener('change', clear); to.addEventListener('change', clear);
+  $('#rc-quick', sh.el).addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-q]');
+    if (!b) return;
+    clear();
+    if (b.dataset.q === 'all') {
+      const days = [...S.log.filter((e) => getFood(e.f)).map((e) => e.d), ...Object.keys(S.meta.water || {})].filter((d) => d >= lo && d <= hi).sort();
+      if (!days.length) { say(from, VIEW ? 'The shared link has no days.' : 'There are no entries yet.'); return; }
+      from.value = VIEW ? VIEW.from : days[0]; to.value = VIEW ? VIEW.to : days[days.length - 1];
+    } else {
+      const n = Number(b.dataset.q), t = hi;
+      to.value = t; const f = addDays(t, 1 - n); from.value = f < lo ? lo : f;
+    }
+  });
+  $('#rc-cancel', sh.el).onclick = () => sh.close();
+  $('#rc-apply', sh.el).onclick = () => {
+    clear();
+    if (!from.value) { say(from, 'Choose a start date.'); return; }
+    if (!to.value) { say(to, 'Choose an end date.'); return; }
+    if (from.value > to.value) { say(from, 'The start date cannot be after the end date.'); return; }
+    if (VIEW && (from.value < lo || to.value > hi)) { say(from.value < lo ? from : to, `The shared days are ${fmtShort(VIEW.from)} – ${fmtShort(VIEW.to)}. Choose days inside them.`); return; }
+    if (!VIEW && to.value > hi) { say(to, 'The end date cannot be in the future.'); return; }
+    if (from.value < RP_MIN_DAY) { say(from, 'The start date cannot be before 1 Jan 2000.'); return; }
+    RP.custom = { from: from.value, to: to.value }; RP.kind = 'custom'; RP.anchor = to.value;
+    rpSave(); sh.close(); render(); window.scrollTo(0, 0);
+  };
+}
+
 /* ---- My foods ---- */
 function viewFoods() {
   return `<div class="row gap" style="margin:8px 0 14px"><button class="btn primary" data-act="new-food">${IC.plus.replace('<svg', '<svg width="18" height="18"')} Create food</button><button class="btn" data-act="ai-import">Paste from AI</button></div>
@@ -1727,7 +2104,7 @@ function viewData() {
       <div id="fimp-msg" aria-live="polite"></div></div>
     ${syncCard()}
     <div class="card"><div class="card-t">Share diary and nutrients</div>
-      <p class="muted small" style="margin:6px 0 14px">Make a link that shows your Diary and Nutrients tabs for the days you choose, read-only, for example for your dietitian. No password and no upload: the days are packed into the link. Whoever has the link can see those days, and a link cannot be taken back once it is sent.</p>
+      <p class="muted small" style="margin:6px 0 14px">Make a link that shows your Diary, Nutrients and Report tabs for the days you choose, read-only, for example for your dietitian. No password and no upload: the days are packed into the link. Whoever has the link can see those days, and a link cannot be taken back once it is sent.</p>
       <button class="btn primary" data-act="share">Share diary and nutrients</button></div>
     <div class="card"><div class="card-t">For analysis</div>
       <p class="muted small" style="margin:6px 0 14px">Spreadsheet files (CSV, decimal points). An empty cell means no data, a 0 is a real zero. Some labels report a value as “&lt; x” (below the detection limit). Then the normal column holds the lowest possible value, 0, and the max-value column (its name ends in __max) holds x. A column whose name ends in __est marks values that are estimates, not label values (1 for an entry, a count of items for a day): estimated values of dmBio products, and values you marked as estimates in your own foods. The column estimate_confidence says how sure the estimate is. In the entries file, est_keys lists the estimated nutrients of that entry (separated by semicolons). In the daily totals file, est_share is the share of the day that is estimated, in percent: for every nutrient with data it takes the estimated part of the day’s amount, then averages those shares.</p>
@@ -3254,7 +3631,7 @@ function importFoods(file) {
 }
 
 /* ================= share a read-only copy of some days (version 23) ================= */
-/* "Share diary and nutrients" (Data tab) makes a link  <app address>#share=z.<data>  that opens the Diary and Nutrients tabs of the chosen days, read-only.
+/* "Share diary and nutrients" (Data tab) makes a link  <app address>#share=z.<data>  that opens the Diary, Nutrients and Report tabs of the chosen days, read-only.
    The days are inside the link: nothing is uploaded and nothing is stored anywhere, so no password is needed (Norbert: "nem kell jelszóval védett legyen").
    The part after the # is never sent to a server (not even to GitHub Pages). The flip side is that a link cannot be taken back once it is sent.
    Format (v 1): JSON { app:'tapnaplo-share', v:1, made, from, to, refs:[food ids], foods:[foods you made or saved from Open Food Facts, used in these days],
@@ -3350,7 +3727,7 @@ function openShare() {
   let seq = 0, url = '', timer = null;
   const canShare = typeof navigator.share === 'function';
   const d = openSheet('Share diary and nutrients', `
-    <p class="small" style="margin:0 0 12px">Makes a link that opens your <b>Diary</b> and <b>Nutrients</b> tabs for the days you choose, for example for your dietitian. Whoever opens it can look but not change anything. No password is needed, and nothing is uploaded: the days are packed into the link itself.</p>
+    <p class="small" style="margin:0 0 12px">Makes a link that opens your <b>Diary</b>, <b>Nutrients</b> and <b>Report</b> tabs for the days you choose, for example for your dietitian. Whoever opens it can look but not change anything. No password is needed, and nothing is uploaded: the days are packed into the link itself.</p>
     <div class="seg" role="group" aria-label="Period">${[7, 14, 30].map((n) => `<button type="button" data-days="${n}" aria-pressed="false">${n} days</button>`).join('')}</div>
     <div class="row gap" style="margin-top:12px;flex-wrap:nowrap;align-items:flex-end"><label class="f" style="flex:1;min-width:0">From<input type="date" id="sh-from" max="${today}"></label><label class="f" style="flex:1;min-width:0">To<input type="date" id="sh-to" max="${today}"></label></div>
     ${S.meta.ref ? `<label class="chk tall" style="margin-top:12px"><input type="checkbox" id="sh-ref" checked> Include reference intake settings</label>
@@ -3510,6 +3887,7 @@ async function initViewer() {
     S.log = data.entries; S.foods = data.foods; S.meta.nova = data.nova; S.meta.water = data.water; S.meta.ref = data.ref;   // in memory only: save() does nothing in a shared copy
     S.day = [...data.entries.map((e) => e.d), ...Object.keys(data.water)].reduce((m, d) => (d > m ? d : m), '') || data.to;   // the last day that has entries or water
     S.tab = 'log';
+    RP.kind = 'custom'; RP.custom = { from: data.from, to: data.to }; RP.anchor = data.to;   // the Report starts with all the shared days (in memory only)
     render();
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
   } catch (err) {
@@ -3524,14 +3902,21 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-act]');
   if (!t) return;
   const a = t.dataset.act;
-  if (VIEW) {   // a shared copy: switch between the two tabs and walk through the shared days, nothing else (and nothing is written, not even the remembered tab)
-    if (a === 'tab' && (t.dataset.tab === 'log' || t.dataset.tab === 'nutr')) { S.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }
+  if (VIEW) {   // a shared copy: switch between the three tabs, walk through the shared days and choose the period of the Report, nothing else (and nothing is written, not even the remembered tab)
+    if (a === 'tab' && (t.dataset.tab === 'log' || t.dataset.tab === 'nutr' || t.dataset.tab === 'report')) { S.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }
     else if (a === 'day') { const d = addDays(S.day, +t.dataset.n); if (d >= VIEW.from && d <= VIEW.to) { S.day = d; render(); } }
+    else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
+    else if (a === 'rp-step') rpGo(+t.dataset.n);
+    else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d) && d >= VIEW.from && d <= VIEW.to) { S.day = d; S.tab = 'log'; render(); window.scrollTo(0, 0); } }
     return;
   }
   if (a === 'tab') { S.tab = t.dataset.tab; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); }
   else if (a === 'day') { S.day = addDays(S.day, +t.dataset.n); render(); }
   else if (a === 'today') { S.day = ymd(new Date()); render(); }
+  else if (a === 'rp-kind') rpSetKind(t.dataset.kind);
+  else if (a === 'rp-step') rpGo(+t.dataset.n);
+  else if (a === 'rp-today') { RP.anchor = ymd(new Date()); render(); }
+  else if (a === 'rp-diary') { const d = t.dataset.day; if (isDay(d)) { S.day = d; S.tab = 'log'; healthShown = HEALTH_PAGE; try { localStorage.setItem('nutrilog.tab', S.tab); } catch { /* private mode */ } render(); window.scrollTo(0, 0); } }
   else if (a === 'add') addFlow(t.dataset.meal || defaultMeal());
   else if (a === 'scan') { const pk = addFlow(defaultMeal()); const b = $('[data-a=scan]', pk.el); if (b) b.click(); }
   else if (a === 'water-add') waterAdd(S.day, Math.round(Number(t.dataset.dl) * 100));
@@ -3564,13 +3949,22 @@ document.addEventListener('click', (ev) => {
   }
 });
 /* 'toggle' does not bubble, so listen while it travels down (third argument true) */
-document.addEventListener('toggle', (ev) => { if (ev.target.id === 'novafold') novaOpen = ev.target.open; }, true);
+document.addEventListener('toggle', (ev) => {
+  if (ev.target.id === 'novafold') novaOpen = ev.target.open;
+  const sec = ev.target.dataset && ev.target.dataset.sec;   // the parts of the Report stay open or closed (on this device only; a shared copy keeps it in memory)
+  if (sec && hasOwn(RP.open, sec) && RP.open[sec] !== ev.target.open) {
+    RP.open[sec] = ev.target.open;
+    if (!VIEW) try { localStorage.setItem('nutrilog.reportOpen', JSON.stringify(RP.open)); } catch { /* private mode */ }
+  }
+}, true);
 document.addEventListener('change', (ev) => {
-  if (VIEW) {   // only the date picker of the shared days
+  if (VIEW) {   // only the date pickers of the shared days
     if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value < VIEW.from ? VIEW.from : ev.target.value > VIEW.to ? VIEW.to : ev.target.value; render(); }
+    if (ev.target.id === 'rp-date' && ev.target.value) { RP.anchor = rpClamp(ev.target.value); render(); }
     return;
   }
   if (ev.target.id === 'datepick' && ev.target.value) { S.day = ev.target.value; render(); }
+  if (ev.target.id === 'rp-date' && ev.target.value) { RP.anchor = rpClamp(ev.target.value); render(); }
   if (ev.target.id === 'importfile' && ev.target.files[0]) { importJson(ev.target.files[0]); ev.target.value = ''; }
   if (ev.target.id === 'importfoods' && ev.target.files[0]) { importFoods(ev.target.files[0]); ev.target.value = ''; }
 });
@@ -3656,6 +4050,7 @@ async function init() {
     S.health = hc.list;
     if (sy && typeof sy === 'object') Object.assign(SY, { cfg: sy.cfg || null, rec: sy.rec || {}, shas: sy.shas || {}, last: sy.last || 0, born: sy.born || 0, info: sy.info || '' });
     try { const tab = localStorage.getItem('nutrilog.tab'); if (TABS.some((x) => x[0] === tab)) S.tab = tab; } catch { /* private mode */ }
+    rpLoad();   // the period and the open parts of the Report, as left on this device
     if (syncStamp()) await Store.set('sync', syncPersist());   // changes made while the app was closed, and the first start with Sync built in
     render();
     if (hc.dropped) toast(`${plural(hc.dropped, 'Health log note')} could not be read and ${hc.dropped === 1 ? 'was' : 'were'} skipped.`);
@@ -3672,7 +4067,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3 };
+window.__tapnaplo = { SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

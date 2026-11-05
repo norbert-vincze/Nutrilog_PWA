@@ -576,7 +576,7 @@ async def main():
         check('all three bar styles are on this page (pri, ai, sai) and nothing else', sorted(classes) == ['rtrack ai', 'rtrack pri', 'rtrack sai'], classes)
         check('no colour judges the percent: the fill is the same accent colour at 5% and at 500% (no red, no green)', await T("() => new Set([...document.querySelectorAll('.rtrack.pri .rfill')].map((f) => getComputedStyle(f).backgroundColor)).size") == 1)
         wide = await T("() => ({ page: document.documentElement.scrollWidth <= window.innerWidth, rows: [...document.querySelectorAll('.nrow .rline')].every((l) => { const r = l.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }), tabs: document.querySelectorAll('#tabbar .tab').length })")
-        check('390 px: no sideways scroll, every bar and line fits, five tabs', wide['page'] and wide['rows'] and wide['tabs'] == 5, wide)
+        check('390 px: no sideways scroll, every bar and line fits, six tabs', wide['page'] and wide['rows'] and wide['tabs'] == 6, wide)
         c320 = await new_ctx(w=320, h=640); p320 = await c320.new_page(); watch(p320, 'N')
         await p320.goto(URL); await p320.wait_for_selector('.hero')
         await seed(F + [own('u:c', 'Food C no energy', {'calcium': 95})], [('u:a', 200), ('u:c', 100)], {'sex': 'n', 'age': '18', 'zinc': 1200}, pg=p320)

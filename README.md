@@ -274,7 +274,7 @@ Ez akkor kell, ha egy fájlban **több kész étel** van (például az AI-tól v
 
 ## 14. A napló megosztása a dietetikussal („Share diary and nutrients”)
 
-Ezzel egy **linket** csinálsz, amely a kiválasztott napok **Diary** és **Nutrients** fülét mutatja, **csak olvasható** formában. Aki megnyitja (például a dietetikusod), mindent lát úgy, ahogy te: a tételeket, a P / C / F / Fib / Salt sorokat, a piros sót, a `~`, `≥` és `–` jeleket, a NOVA-kártyát és a tápanyag-sorokat. Hozzáadni, átírni vagy törölni nem tud semmit.
+Ezzel egy **linket** csinálsz, amely a kiválasztott napok **Diary**, **Nutrients** és **Report** fülét mutatja, **csak olvasható** formában. Aki megnyitja (például a dietetikusod), mindent lát úgy, ahogy te: a tételeket, a P / C / F / Fib / Salt sorokat, a piros sót, a `~`, `≥` és `–` jeleket, a NOVA-kártyát és a tápanyag-sorokat. Hozzáadni, átírni vagy törölni nem tud semmit.
 
 **Hogyan működik, és mit kell tudnod róla?** A kiválasztott napok adatai **magában a linkben** vannak (a cím végén a `#share=` utáni hosszú rész). Semmi nem töltődik fel sehova, nincs szerver, és a te döntésed szerint **nincs jelszó** sem. Ebből két dolog következik:
 - **Aki megkapja a linket, látja a napokat.** Csak annak küldd el, akinek szánod.
@@ -295,7 +295,8 @@ Ezzel egy **linket** csinálsz, amely a kiválasztott napok **Diary** és **Nutr
 **Mit lát a dietetikus?**
 - A linket telefonon vagy számítógépen, bármelyik böngészőben megnyithatja. Nem kell appot telepítenie és fiókot csinálnia.
 - Felül egy „**Shared diary · read-only**” megjegyzés áll az időszakkal és a készítés idejével.
-- Csak két fül van: **Diary** és **Nutrients**. A nyilakkal és a naptár gombbal lépked a megosztott napok között, a többi napra nem.
+- Csak három fül van: **Diary**, **Nutrients** és **Report**. A Diary és a Nutrients fülön a nyilakkal és a naptár gombbal lépked a megosztott napok között, a többi napra nem.
+- A **Report** fülön (17. fejezet) a megosztott napokból állít össze időszakot. Alapból az egész megosztott tartományt mutatja („Custom”). A „Week” és a „Month” a megosztott napokra van levágva, és ezt ki is írja („shared days only”). A „3 months”, „6 months” és „Year” gomb szürke, ha a link legfeljebb 62 napot tartalmaz, mert ahhoz hosszabb időszak kell.
 - Nincs „Log food”, nincs „+” gomb, a tétel megérintésére nem nyílik meg semmi, és a NOVA-csoportokat sem lehet beállítani.
 - Ha a megosztott napokon van vízfogyasztás, a Diary fülön ott van a „**Water intake**” kártya is, gombok nélkül. Ha egy napra nem vittél fel vizet, azt írja: „Not logged”. Olyan linken, amelyik nem tartalmaz vizet, a kártya nem látszik. Egy napon, amelyen csak vizet vittél fel, étel nélkül is lehet linket készíteni.
 - Az app **nem ír semmit** az ő böngészőjének tárhelyébe, és ha neki is van saját Nutrilog-naplója ugyanezen a címen, ahhoz **nem nyúl**.
@@ -379,6 +380,39 @@ A sáv 100%-nál megáll, a szám tovább nő. Egyetlen szín sem „ítél”: 
 1. A **nátrium** 2000 mg-os értéke az EFSA 2019-es véleményéből való. Magát a véleményt nem tudtam megnyitni, a kloridnál ezt az EFSA kivonata és egy ellenpróba megerősítette (2,0 g nátrium = 87 mmol; ennyi kloridion 3,1 g).
 2. A CIQUAL „vitamin E” oszlopáról nem tudom, α-tokoferol vagy α-tokoferol-ekvivalens (α-TE). Az EFSA értéke mindkettőre épül, ezért a sor megjegyzést kap. A különbség általában kicsi, de ha pontosság kell, a címkén lévő értéket nézd.
 
+## 17. Riport több napra („Report”)
+
+A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja **egy hétre, egy hónapra vagy akár egy évre**: átlagot naponta, az EFSA-sávokat az átlagra, és azt is, mennyire bízhatsz a számokban. Az alsó sávban a Nutrients és a My foods között van.
+
+**Időszak kiválasztása lépésről lépésre:**
+1. Koppints az alsó sávban a „**Report**” fülre.
+2. A tetején a „**Day**”, „**Week**”, „**Month**”, „**3 months**”, „**6 months**”, „**Year**” és „**Custom**” gombok közül válaszd ki az időszak hosszát. Az app emlékszik rá, a következő megnyitáskor ugyanaz lesz kiválasztva (csak ezen a telefonon, nem kerül a mentésbe és a Syncbe).
+3. A két nyíllal lépsz az előző vagy a következő időszakra. A naptár ikonnal megadhatod azt a napot, amely köré az időszak épül. Ha elmentél a mai időszaktól, megjelenik a „**Today**” gomb, ami visszaugrik.
+4. A „**Custom**” gomb megnyit egy ablakot: a „**From**” és a „**To**” mezőbe írd be az első és az utolsó napot, vagy koppints a „**Last 14 days**”, a „**Last 30 days**” vagy a „**Whole diary**” gombra. Az „**Apply**” gomb elfogadja, a „**Cancel**” mindent úgy hagy. Hibát (például a kezdő nap a vég után van, vagy a vég a jövőben) a mező alatt látsz.
+
+**Hogyan számol az app az időszakokkal?**
+- A **hét hétfőn kezdődik**. A „Month” a naptári hónap, a „3 months” az adott hónap és az előtte lévő két hónap, a „6 months” az adott hónap és az előtte lévő öt, a „Year” az adott hónap és az előtte lévő tizenegy.
+- Ha az időszak még nem ért véget (például a mai hét), a **mai napig** tart, és a fejlécben ott áll: „so far”.
+- Egy nap akkor számít **naplózott napnak**, ha van legalább egy tétele. Az üres napokat az app **kihagyja**, nem számolja nullának. Ha egy héten három napot vittél fel, az átlag a három napé, nem a hété.
+
+**Mit mutat a három rész?** Az „Overview”, a „Nutrients” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod.
+- **Overview:** a naponkénti átlag kcal-ban nagy számmal (az „Average per logged day” felirat alatt), alatta a fehérje, szénhidrát, zsír, rost, cukor és só átlaga, és a vízfogyasztás átlaga. A vizet csak azokból a napokból átlagolja, amelyeken felvittél vizet. A „**Days**” szakasz napokra bontva mutatja az energiát. Egy napos időszaknál itt van az „**Open in Diary**” gomb is, ami a Diary fülön megnyitja azt a napot.
+- **Nutrients:** a Nutrients fül sorai az időszak átlagával. A sor megnyitva megmutatja, melyik ételekből jön az érték („Added up from”), hol nincs adat, és ha beállítottad az ajánlott bevitelt (16. fejezet), az EFSA-sávot az **átlagra** számolja. Egyetlen napos időszaknál a számok megegyeznek a Nutrients fülével.
+- **Data quality:** melyik napokon van tétel (kitöltött nap), hol van víz (pont), mekkora része becsült érték, honnan jön az energia (CIQUAL, USDA, dmBio, saját étel), és mely tápanyagokról van a legkevesebb adat.
+
+**A jelek jelentése (ugyanaz, mint a Nutrients fülön):**
+- `≥` az érték előtt: legalább egy tételnél hiányzik az adat, ezért a valódi átlag **nagyobb is lehet**. A hiányzó adat soha nem nulla.
+- `~`: az érték egy része becslés, nem címkeérték.
+- `0–20`-féle tartomány: a „<x” értékekből jön.
+- „no data”: az időszak egyik tételénél sincs adat. Sáv és százalék ilyenkor nincs.
+- A sor végén a **százalék** azt mutatja, a tételek hány százalékánál van adat az adott tápanyagról (100%, ha mindegyiknél; 0%, ha egyiknél sem; <1%, ha az 1 százaléknál kevesebb, de nem nulla).
+- Az **átlag alsó határ**: ha egy naplózott napon nincs adat egy tápanyagról, az a nap 0-val szerepel az összegben, de az osztóban is ott van a nap. Így a szám soha nem túloz. Ha egy időszak több napján nem mindenhol volt adat, a megnyitott sor megmutatja, hány napon volt teljes adat („Days with complete data”), és az ezekből számolt átlagot is.
+- A B1-vitamin és a niacin az EFSA szerint a nap energiájától függ. Itt csak azokat a napokat veszi, amelyeken minden tételnél van energiaadat.
+
+**Ha az időszakban nincs tétel**, egy kártya közli ezt („No entries on …” vagy „No entries from … to …”), és a „**Go to Diary**” gombbal átugorhatsz a naplóba. Ha egy tétel ételének adatát nem sikerült betölteni (például az USDA-tábla hiányzik), a fejléc alatt figyelmeztető sor mondja meg, hány tételt nem számolt az app.
+
+**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja. Írni ott sem tud semmit.
+
 ## Ha elakadsz
 
 | Mit látsz | Mit csinálj |
@@ -422,6 +456,10 @@ A sáv 100%-nál megáll, a szám tovább nő. Egyetlen szín sem „ítél”: 
 | „The note can be 1,000 characters at most. It is N characters now.” | A jegyzet túl hosszú. Rövidítsd 1000 karakterre vagy kevesebbre. A mező alatti számláló („1100 / 1000 · 100 characters too many”) megmondja, mennyivel. |
 | „The date cannot be in the future.” | A jegyzet napja csak a mai vagy egy korábbi nap lehet. |
 | „N Health log notes could not be read and were skipped.” (induláskor) | A telefon tárhelyében sérült jegyzet volt, az app kihagyta. A többi megmaradt. Ha van friss mentésed, a „Restore from file” visszahozza a jegyzeteket. |
+| A Report fülön a „Month” a mai hónapnak csak egy részét mutatja | Nem hiba: az időszak a mai napig tart, a fejlécben „so far” áll. A következő napokkal bővül. |
+| A Report átlaga kisebb, mint amit egy naplózott napon vártál | Az átlag a naplózott napokra számol, az üres napokat kihagyja. Ha egy sor előtt `≥` áll, valamelyik tételnél hiányzik az adat, a valódi átlag nagyobb is lehet. Nyisd meg a sort: az „Added up from” megmutatja, mely ételekből jön. |
+| „N entries in this period are not counted” a Report fülön | Ezeknek a tételeknek az ételadata nem töltődött be (például az USDA- vagy a dmBio-tábla). Kapcsold be az internetet, majd Data fül → „Reload app files”. |
+| A „3 months”, „6 months” vagy „Year” gomb szürke a megosztott linken | A link legfeljebb 62 napot tartalmaz, és ezekhez hosszabb időszak kell. Használd a „Week”, a „Month” vagy a „Custom” gombot. |
 | Eltűnt az adatom | Töltsd vissza a legutóbbi mentést: Data fül, „Restore from file”. Az app megerősítést kér, mielőtt felülírja az adataidat. |
 
 ## Amit érdemes tudnod

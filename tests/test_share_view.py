@@ -1,10 +1,10 @@
 """Share diary and nutrients (version 23). Run with the web server on port 8765 (see CLAUDE.md).
 
-The Data tab makes a link (#share=...) that holds the chosen days of the diary; opening it shows the Diary and Nutrients tabs of those days, read-only.
+The Data tab makes a link (#share=...) that holds the chosen days of the diary; opening it shows the Diary, Nutrients and Report tabs of those days, read-only.
 No password, no upload: the days are inside the link.
 Covers: the sheet (periods, dates, messages, link length, the long-link note, Copy link and its fallback, Share link when the browser has it), the link itself (format that
 Python can read, only the chosen days, notes and dates of foods left out, a link made without CompressionStream), the viewer (same numbers as the sender for every day: hero, meal
-lines, entry lines, red salt, ~ and ≥, Nutrients rows, NOVA card; only two tabs; no buttons that change anything; day arrows stop at the ends), the guarantee that the viewer writes
+lines, entry lines, red salt, ~ and ≥, Nutrients rows, NOVA card; only three tabs (Diary, Nutrients, Report); no buttons that change anything; day arrows stop at the ends), the guarantee that the viewer writes
 nothing (IndexedDB is not even opened, no localStorage writes) and the diary of the person who opens the link stays as it was, only the food tables the link needs are loaded,
 every kind of bad link (message, no crash, nothing written), a hostile link (escaped text, zip bomb, __proto__), a newer format, a browser that cannot unpack, a new link in the same tab,
 touch targets, 16 px fields, contrast in light and dark, 390 px width, no outside request, no page errors, the version number."""
@@ -305,7 +305,7 @@ async def main():
         await vp.goto(url); await vp.wait_for_selector('.hero')
         V = vp.evaluate
         check('the link opens the Diary, on the last day that has entries', await V("() => window.__tapnaplo.S.day") == days[0] and await V("() => !!window.__tapnaplo.VIEW") and 'Shared diary · read-only' in await vp.inner_text('.view-note'))
-        check('only two tabs: Diary and Nutrients', await V("() => [...document.querySelectorAll('#tabbar .tab')].map((t) => t.textContent.trim())") == ['Diary', 'Nutrients'])
+        check('only three tabs: Diary, Nutrients and Report', await V("() => [...document.querySelectorAll('#tabbar .tab')].map((t) => t.textContent.trim())") == ['Diary', 'Nutrients', 'Report'])
         check('no Log food, Scan, Create food, no + on a meal, no Today button', await V("() => document.querySelectorAll('.actions, [data-act=add], [data-act=scan], [data-act=new-food], [data-act=today], [data-act=edit-entry]').length") == 0)
         check('the entries are not buttons and tapping one opens nothing', await V("() => document.querySelectorAll('button.entry').length") == 0 and await V("() => document.querySelectorAll('.entry').length") > 0)
         await vp.click('.entry >> nth=0'); await vp.wait_for_timeout(200)

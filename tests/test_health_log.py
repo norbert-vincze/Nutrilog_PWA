@@ -9,7 +9,7 @@ stays, Undo, no change = no edit), Delete and Undo, the draft (restore, discard,
 (cleanNote / cleanHealth), the backup JSON (health key) and Restore (replace, empty list, old backup without health, invalid items counted, bad shape refused, hostile text),
 Sync with a fake GitHub (health/YYYY-MM.json, two devices, edit, tombstone, bad remote records, the file does not change when the date is edited, an older app ignores the folder),
 the CSV, the Share link (no notes, no tab in the viewer, nothing written), nothing counted in the food totals, touch targets, 16 px fields, contrast in light and dark, 390 and
-320 px (five tabs), the simulated keyboard, the version number, no page errors."""
+320 px (six tabs), the simulated keyboard, the version number, no page errors."""
 import asyncio, base64, csv, io, json, os, pathlib, re, sys, zlib
 from datetime import date, datetime, timedelta, timezone
 from playwright.async_api import async_playwright
@@ -133,7 +133,7 @@ async def main():
 
         # =========================================================== 1 the tab
         tabs = await page.locator('#tabbar .tab span').all_inner_texts()
-        check('five tabs: Diary, Nutrients, My foods, Health log, Data', tabs == ['Diary', 'Nutrients', 'My foods', 'Health log', 'Data'], tabs)
+        check('six tabs: Diary, Nutrients, Report, My foods, Health log, Data', tabs == ['Diary', 'Nutrients', 'Report', 'My foods', 'Health log', 'Data'], tabs)
         await go_health()
         check('the title is "Health log" and there are no day arrows', await page.inner_text('#topbar h1') == 'Health log' and await page.locator('#topbar [data-act=day]').count() == 0)
         check('empty state: "No notes yet. Add your first note." and an Add note button', 'No notes yet. Add your first note.' in await page.inner_text('#view') and 'Add note' in await page.inner_text('.health-bar .act'), await page.inner_text('#view'))
@@ -617,8 +617,8 @@ async def main():
             return c, pg
         cV, V = await viewer(made)
         vtabs = await V.locator('#tabbar .tab span').all_inner_texts()
-        check('viewer: only the Diary and Nutrients tabs, no Health log tab', vtabs == ['Diary', 'Nutrients'], vtabs)
-        check('viewer: the tab bar has two columns', await V.evaluate("() => getComputedStyle(document.querySelector('#tabbar')).gridTemplateColumns.split(' ').length") == 2)
+        check('viewer: only the Diary, Nutrients and Report tabs, no Health log tab', vtabs == ['Diary', 'Nutrients', 'Report'], vtabs)
+        check('viewer: the tab bar has three columns', await V.evaluate("() => getComputedStyle(document.querySelector('#tabbar')).gridTemplateColumns.split(' ').length") == 3)
         check('viewer: the page holds no notes', await notes(V) == [] and 'SECRET' not in await V.content())
         await V.evaluate("() => { for (const [id, a] of [['f1', 'health-add'], ['f2', 'health-open'], ['f3', 'export-health']]) { const b = document.createElement('button'); b.dataset.act = a; b.dataset.id = 'h1'; b.id = id; document.body.append(b); } const t = document.createElement('button'); t.dataset.act = 'tab'; t.dataset.tab = 'health'; t.id = 'f4'; document.body.append(t); }")
         for fid in ('f1', 'f2', 'f3', 'f4'):
@@ -662,7 +662,7 @@ async def main():
         fits = await T("""() => ({ page: document.documentElement.scrollWidth <= window.innerWidth,
           tabs: [...document.querySelectorAll('.tab')].every((t) => { const s = t.querySelector('span'), a = t.getBoundingClientRect(), b = s.getBoundingClientRect(); return b.left >= a.left - 0.5 && b.right <= a.right + 0.5 && s.scrollWidth <= s.clientWidth + 1; }),
           bar: (() => { const r = document.querySelector('#tabbar').getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })() })""")
-        check('390 px: no sideways scroll, all five tab names fit', fits['page'] and fits['tabs'] and fits['bar'], fits)
+        check('390 px: no sideways scroll, all six tab names fit', fits['page'] and fits['tabs'] and fits['bar'], fits)
         c320 = await new_ctx(w=320, h=640); p320 = await c320.new_page(); watch(p320, 'N')
         await p320.goto(URL); await p320.wait_for_selector('.hero')
         await seed([note(1, day(-1), '10:00', 'symptom', long), note(2, day(-2), '09:00', 'observation', 'x' * 400)], p320)
@@ -670,7 +670,7 @@ async def main():
         fits = await p320.evaluate("""() => ({ page: document.documentElement.scrollWidth <= window.innerWidth,
           tabs: [...document.querySelectorAll('.tab')].map((t) => { const s = t.querySelector('span'), a = t.getBoundingClientRect(), b = s.getBoundingClientRect(); return [s.textContent, Math.round(b.width), Math.round(a.width), b.left >= a.left - 0.5 && b.right <= a.right + 0.5 && s.scrollWidth <= s.clientWidth + 1]; }),
           rows: [...document.querySelectorAll('.health-row')].every((r) => r.getBoundingClientRect().right <= window.innerWidth && r.scrollWidth <= r.clientWidth + 1) })""")
-        check('320 px: no sideways scroll, all five tab names fit inside their tab, rows fit', fits['page'] and all(t[3] for t in fits['tabs']) and fits['rows'], fits)
+        check('320 px: no sideways scroll, all six tab names fit inside their tab, rows fit', fits['page'] and all(t[3] for t in fits['tabs']) and fits['rows'], fits)
         if SHOTS: await p320.screenshot(path=os.path.join(SHOTS, 'health_320.png'))
         await p320.click('[data-act=health-add]'); await p320.wait_for_selector('#hx'); await p320.wait_for_timeout(300)
         await p320.fill('#hx', 'x' * 1200)
