@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '30 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
+const VERSION = '31 · 5 Nov 2026';   // shown in the Data tab; raise it (and CACHE in sw.js) with every change
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -580,6 +580,7 @@ const NOVA = [
   [3, 'Processed foods', 'canned vegetables, cheese, fresh bread, salted nuts, fruit in syrup'],
   [4, 'Ultra-processed foods', 'soft drinks, packaged snacks, sweets, instant soups, ready meals, sausages, most breakfast cereals'],
 ];
+const NOVA_COLORS = ['var(--n1)', 'var(--n2)', 'var(--n3)', 'var(--n4)', 'var(--n0)'];   // groups 1–4 and not classified
 const novaStored = (f) => f.src === 'user' || f.src === 'off';
 function novaOf(f) {
   const v = Number(novaStored(f) ? f.nova : (S.meta.nova || {})[f.id]);
@@ -1656,13 +1657,13 @@ function viewNutr() {
 }
 
 /* NOVA summary card and the list for setting a group by hand. Drawn again on its own after every tap (see novaTap). */
-function novaHtml(es) {
-  const s = novaStats(es);
+/* The bar, the five rows and the sentence about coverage of a NOVA split (s = novaStats): the Nutrients tab and the Report (version 31) draw the same thing. */
+function novaParts(s) {
   const vals = [s.by[1], s.by[2], s.by[3], s.by[4], s.by.u];
   const pc = sharePct(vals, s.sum);
   const names = [...NOVA.map(([n, name]) => `NOVA ${n}: ${name}`), 'Unclassified'];
   const pcText = (i) => (pc[i] === 0 && vals[i] > 0 ? '<1%' : pc[i] + '%');
-  const colors = ['var(--n1)', 'var(--n2)', 'var(--n3)', 'var(--n4)', 'var(--n0)'];
+  const colors = NOVA_COLORS;
   const bar = s.sum > 0 ? vals.map((v, i) => (v > 0 ? `<i style="width:${v / s.sum * 100}%;background:${colors[i]}"></i>` : '')).join('') : '';
   const label = s.sum > 0 ? 'Energy by NOVA group: ' + names.map((n, i) => `${n} ${pcText(i)}`).join(', ') : 'No energy data to split by NOVA group';
   const rows = names.map((nm, i) => {
@@ -1670,6 +1671,13 @@ function novaHtml(es) {
     return `<div class="nova-row"><span class="dot" style="background:${colors[i]}"></span><span class="nova-name">${head}</span>
       <span class="nova-val"><b>${s.sum > 0 ? pcText(i) : '–'}</b><small>${vals[i] > 0 ? fmt(vals[i]) + ' kcal' : ''}</small></span></div>`;
   }).join('');
+  const done = s.items.filter((x) => x.g);
+  const coverage = `${done.length} of ${plural(s.items.length, 'food')} classified.${s.noEnergy ? ` ${s.noEnergy} ${s.noEnergy === 1 ? 'entry has' : 'entries have'} no energy data and ${s.noEnergy === 1 ? 'is' : 'are'} not counted in the shares.` : ''}`;
+  return { vals, pc, pcText, colors, bar, label, rows, coverage };
+}
+function novaHtml(es) {
+  const s = novaStats(es);
+  const { label, bar, rows, coverage } = novaParts(s);
   const un = s.items.filter((x) => !x.g), done = s.items.filter((x) => x.g);
   const itemHtml = (x) => {
     const sub = x.known ? fmt(x.kcal) + ' kcal today' : 'no energy data';
@@ -1677,7 +1685,6 @@ function novaHtml(es) {
       <div class="nova-btns" role="group" aria-label="NOVA group of ${esc(x.food.name)}">${[1, 2, 3, 4].map((n) =>
     `<button type="button" class="nbtn" data-act="nova-set" data-id="${esc(x.food.id)}" data-v="${n}" aria-pressed="${x.g === n}" aria-label="NOVA ${n}: ${esc(NOVA[n - 1][1])}">${n}</button>`).join('')}</div></div>`;
   };
-  const coverage = `${done.length} of ${plural(s.items.length, 'food')} classified.${s.noEnergy ? ` ${s.noEnergy} ${s.noEnergy === 1 ? 'entry has' : 'entries have'} no energy data and ${s.noEnergy === 1 ? 'is' : 'are'} not counted in the shares.` : ''}`;
   return `<div class="card nova-card">
       <div class="card-t">Food processing (NOVA)</div>
       <p class="muted small" style="margin:6px 0 14px">Share of today’s energy by how processed the foods are. Only items with energy data count.</p>
@@ -1721,7 +1728,8 @@ const RP_MONTHS = { month: 1, m3: 3, m6: 6, year: 12 };
 const RP_MIN_DAY = '2000-01-01';
 const RP_TOP_FOODS = 12;     // foods listed in "Added up from" of a row; the rest is one line with their sum
 const RP_NAMES_MAX = 15;     // names listed after "No data for:"
-const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, quality: false } };
+const RP = { kind: 'week', anchor: ymd(new Date()), custom: null, open: { overview: true, days: false, trend: false, trendtable: false, nutrients: false, meals: false, foods: false, nova: false, novatable: false, quality: false } };
+let RP_NOW = null;           // the period on the screen: { P, r } (the measure sheet and the Foods list read it)
 function rpLoad() {   // the choice of this device (not in the backup, not synced); a damaged value is ignored
   try {
     const raw = JSON.parse(localStorage.getItem('nutrilog.period') || 'null');
@@ -1849,12 +1857,12 @@ function rpCompare(key, P, p) {
   return c;
 }
 /* an average with its marks: '≥ ' (an item has no data), '~' (part is an estimate), a range for "<x" values; null when no item has data */
-function rpNum(T, i) {
-  const c = T.cnt[i];
-  if (!c) return null;
-  const lo = T.lo[i], hi = T.hi[i], range = hi - lo > Math.max(lo * 0.1, 1e-9);
-  return `${c < T.n ? '≥ ' : ''}${T.est[i] ? '~' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}`;
+function rpMark(lo, hi, cnt, n, est) {   // the same marks for any sum: cnt items of n have data, est of them are estimates
+  if (!cnt) return null;
+  const range = hi - lo > Math.max(lo * 0.1, 1e-9);
+  return `${cnt < n ? '≥ ' : ''}${est ? '~' : ''}${range ? fmt(lo) + '–' + fmt(hi) : fmt(lo)}`;
 }
+const rpNum = (T, i) => rpMark(T.lo[i], T.hi[i], T.cnt[i], T.n, T.est[i]);
 /* share of the items that have data, as a percent: 100% only when it is exactly all, 0% only when it is none */
 function covText(a, n) {
   if (a === n) return '100%';
@@ -2115,10 +2123,13 @@ function rpSetMeasure(m) {
   if (!rpMeasureOk(m)) return;
   rpMeasure = m;
   if (!VIEW) try { localStorage.setItem(RP_MEASURE_KEY, m); } catch { /* private mode */ }
-  refreshTrend();
+  if (!$('#rp-foods') && !$('#rp-trend')) { render(); return; }
+  if ($('#rp-trend')) refreshTrend();
+  const foods = $('#rp-foods');
+  if (foods && RP_NOW) foods.innerHTML = rpFoodsMake(RP_NOW.P);   // the Foods list follows the same measure
 }
 function openRpMeasure() {
-  const cur = curMeasure(), P = RP_TREND && RP_TREND.P;
+  const cur = curMeasure(), P = RP_NOW && RP_NOW.P;
   const btn = (id, label, i) => `<button type="button" class="rp-m" data-m="${id}" aria-pressed="${id === cur}">${esc(label)}${P && i >= 0 && P.T.cnt[i] === 0 ? '<small>no data</small>' : ''}</button>`;
   let html = '<h3 class="rp-mh">Calculated</h3>' + btn(RP_WATER, 'Water intake', -1) + btn(RP_OMEGA, 'Omega-6 : omega-3 ratio', -1);
   for (const [gid, gname] of GROUPS) {
@@ -2126,7 +2137,7 @@ function openRpMeasure() {
     if (idxs.length) html += `<h3 class="rp-mh">${esc(gname)}</h3>` + idxs.map((i) => btn(KEYS[i], labelOf(i), i)).join('');
   }
   html += '<div class="row gap sheet-actions"><button type="button" class="btn" data-x style="flex:1">Close</button></div>';
-  const sh = openSheet('Trend measure', html);
+  const sh = openSheet('Measure', `<p class="small muted" style="margin:0 0 4px">The Trend and the Foods list show the measure you choose here.</p>${html}`);
   sh.el.addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-m]');
     if (!b) return;
@@ -2160,6 +2171,144 @@ document.addEventListener('keydown', (ev) => {
   else return;
   ev.preventDefault();
 });
+
+/* ---- Meals and weekdays, Foods, Food processing over time (version 31) ---- */
+/* Meals and weekdays show energy only. An average is the sum of the logged days divided by the number of logged days, so a meal with no entries on a logged day counts as 0 kcal on that day
+   (nothing was logged there: that is a fact, not missing data). Items without energy data are never counted as 0: a "≥" says they are missing, and a meal whose items all lack energy
+   data says "no energy data". The shares are whole percents that add up to 100 (largest remainder, "<1%" below 1%), worked out from the energy that is known. */
+const RP_WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const RP_TOP_SOURCES = 10;     // foods listed in the Foods section; the rest is one line
+/* one row of a distribution: name (HTML) and a small line under it, the value, the share (optional) and a thin bar; bk: full | part (striped = a lower value) | none (dashed) | nodata (dotted) */
+const rpDrow = (o) => `<${o.tag || 'div'} class="rp-drow"><div class="rp-dh"><span class="rp-dn">${o.name}${o.sub ? `<small>${o.sub}</small>` : ''}</span><span class="rp-dv${o.val ? '' : ' none'}">${o.val || o.none}</span>${o.pct === undefined ? '' : `<span class="rp-dp">${o.pct}</span>`}</div><div class="rp-dbar ${o.bk}" aria-hidden="true">${o.w > 0 ? `<i style="width:${Math.min(100, o.w).toFixed(1)}%"></i>` : ''}</div></${o.tag || 'div'}>`;
+function rpMealAgg(P) {   // per meal: energy lower / upper value over the period, items, items with energy data, estimates, the days it has entries
+  const mk = (id, name) => ({ id, name, lo: 0, hi: 0, n: 0, cnt: 0, est: 0, days: new Set() });
+  const rows = MEALS.map((m) => mk(m.id, m.name)), other = mk('', 'No meal'), byId = new Map(rows.map((o) => [o.id, o]));
+  for (const d of P.days) for (const e of P.by.get(d)) {
+    const f = getFood(e.f), v = vecOf(f), o = byId.get(e.m) || other;   // an entry whose meal is not Meal 1…N (old data) is not lost: it is "No meal"
+    o.n++; o.days.add(d);
+    if (!Number.isNaN(v.lo[0])) { const k = e.a / f.basis.qty; o.lo += v.lo[0] * k; o.hi += v.hi[0] * k; o.cnt++; if (isEst(f, 0, v)) o.est++; }
+  }
+  return other.n ? [...rows, other] : rows;
+}
+function rpMealRows(P) {
+  const nd = P.nd, rows = rpMealAgg(P), tot = rows.reduce((s, o) => s + o.lo, 0), pc = sharePct(rows.map((o) => o.lo), tot);
+  return rows.map((o, j) => {
+    const state = !o.n ? 'none' : !o.cnt ? 'nodata' : 'ok', avgLo = o.lo / nd, avgHi = o.hi / nd, share = state === 'ok' && tot > 0 ? pc[j] : null;
+    return { id: o.id, name: o.name, state, items: o.n, withEnergy: o.cnt, dayN: o.days.size, avgLo, avgHi, partial: o.cnt < o.n, est: o.est > 0,
+      txt: state === 'ok' ? rpMark(avgLo, avgHi, o.cnt, o.n, o.est) : null, share, shareTxt: share === null ? '–' : share === 0 && o.lo > 0 ? '<1%' : share + '%', sum: o.lo, exact: tot > 0 ? o.lo / tot * 100 : 0 };
+  });
+}
+function rpWeekdayRows(P) {   // the logged days of each weekday (Monday first), then Monday to Friday and Saturday + Sunday
+  const groups = RP_WEEKDAYS.map(() => []);
+  P.days.forEach((d, k) => groups[(parseYmd(d).getDay() + 6) % 7].push(k));
+  const one = (idx, name) => {
+    if (!idx.length) return { name, days: 0, state: 'none', txt: null, lo: 0, partial: false };
+    const T = rpAvg(idx.map((k) => P.ts[k])), txt = rpNum(T, 0);
+    return { name, days: idx.length, state: txt === null ? 'nodata' : 'ok', txt, lo: T.lo[0], hi: T.hi[0], partial: T.cnt[0] < T.n };
+  };
+  return { days: groups.map((idx, g) => one(idx, RP_WEEKDAYS[g])), wk: one([0, 1, 2, 3, 4].flatMap((g) => groups[g]), 'Mon–Fri'), we: one([5, 6].flatMap((g) => groups[g]), 'Sat–Sun') };
+}
+function rpMealsHtml(P) {
+  const nd = P.nd, noE = P.T.n - P.T.cnt[0], meals = rpMealRows(P), wd = rpWeekdayRows(P);
+  const mealHtml = meals.map((o) => rpDrow({ name: esc(o.name), sub: o.items ? (nd > 1 ? `${o.dayN} of ${plural(nd, 'day')} · ` : '') + plural(o.items, 'item') : '',
+    val: o.state === 'ok' ? `${esc(o.txt)}<em>kcal</em>` : '', none: o.state === 'none' ? 'no entries' : 'no energy data', pct: o.state === 'ok' ? o.shareTxt.replace('<', '&lt;') : '–',
+    w: o.exact, bk: o.state === 'ok' ? (o.partial ? 'part' : 'full') : o.state })).join('');
+  const bars = (list) => { const top = Math.max(0, ...list.filter((x) => x.state === 'ok').map((x) => x.lo)); return list.map((x) => rpDrow({ name: esc(x.name), sub: x.days ? plural(x.days, 'logged day') : '',
+    val: x.state === 'ok' ? `${esc(x.txt)}<em>kcal</em>` : '', none: x.state === 'none' ? 'no logged day' : 'no energy data', w: x.state === 'ok' && top > 0 ? x.lo / top * 100 : 0,
+    bk: x.state === 'ok' ? (x.partial ? 'part' : 'full') : x.state })).join(''); };
+  const weekdays = nd < 2 ? '<p class="small muted" style="margin:6px 0 0">Weekday averages need at least two logged days in the period.</p>'
+    : `<div class="rp-dist">${bars(wd.days)}</div><h4 class="rp-h">Weekdays and weekend</h4><div class="rp-dist">${bars([wd.wk, wd.we])}</div>
+      <p class="hint rp-expl">Each line is the average energy of the logged days that fall on that weekday. A weekday without a logged day is left out, it is not 0. With few days one day can move a line a lot, so look at the number of days. A striped bar is a lower value (≥).</p>`;
+  return `<div class="card rp-card">
+      <h4 class="rp-h">Energy by meal</h4>
+      <p class="muted small" style="margin:0">Average per logged day, and the share of each meal.</p>
+      <div class="rp-dist" id="rp-meals">${mealHtml}</div>
+      <p class="hint rp-expl">A day on which a meal has no entries counts as 0 kcal for that meal, because nothing was logged there. Items without energy data are not counted as 0, so a ≥ means some are missing. The shares are parts of the energy that is known${noE ? `; ${plural(noE, 'item')} without energy data ${noE === 1 ? 'is' : 'are'} not in them` : ''}. A striped bar is a lower value.</p>
+      <h4 class="rp-h">Energy by weekday</h4>${weekdays}
+    </div>`;
+}
+/* Foods: where the selected measure (the same one as the Trend) comes from. Each food is all its entries of the period added up; a share is its part of the sum of the foods that have data. */
+function rpFoodDays(P) {   // in how many logged days each food appears
+  const m = new Map();
+  for (const d of P.days) { const seen = new Set(); for (const e of P.by.get(d)) if (!seen.has(e.f)) { seen.add(e.f); m.set(e.f, (m.get(e.f) || 0) + 1); } }
+  return m;
+}
+function rpFoodsMake(P) {
+  const m = curMeasure(), info = rpMeasureInfo(m), i = info.i, nd = P.nd;
+  const head = (sub) => `<div class="rp-trend-h"><button type="button" class="chip-btn rp-measure" data-act="rp-measure" aria-haspopup="dialog">${esc(info.label)}<span class="rp-caret" aria-hidden="true"></span></button><span class="muted small">${sub}</span></div>`;
+  const msg = (text) => `${head('')}<p class="small muted rp-trend-none">${text}</p>`;
+  if (m === RP_WATER) return msg('Water intake is logged as one total for the day, not for each food, so there is no list of foods. Choose a nutrient.');
+  if (m === RP_OMEGA) return msg('The ratio is worked out from the totals of several fatty acids, so it has no list of foods. Choose a fatty acid to see where it comes from.');
+  const parts = partsFor(P.es, i);
+  if (!parts.length) return msg(`No item in this period has data for ${esc(info.label)}, so there is nothing to list. This is not zero.`);
+  const sumLo = parts.reduce((s, p) => s + p.lo, 0), sumHi = parts.reduce((s, p) => s + p.hi, 0), anyEst = parts.some((p) => p.est);
+  const pc = sharePct(parts.map((p) => p.lo), sumLo), days = rpFoodDays(P), unit = esc(UNITS[i]);
+  const pcTxt = (x, lo, hi) => (sumLo > 0 && !(lo === 0 && hi > 0) ? (x === 0 && lo > 0 ? '&lt;1%' : x + '%') : '–');   // a food known only as "below x" has no share: its lower value is 0, but it may be much more
+  const top = parts.slice(0, RP_TOP_SOURCES), rest = parts.slice(RP_TOP_SOURCES);
+  const rows = top.map((p, j) => rpDrow({ tag: 'li', name: esc(cap(p.f.name)), sub: `${esc(fmt(p.a))} ${esc(unitOf(p.f))} · ${plural(days.get(p.f.id) || 0, 'day')} · ${p.n} ${p.n === 1 ? 'entry' : 'entries'}`,
+    val: `${nutValHtml(p.lo, p.hi, p.est)}<em>${unit}</em>`, pct: pcTxt(pc[j], p.lo, p.hi), w: sumLo > 0 ? p.lo / sumLo * 100 : 0, bk: 'full' })).join('');
+  let more = '';
+  if (rest.length) {
+    const rLo = rest.reduce((s, p) => s + p.lo, 0), rHi = rest.reduce((s, p) => s + p.hi, 0), rPc = pc.slice(RP_TOP_SOURCES).reduce((a, b) => a + b, 0);
+    more = rpDrow({ tag: 'li', name: esc(plural(rest.length, 'more food')), sub: '', val: `${nutValHtml(rLo, rHi, rest.some((p) => p.est))}<em>${unit}</em>`, pct: pcTxt(rPc, rLo, rHi), w: sumLo > 0 ? rLo / sumLo * 100 : 0, bk: 'full' });
+  }
+  const miss = P.T.missing[i];
+  return `${head(`${unit} added up over ${plural(nd, 'logged day')}`)}
+    <h4 class="rp-h">Biggest sources of ${esc(info.label)}</h4>
+    <ol class="rp-dist rp-foodlist">${rows}${more}</ol>
+    <p class="small rp-foodtot">All foods with data: <b>${nutValHtml(sumLo, sumHi, anyEst)} ${unit}</b></p>
+    <p class="hint rp-expl">Each food is all its entries of the period added up. A share is the part of that total, worked out from lower values; the shares add up to 100%.${parts.some((p) => p.lo === 0 && p.hi > 0) ? ' A food known only as “below x” has no share.' : ''} Only foods that have data for ${esc(info.label)} are in the list.</p>
+    ${miss.length ? `<p class="small rp-foodmiss">No data for: ${nameList(miss)}. ${[...new Set(miss)].length === 1 ? 'It is' : 'They are'} not in the list or the shares, and not zero.</p>` : ''}`;
+}
+/* Food processing (NOVA): the split of the energy of the whole period (all items together, not an average of daily percents), then one bar per day, week or month */
+function rpNovaBars(P, r) {
+  let j = 0;
+  return rpBuckets(r).map((b) => {
+    while (j < P.days.length && P.days[j] < b.from) j++;
+    const es = [];
+    let logged = 0;
+    for (let q = j; q < P.days.length && P.days[q] <= b.to; q++) { logged++; for (const e of P.by.get(P.days[q])) es.push(e); }
+    const lab = rpBucketLabel(b), o = { unit: b.unit, from: b.from, to: b.to, short: lab.short, long: lab.long, logged, items: es.length, state: 'none' };
+    if (!logged) return o;
+    const s = novaStats(es), vals = [s.by[1], s.by[2], s.by[3], s.by[4], s.by.u];
+    if (!(s.sum > 0)) { o.state = 'nodata'; return o; }
+    return Object.assign(o, { state: 'ok', vals, sum: s.sum, pc: sharePct(vals, s.sum) });
+  });
+}
+function rpNovaHtml(P, r) {
+  const s = novaStats(P.es), np = novaParts(s);
+  const dist = `<div class="card rp-card nova-card">
+      <p class="muted small" style="margin:0 0 14px">Share of the energy of the whole period by how processed the foods are. It is worked out from all items together, not as an average of daily percents. Only items with energy data count.</p>
+      <div class="bar" role="img" aria-label="${esc(np.label)}">${np.bar}</div>
+      <div class="nova-rows">${np.rows}</div>
+      <p class="muted small" style="margin:12px 0 0">${np.coverage}</p>
+      ${!VIEW && s.by.u > 0 ? '<p class="hint" style="margin:8px 0 0">To sort a food into a group, open the Nutrients tab and use Set NOVA groups there.</p>' : ''}
+    </div>`;
+  if (r.days < 2) return dist;
+  const bars = rpNovaBars(P, r), seen = bars.filter((b) => b.state !== 'none').length, okN = bars.filter((b) => b.state === 'ok').length;
+  const h = '<h4 class="rp-h">Over time</h4>';
+  if (seen < 2) return dist + `<div class="card rp-card">${h}<p class="small muted" style="margin:0">A trend needs at least two days with entries in this period.</p></div>`;
+  if (!okN) return dist + `<div class="card rp-card">${h}<p class="small muted" style="margin:0">No item in this period has energy data, so there is nothing to split. This is not zero.</p></div>`;
+  const u = bars[0].unit, pt = (b, k) => (b.pc[k] === 0 && b.vals[k] > 0 ? '<1%' : b.pc[k] + '%');
+  const nm = ['NOVA 1', 'NOVA 2', 'NOVA 3', 'NOVA 4', 'Unclassified'];
+  const lab = (b) => (b.unit === 'week' ? b.short : b.long);
+  const rows = bars.map((b) => {
+    const l = `<span class="rp-nl">${esc(lab(b))}${u !== 'day' && b.logged ? `<small>${plural(b.logged, 'logged day')}</small>` : ''}</span>`;
+    if (b.state === 'none') return `<li class="rp-nrow">${l}<span class="bar rp-nb none">no entries</span><span class="rp-nv"></span></li>`;
+    if (b.state === 'nodata') return `<li class="rp-nrow">${l}<span class="bar rp-nb nodata">no energy to split</span><span class="rp-nv"></span></li>`;
+    const segs = b.vals.map((v, k) => (v > 0 ? `<i style="width:${v / b.sum * 100}%;background:${NOVA_COLORS[k]}"></i>` : '')).join('');
+    const say = `${b.long}: ${nm.map((n, k) => `${n} ${pt(b, k)}`).join(', ')}`;
+    return `<li class="rp-nrow">${l}<span class="bar rp-nb" role="img" aria-label="${esc(say)}">${segs}</span><span class="rp-nv" aria-hidden="true">${esc(pt(b, 3))}</span></li>`;
+  }).join('');
+  const trows = bars.map((b) => `<tr><th scope="row">${esc(lab(b))}</th>${b.state === 'ok' ? b.pc.map((x, k) => `<td>${esc(pt(b, k))}</td>`).join('') : `<td colspan="5">${b.state === 'none' ? 'no entries' : 'no energy to split'}</td>`}</tr>`).join('');
+  return dist + `<div class="card rp-card">${h}
+      <p class="muted small" style="margin:0 0 6px">One bar for each ${u}: its energy by NOVA group, colours as above. The number at the right is the share of NOVA 4, ultra-processed.${u === 'day' ? '' : ' The share is of the logged days in the bar.'}</p>
+      <ol class="rp-nt">${rows}</ol>
+      <details class="fold" data-sec="novatable" ${RP.open.novatable ? 'open' : ''}><summary>Show as table</summary>
+        <div class="rp-tablewrap" tabindex="0" role="region" aria-label="Energy by NOVA group over time as a table"><table class="rp-table rp-nt-table"><thead><tr><th scope="col">${u === 'day' ? 'Day' : u === 'week' ? 'Week' : 'Month'}</th>${[1, 2, 3, 4].map((n) => `<th scope="col"><span class="sr-only">NOVA </span>${n}</th>`).join('')}<th scope="col" aria-label="Unclassified">No group</th></tr></thead><tbody>${trows}</tbody></table></div>
+      </details>
+    </div>`;
+}
 
 /* Data quality: which days have entries, how much data the numbers rest on */
 const RP_SOURCES = [['ciqual', 'CIQUAL'], ['usda', 'USDA'], ['dmbio', 'dmBio'], ['off', 'Open Food Facts'], ['user', 'Your own foods']];
@@ -2240,9 +2389,10 @@ function viewReport() {
     const water = P && P.waterDays.length ? `<div class="card rp-card"><dl class="an-list">${rpWaterRow(P)}</dl></div>` : '';
     return `${head}${hid}<div class="card rp-card"><div class="card-t">${text}</div><p class="muted small" style="margin-top:6px">${r.empty ? 'Choose a period inside the shared days.' : 'The Report is built from the foods you log in the Diary tab. A day without entries is not a day of 0, it is left out of every average.'}</p>${r.empty ? '' : '<button class="btn primary" data-act="tab" data-tab="log" style="margin-top:14px">Go to Diary</button>'}</div>${water}`;
   }
-  RP_TREND = null;
+  RP_TREND = null; RP_NOW = { P, r };
   const trend = r.days >= 2 ? rpSec('trend', 'Trend', `<div class="card rp-card" id="rp-trend">${rpTrendMake(P, r)}</div>`) : '';
-  return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${trend}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
+  return `${head}${hid}${rpSec('overview', 'Overview', rpOverviewHtml(P, r))}${trend}${rpSec('nutrients', 'Nutrients', rpNutrHtml(P))}`
+    + `${rpSec('meals', 'Meals and weekdays', rpMealsHtml(P))}${rpSec('foods', 'Foods', `<div class="card rp-card" id="rp-foods">${rpFoodsMake(P)}</div>`)}${rpSec('nova', 'Food processing (NOVA)', rpNovaHtml(P, r))}${rpSec('quality', 'Data quality', rpQualityHtml(P, r))}`;
 }
 function reportHeader() {   // the title bar of the Report tab: the calendar icon sets the day the period is built around, Today jumps back to the period of today
   const today = !VIEW && RP.kind !== 'custom' && !rpRange().hasToday;
@@ -4303,7 +4453,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

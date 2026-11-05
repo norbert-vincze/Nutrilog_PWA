@@ -395,10 +395,13 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 - Ha az időszak még nem ért véget (például a mai hét), a **mai napig** tart, és a fejlécben ott áll: „so far”.
 - Egy nap akkor számít **naplózott napnak**, ha van legalább egy tétele. Az üres napokat az app **kihagyja**, nem számolja nullának. Ha egy héten három napot vittél fel, az átlag a három napé, nem a hété.
 
-**Mit mutat a négy rész?** Az „Overview”, a „Trend”, a „Nutrients” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod. Az app megjegyzi, melyik van nyitva (csak ezen a telefonon).
+**Mit mutat a hét rész?** Az „Overview”, a „Trend”, a „Nutrients”, a „Meals and weekdays”, a „Foods”, a „Food processing (NOVA)” és a „Data quality” szakaszt a címére koppintva nyithatod és zárhatod. Az app megjegyzi, melyik van nyitva (csak ezen a telefonon).
 - **Overview:** a naponkénti átlag kcal-ban nagy számmal (az „Average per logged day” felirat alatt), alatta a fehérje, szénhidrát, zsír, rost, cukor és só átlaga, és a vízfogyasztás átlaga. A vizet csak azokból a napokból átlagolja, amelyeken felvittél vizet. A „**Days**” szakasz napokra bontva mutatja az energiát. Egy napos időszaknál itt van az „**Open in Diary**” gomb is, ami a Diary fülön megnyitja azt a napot.
 - **Trend:** egyetlen mértéket (alapból az energiát) mutat oszlopokban, hogy lásd, hogyan alakult az időszak alatt. Részletesen lejjebb olvasod („Trend: oszlopdiagram az időszakról”). Egyetlen napos időszaknál nincs Trend, mert nincs mit összehasonlítani.
 - **Nutrients:** a Nutrients fül sorai az időszak átlagával. A sor megnyitva megmutatja, melyik ételekből jön az érték („Added up from”), hol nincs adat, és ha beállítottad az ajánlott bevitelt (16. fejezet), az EFSA-sávot az **átlagra** számolja. Egyetlen napos időszaknál a számok megegyeznek a Nutrients fülével.
+- **Meals and weekdays:** melyik étkezésnél és a hét melyik napján eszel többet (lejjebb: „Meals and weekdays”).
+- **Foods:** mely ételekből jön a kiválasztott mérték (alapból az energia). A Trenddel közös a mérték (lejjebb: „Foods”).
+- **Food processing (NOVA):** az időszak energiájának megoszlása NOVA-csoportonként, és ennek alakulása oszloponként (lejjebb: „Food processing (NOVA)”).
 - **Data quality:** melyik napokon van tétel (kitöltött nap), hol van víz (pont), mekkora része becsült érték, honnan jön az energia (CIQUAL, USDA, dmBio, saját étel), és mely tápanyagokról van a legkevesebb adat.
 
 **A jelek jelentése (ugyanaz, mint a Nutrients fülön):**
@@ -431,9 +434,29 @@ A Nutrients fül egy napot mutat. A **Report** fül ugyanazokat a számokat adja
 
 **Megosztott linken** a Trend is működik, a megosztott napokból. A mérték és az időszak ott sem íródik sehová.
 
+**Meals and weekdays: mikor eszel többet.** Három kártya van benne, mind az **energiát** mutatja kcal-ban:
+- **Energy by meal:** a Meal 1 – Meal 6 étkezések egy naplózott napra eső átlaga, mellette az étkezés **százaléka** az ismert energiából (a százalékok összege 100), és egy sáv. A sor alatt áll, hány napon és hány tétellel számol („3 of 3 days · 3 items”). **Egy étkezés üres napja nullának számít:** ha a Meal 2-nél a hét három napjából csak egyen volt tétel, a másik két nap 0 kcal az átlagban, mert ott tényleg nem ettél semmit. Ezért a hat étkezés átlaga **összeadva az Overview átlagát adja**. Ha egy tételnek nincs energiaadata, az **nem nulla**: a szám elé `≥` kerül (csíkos sáv), és ha az étkezés egyetlen tételének sincs energiaadata, a sorban „no energy data” áll, százalék és sáv nélkül (pontozott vonal). Ahol az étkezésnél egyetlen napon sincs tétel, „no entries” áll (szaggatott vonal). A „No meal” sor régi adatot fog meg, amelynek az étkezése nem a Meal 1 – 6 egyike: így semmi nem vész el az összegből.
+- **Energy by weekday:** a hét minden napjára (hétfővel kezdve) az azon a napon naplózott napok átlaga, a sor alatt a „1 logged day” vagy „3 logged days”. Ha az időszakban nincs ilyen hétköznap, „no logged day” áll: ez nem nulla, csak üres. Kevés napnál **egyetlen nap is sokat mozdít** az átlagon, ezért nézd a napok számát.
+- **Weekdays and weekend:** a hétfő–péntek és a szombat–vasárnap átlaga egymás mellett.
+Egy napos időszaknál (Day) a hétköznap-rész helyett ez áll: „Weekday averages need at least two logged days in the period.”
+
+**Foods: mely ételekből jön az érték.** Megmutatja, melyik **ételek** adják a kiválasztott mérték (alapból az energia) legnagyobb részét az időszakban. Egy étel az időszak **összes tétele összeadva**: a sorban látod a mennyiséget, hány napon és hány tételben szerepelt („300 g · 2 days · 2 entries”), az értékét és a **százalékát** a listában szereplő ételek összegéből (a százalékok összege 100).
+
+**Lépésről lépésre:**
+1. A Report fülön koppints a „**Foods**” szakasz címére.
+2. A lista fölötti gombon áll, melyik mértéket látod (alapból „**Energy**”). Koppints rá, megnyílik a „**Measure**” ablak. Válassz egy tápanyagot, az ablak bezárul. A „**Close**” gomb változtatás nélkül zárja be.
+3. A **Trend ugyanazt a mértéket használja**: ha az egyiknél átváltod, a másik is követi. Az app megjegyzi (csak ezen a telefonon, nem kerül a mentésbe, a Syncbe és a megosztott linkbe).
+4. A lista legfeljebb **10 ételt** mutat, a többi „**N more foods**” sorban van együtt. Alatta áll az „All foods with data” összeg.
+5. Ha egy étel adata hiányzik erről a mértékről, a „**No data for:**” sor névvel megmondja. Ezek **nincsenek a listában és a százalékban**, és nem nullák. Ha az időszak egyik ételénél sincs adat, a lista helyett ez áll: „… so there is nothing to list. This is not zero.”
+
+Három különlegesség: a **vízfogyasztásnak** és az **omega-6 : omega-3 aránynak** nincs étellistája (a víz egész napra felvitt összeg, az arány több zsírsav összegéből számolt szám), ezeknél a lista helyett egy mondat mondja meg, mit válassz helyette. Ha egy étel értéke csak „<x”-ként ismert, a sora `<x`-et mutat, **százalék helyett „–”-t kap**, mert az alsó határa 0, a valódi része sokkal nagyobb is lehet. A `~` és a tartomány (például „~195–396”) ugyanúgy értendő, mint a Nutrients fülön.
+
+**Food processing (NOVA): mennyire feldolgozott az, amit eszel.** Felül egy kártya az időszak energiájának megoszlásáról NOVA 1 – 4 és „Unclassified” (besorolatlan) szerint, ugyanúgy, mint a Nutrients fülön. A százalék az **egész időszak összes tételéből együtt** készül (nem a napi százalékok átlaga), és csak azok a tételek számítanak, amelyeknél van energiaadat (a kártya alján áll, hány tételt hagy ki). Az 1 százaléknál kisebb rész „<1%”, nem 0%. A csoportokat **itt nem állíthatod**, csak olvasod őket: ha egy étel „Unclassified”, a kártya alján a hint megmondja, hogy a **Nutrients** fülön a „**Set NOVA groups**” alatt tudod besorolni.
+Ha az időszak legalább két napos, alatta az „**Over time**” kártya: **egy sáv egy nap** (legfeljebb 31 napos időszaknál), **egy hét** vagy **egy hónap**, benne a NOVA-csoportok színei (ugyanazok, mint fent, mindegyik szegmensnek vékony körvonala van, hogy a világos színek is látsszanak). A sáv jobb oldalán a **NOVA 4**, az ultrafeldolgozott ételek aránya áll. Hét- és hónap-sávnál a százalék a benne lévő naplózott napokra szól, a név alatt áll, hány napról. Ahol nincs tétel, szaggatott vonal áll „no entries” felirattal (ez nem 0%), ahol nincs energiaadat, pontozott vonal. A „**Show as table**” táblázatban is megadja ugyanezt (Day vagy Week vagy Month, NOVA 1, 2, 3, 4 és „No group”).
+
 **Ha az időszakban nincs tétel**, egy kártya közli ezt („No entries on …” vagy „No entries from … to …”), és a „**Go to Diary**” gombbal átugorhatsz a naplóba. Ha egy tétel ételének adatát nem sikerült betölteni (például az USDA-tábla hiányzik), a fejléc alatt figyelmeztető sor mondja meg, hány tételt nem számolt az app.
 
-**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel együtt. Írni ott sem tud semmit.
+**Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel, a „Meals and weekdays”, a „Foods” és a „Food processing (NOVA)” szakasszal együtt. A „Foods” mértékét ott is választhatod, de írni ott sem tud semmit, és a NOVA-csoportot sem tudja beállítani.
 
 ## Ha elakadsz
 
