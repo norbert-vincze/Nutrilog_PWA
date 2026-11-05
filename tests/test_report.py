@@ -398,7 +398,7 @@ async def main():
         check('after a reload the Report tab and the period (Month) are still there', s['pressed'] == ['month'] and s['title'] == 'Report', s)
         await T("() => { document.querySelector('details[data-sec=quality]').open = true; }"); await page.wait_for_timeout(60)
         ro = json.loads(await T("() => localStorage.getItem('nutrilog.reportOpen')"))
-        check('opening "Data quality" is remembered: {overview: true, quality: true, others false}', ro == {'overview': True, 'days': False, 'trend': False, 'trendtable': False, 'nutrients': False, 'meals': False, 'foods': False, 'nova': False, 'novatable': False, 'quality': True, 'time': False, 'timetable': False}, ro)
+        check('opening "Data quality" is remembered: {overview: true, quality: true, others false}', ro == {'overview': True, 'days': False, 'trend': False, 'trendtable': False, 'nutrients': False, 'meals': False, 'foods': False, 'nova': False, 'novatable': False, 'quality': True, 'time': False, 'timetable': False, 'watertable': False}, ro)
         await page.reload(); await page.wait_for_selector('.rp-seg')
         check('...and it is open after a reload', await T("() => document.querySelector('details[data-sec=quality]').open"))
 
@@ -799,7 +799,7 @@ async def main():
             await pg.click('[data-act=export-json]')
         dl = await dd.value
         backup = json.loads(pathlib.Path(await dl.path()).read_text(encoding='utf-8'))
-        check('the backup has exactly the keys it had before the Report (the period and the open parts are not in it)', sorted(backup.keys()) == sorted(['app', 'version', 'exported', 'log', 'foods', 'meta', 'health']) and 'period' not in json.dumps(backup)[:0] + '' and not any('report' in k.lower() or 'period' in k.lower() for k in backup['meta']), (sorted(backup.keys()), sorted(backup['meta'].keys())))
+        check('the backup has exactly the keys it had before the Report (the period and the open parts are not in it)', sorted(backup.keys()) == sorted(['app', 'version', 'exported', 'log', 'foods', 'meta', 'health', 'wlog']) and 'period' not in json.dumps(backup)[:0] + '' and not any('report' in k.lower() or 'period' in k.lower() for k in backup['meta']), (sorted(backup.keys()), sorted(backup['meta'].keys())))
         check('...and the data of the sample is in it unchanged (5 entries, water, profile)', len(backup['log']) == 5 and backup['meta']['water'] == CORE_WATER and backup['meta']['ref'] == REF_F)
         ver = re.search(r'(\d+) · \d+ \w+ 20\d\d', await pg.evaluate('document.body.innerText'))
         check('the Data tab shows version 29 or newer', bool(ver) and int(ver.group(1)) >= 29, ver and ver.group(0))

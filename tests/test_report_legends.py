@@ -318,7 +318,7 @@ async def main():
             await pg.click('[data-act=export-json]')
         dl = await dd.value
         backup = json.loads(pathlib.Path(await dl.path()).read_text(encoding='utf-8'))
-        check('the backup has exactly the keys it had before (a legend stores nothing)', sorted(backup.keys()) == sorted(['app', 'version', 'exported', 'log', 'foods', 'meta', 'health']) and 'legend' not in json.dumps(backup['meta']).lower(), sorted(backup.keys()))
+        check('the backup has exactly the keys it had before (a legend stores nothing)', sorted(backup.keys()) == sorted(['app', 'version', 'exported', 'log', 'foods', 'meta', 'health', 'wlog']) and 'legend' not in json.dumps(backup['meta']).lower(), sorted(backup.keys()))
         ver = re.search(r'(\d+) · \d+ \w+ 20\d\d', await pg.evaluate('document.body.innerText'))
         check('the Data tab shows version 32 or newer', bool(ver) and int(ver.group(1)) >= 32, ver and ver.group(0))
         sw = open(ROOT / 'sw.js', encoding='utf-8').read()
