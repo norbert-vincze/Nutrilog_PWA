@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '37 · 11 Nov 2026';
+const VERSION = '38 · 11 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -829,7 +829,7 @@ function syncApply(k, x) {
     const i = S.log.findIndex((e) => e.id === id);
     if (x === null) { if (i >= 0) S.log.splice(i, 1); } else if (i >= 0) replaceObj(S.log[i], x); else S.log.push(x);   // an entry that is open in a sheet is changed in place
   } else if (k[0] === 'f') {
-    if (x === null) delete S.foods[id]; else if (S.foods[id]) replaceObj(S.foods[id], x); else S.foods[id] = x;
+    if (x === null) delete S.foods[id]; else { varietyFix(x); if (S.foods[id]) replaceObj(S.foods[id], x); else S.foods[id] = x; }   // a variety group with a wrong shape from the repository is dropped (version 38)
   } else if (k[0] === 'p') {
     S.meta.portions = S.meta.portions || {};
     if (x === null) delete S.meta.portions[id]; else S.meta.portions[id] = x;
@@ -2868,7 +2868,7 @@ function viewData() {
       <p class="small" style="margin:8px 0">Reference intakes (Nutrients tab): EFSA (European Food Safety Authority), Dietary Reference Values for nutrients, Summary report, EFSA supporting publication 2017:e15121 (reproduction authorised with acknowledgement of the source), and the EFSA opinions of 2019 on sodium and chloride. Values for adults aged 18 and over. Not medical advice.</p>
       <p class="small" style="margin:8px 0">Packaged products (online): <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
-      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}${VARIETY ? ` Variety list: ${VARIETY.counts.unit} units in ${VARIETY.counts.main} groups.` : VARIETY_ERR ? ` The variety list could not be loaded (${esc(VARIETY_ERR)}).` : ''}</p></div>
+      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}${VARIETY ? ` Variety list: ${VARIETY.counts.unit} units in ${VARIETY.counts.main} groups.${varietyUnknownFoods() ? ` ${plural(varietyUnknownFoods(), 'food')} of yours ${varietyUnknownFoods() === 1 ? 'has a variety group' : 'have variety groups'} this version of the app does not know; ${varietyUnknownFoods() === 1 ? 'it counts' : 'they count'} as not classified.` : ''}` : VARIETY_ERR ? ` The variety list could not be loaded (${esc(VARIETY_ERR)}).` : ''}</p></div>
   </div>`;
 }
 
@@ -3492,6 +3492,7 @@ function openFoodEditor(food, opts = {}) {
     const q = estKeys.length ? conf : conf === 'n' ? 'n' : '';   // a confidence without any estimate only means something as “none”
     if (q) fields.q = q;
     if ($('#ffort', sh.el).checked) fields.fortified = true;
+    if (!food && f0.vt) { fields.vt = f0.vt; if (f0.vts) fields.vts = f0.vts; if (f0.vf) fields.vf = f0.vf; }   // a food from an AI answer keeps its variety group (the form has no field for it); editing a saved food keeps its own, because applyFoodFields leaves what the form does not name
     const finish = (out, how) => {
       sh.close();
       if (S.tab === 'foods') render();
@@ -3931,6 +3932,36 @@ function aiFood(raw, k, count, out) {
     if ([1, 2, 3, 4].includes(v)) nova = v; else err('"nova" must be 1, 2, 3, 4 or null.');
   }
 
+  /* Variety group (version 38): "vt" is an id of the variety list (closed vocabulary). Anything else is left out with a warning, never guessed or repaired, and never an error:
+     the food is then simply not classified. "vts" (where the group came from) is "ai" when the answer does not say; "vf" (flags such as "offal") needs a group it belongs to. */
+  let vt, vts, vf;
+  const vShow = (s) => `“${String(s).slice(0, 60)}”`;
+  if (!varietyBlank(raw.vt)) {
+    const id = typeof raw.vt === 'string' ? raw.vt.trim() : '';
+    if (!id || !VAR_VT.test(id)) warn(`"vt" must be the id of a subgroup or unit of the variety list, for example "veg.leaf.spinach", not ${vShow(raw.vt)}. It was left out, so the food is not classified.`);
+    else if (VARIETY && (!varietyNode(id) || varietyNode(id).level === 'main')) warn(`"vt" ${vShow(id)} is not in the variety list. It was left out, so the food is not classified.`);
+    else {
+      vt = id;
+      if (!VARIETY) warn('The variety list could not be loaded, so "vt" was not checked against it.');
+    }
+  }
+  if (vt) {
+    vts = 'ai';
+    if (!varietyBlank(raw.vts)) { if (VAR_SRC.includes(raw.vts)) vts = raw.vts; else warn(`"vts" must be map, manual or ai, not ${vShow(raw.vts)}. It was set to ai.`); }
+    if (!varietyBlank(raw.vf)) {
+      vf = [];
+      if (!Array.isArray(raw.vf)) warn('"vf" must be a list, for example ["offal"]. It was left out.');
+      else if (raw.vf.length > VAR_MAX_FLAGS) warn(`"vf" has more than ${VAR_MAX_FLAGS} flags. It was left out.`);
+      else for (const fl of raw.vf) {
+        const def = typeof fl === 'string' && VARIETY ? VARIETY.flags.get(fl) : null;
+        if (typeof fl !== 'string' || !VAR_FLAG.test(fl)) warn(`A flag in "vf" must be a plain id such as "offal", not ${vShow(fl)}. It was left out.`);
+        else if (VARIETY && !def) warn(`The flag ${vShow(fl)} is not in the variety list. It was left out.`);
+        else if (def && !def.applies.includes(varietyMain(vt))) warn(`The flag ${vShow(fl)} is only for ${def.applies.map((m) => m + '.*').join(' or ')}, not for ${vt}. It was left out.`);
+        else if (!vf.includes(fl)) vf.push(fl);
+      }
+    }
+  } else if (!varietyBlank(raw.vts) || !varietyBlank(raw.vf)) warn('"vts" and "vf" need a valid "vt". They were left out.');
+
   const portions = [];
   if (raw.portions !== undefined && raw.portions !== null) {
     if (!Array.isArray(raw.portions)) err('"portions" must be a list, for example [{"label": "1 slice", "grams": 30}].');
@@ -3959,6 +3990,7 @@ function aiFood(raw, k, count, out) {
   if (q) food.q = q;
   if (fortified) food.fortified = true;
   if (ml) food.ml = true;
+  if (vt) { food.vt = vt; food.vts = vts; if (vf && vf.length) food.vf = vf; }
   out.foods.push({ food, warnings: warns });
 }
 /* text -> { errors: [messages], foods: [{ food, warnings }] }. Any error stops the import: nothing is loaded from an answer that has an error. */
@@ -4006,6 +4038,7 @@ function findDuplicate(f) {   // among the foods you made and the Open Food Fact
 function applyFoodFields(out, fields) {
   Object.assign(out, JSON.parse(JSON.stringify(fields)), { updated: Date.now() });   // a copy, so the food shares nothing with the list or form it came from
   for (const k of AI_FIELDS) if (!(k in fields)) delete out[k];   // an update must not keep the estimates of the old version
+  if ('vt' in fields) for (const k of ['vts', 'vf']) if (!(k in fields)) delete out[k];   // a new variety group brings its own source and flags; with no group in the fields the old one stays
 }
 /* Save a food from an AI answer. When it is already there, ask: update the existing food, save a new one, or cancel (the caller stays open).
    done(food, how) runs after saving; how is 'new' or 'updated'. */
@@ -4039,6 +4072,7 @@ function saveImportedFood(fields, done) {
       const m = { ...fields };
       if (!m.barcode && ex.barcode) m.barcode = ex.barcode;                       // what the import does not say stays as it was
       if (!m.nova && ex.nova) m.nova = ex.nova;
+      if (!m.vt && ex.vt) { m.vt = ex.vt; if (ex.vts) m.vts = ex.vts; if (ex.vf) m.vf = ex.vf; }   // the variety group you have set stays when the import names none
       if (!m.note && ex.note) m.note = ex.note;
       if (!m.ml && ex.ml && ex.basis.unit === 'g' && fields.basis.unit === 'g') m.ml = true;   // the unit you chose by hand stays
       if (!m.portions.length && ex.basis.unit === 'g' && ex.portions && ex.portions.length) m.portions = ex.portions;
@@ -4153,6 +4187,11 @@ function exportJson() {
   download(`nutrilog-backup-${ymd(new Date())}.json`, JSON.stringify(clean), 'application/json');
   toast('Backup downloaded'); if (S.tab === 'data') render();
 }
+/* the variety columns of the entries CSV (version 38): the group id as it is stored (also one this version does not know), where it came from, and the flags; empty when the food is not classified */
+function varietyCsv(f) {
+  const r = varietyOf(f);   // only foods that keep their group in the record (built-in foods get theirs from the map files in step L3)
+  return r.state === 'none' ? ['', '', ''] : [r.id, r.source || '', r.flags.join(';')];
+}
 function exportEntries() {
   const rows = [...S.log].filter((e) => getFood(e.f)).sort((a, b) => a.d.localeCompare(b.d) || byTime(a, b));
   const withMax = new Set(), withEst = new Set();
@@ -4167,10 +4206,10 @@ function exportEntries() {
     return { e, f, lo, hi, est };
   });
   const mi = [...withMax].sort((a, b) => a - b), ei = [...withEst].sort((a, b) => a - b);
-  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'energy_estimated', 'estimate_confidence', 'est_keys', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
+  const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'variety_unit', 'variety_source', 'variety_flags', 'energy_estimated', 'estimate_confidence', 'est_keys', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi, est } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, unitOf(f), novaOf(f) || '', energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
+    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, unitOf(f), novaOf(f) || '', ...varietyCsv(f), energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -4231,6 +4270,8 @@ function importJson(file) {
       if (isFoodsFile(j) && !Array.isArray(j.log)) throw new Error('this file has foods but no diary. Use “Import foods (JSON)” to add its foods.');
       if (j.app !== 'tapnaplo' || !Array.isArray(j.log) || typeof j.foods !== 'object') throw new Error('this is not a Nutrilog backup file.');
       Object.values(j.foods).forEach(normConfidence);
+      let varBad = 0;   // foods whose variety group (version 38) has a wrong shape: the group is dropped, the food stays
+      for (const f of Object.values(j.foods)) if (varietyFix(f)) varBad++;
       const nE = j.log.length, nF = Object.keys(j.foods).length;
       /* Health log (version 25): a file that has a "health" part (even an empty one) replaces the notes; a file made before version 25 has none and leaves the notes as they are */
       const hasH = hasOwn(j, 'health');
@@ -4255,15 +4296,16 @@ function importJson(file) {
       const refBad = hasR && j.meta.ref !== null && refFile === null;
       const refText = refBad ? ' The reference intake settings in the file are not valid and will be skipped; yours stay as they are.'
         : !hasR && S.meta.ref ? ' Your reference intake settings are not in this file, so they stay as they are.' : '';
+      const varText = varBad ? ` ${plural(varBad, 'food')} in the file ${varBad === 1 ? 'has' : 'have'} a variety group that is not valid; ${varBad === 1 ? 'it is' : 'they are'} restored as not classified.` : '';
       askConfirm({
         title: 'Replace your data?', danger: true, okLabel: 'Replace',
-        text: `This replaces everything in the app with the backup: ${counts}.${healthText}${waterText}${refText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
+        text: `This replaces everything in the app with the backup: ${counts}.${healthText}${waterText}${refText}${varText} Save a backup of the current data first if you are not sure.${SY.cfg ? ' Sync is on, so your other devices will get the restored data as well.' : ''}`,
         onOk: () => {
           const keepRef = hasR && !refBad ? refFile : cleanRef(S.meta.ref);
           S.log = j.log; S.foods = j.foods; S.meta = Object.assign(metaDefaults(), j.meta || {}); S.meta.water = cleanWater(S.meta.water); S.meta.ref = keepRef;
           if (hc) S.health = hc.list;
           if (wc) S.wlog = wc.list;
-          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : '') + (wc && wc.dropped ? ` · ${plural(wc.dropped, 'water recording')} skipped: not valid` : '') + (refBad ? ' · reference intake settings skipped: not valid' : ''));
+          invalidate(); save(); render(); toast('Restored' + (hc && hc.dropped ? ` · ${plural(hc.dropped, 'note')} skipped: not valid` : '') + (wc && wc.dropped ? ` · ${plural(wc.dropped, 'water recording')} skipped: not valid` : '') + (varBad ? ` · ${plural(varBad, 'variety group')} skipped: not valid` : '') + (refBad ? ' · reference intake settings skipped: not valid' : ''));
         },
       });
     } catch (err) { toast('Could not restore: ' + err.message); }
@@ -4460,6 +4502,8 @@ function shareFood(f) {
   if (f.fortified === true) o.fortified = true;
   if ([1, 2, 3, 4].includes(Number(f.nova))) o.nova = Number(f.nova);
   if (f.ml === true) o.ml = true;
+  const vr = varietyClean(f).v;   // the variety group (version 38), only when there is a well-formed one; a link without it looks as before
+  if (vr) { o.vt = vr.vt; if (vr.vts) o.vts = vr.vts; if (vr.vf) o.vf = vr.vf; }
   return o;
 }
 /* the days from..to (both included) of the diary as JSON text, with a count of what went in */
@@ -4591,6 +4635,8 @@ function shareFoodCheck(x) {
   if (x.fortified === true) f.fortified = true;
   if ([1, 2, 3, 4].includes(x.nova)) f.nova = x.nova;
   if (x.ml === true) f.ml = true;
+  const vr = varietyClean(x).v;   // a group with a wrong shape is left out, the link still opens (version 38)
+  if (vr) Object.assign(f, vr);
   return f;
 }
 /* checks everything in the unpacked JSON and builds the diary of the shared copy: { data:{from,to,made,entries,foods,nova} } or { error } */
@@ -4895,6 +4941,70 @@ async function loadVariety() {   // never throws: the Variety feature is optiona
   } catch (err) { VARIETY = null; VARIETY_ERR = (err && err.message) || 'unknown error'; }
 }
 
+/* ================= Variety: the fields of a food (version 38, step L2 of the Variety plan) =================
+   Three optional fields on a food that is stored in S.foods (foods you made, "u:", and saved Open Food Facts products, "o:"):
+     vt   the id of a subgroup or a unit of the variety list ("veg.leaf", "veg.leaf.spinach"); missing = not classified. A main group alone (“veg”) is not a group of a food.
+     vts  where the group came from: "map" (a map file, step L3), "manual" (set by hand, step L4) or "ai" (an answer of an AI that was reviewed and saved)
+     vf   attributes, a list of flag ids of the variety list ("offal", only for "mea.*"); only with a vt
+   Nothing is required: a food without them is not classified, and every old save, backup, Sync record and link without them works as before. CIQUAL, USDA and dmBio foods get their group
+   from map files later (step L3); they are not touched here.
+   Two levels of checking, because a stored group may come from a later version of the list:
+     - varietyClean (format only, no list needed): used for everything that is read back (storage, a backup, the repository, a shared link). A field with a wrong shape is dropped, never repaired
+       or guessed; a well-formed id that this version of the list does not know is KEPT (nothing is lost) and counts as not classified (varietyOf: state "unknown").
+     - the door of an import (aiFood: Paste from AI and Import foods (JSON)): "vt" must be in the list (closed vocabulary), otherwise it is left out and a warning says so. */
+const VAR_VT = /^[a-z]{3,6}(\.[a-z0-9]+(-[a-z0-9]+)*){1,2}$/;   // the shape of a subgroup id or a unit id
+const VAR_FLAG = /^[a-z][a-z0-9-]{0,30}$/;
+const VAR_SRC = ['map', 'manual', 'ai'];
+const VAR_MAX_FLAGS = 10;
+const varietyMain = (id) => id.slice(0, id.indexOf('.'));
+const varietyBlank = (v) => v === undefined || v === null || v === '';
+/* the three fields of any object that may carry them -> { v: { vt, vts?, vf? } | null, bad } ; bad = something that was there had a wrong shape (or a flag on a group it does not belong to) and was dropped */
+function varietyClean(x) {
+  if (!x || typeof x !== 'object') return { v: null, bad: false };
+  if (varietyBlank(x.vt)) return { v: null, bad: !varietyBlank(x.vts) || !varietyBlank(x.vf) };   // a source or a flag without a group means nothing
+  if (typeof x.vt !== 'string' || x.vt.length > 80 || !VAR_VT.test(x.vt)) return { v: null, bad: true };
+  const v = { vt: x.vt };
+  let bad = false;
+  if (!varietyBlank(x.vts)) { if (VAR_SRC.includes(x.vts)) v.vts = x.vts; else bad = true; }
+  if (!varietyBlank(x.vf)) {
+    if (!Array.isArray(x.vf) || x.vf.length > VAR_MAX_FLAGS) bad = true;
+    else {
+      const main = varietyMain(x.vt), keep = [];
+      for (const fl of x.vf) {
+        if (typeof fl !== 'string' || !VAR_FLAG.test(fl)) { bad = true; continue; }
+        const def = VARIETY && VARIETY.flags.get(fl);
+        if (def && !def.applies.includes(main)) { bad = true; continue; }   // a flag this version knows, on a group it does not belong to (offal under veg)
+        if (!keep.includes(fl)) keep.push(fl);
+      }
+      if (keep.length) v.vf = keep;
+    }
+  }
+  return { v, bad };
+}
+/* the same, in place, on a food record that was read back; returns true when a field with a wrong shape was dropped (a null or an empty text is simply removed) */
+function varietyFix(f) {
+  if (!f || typeof f !== 'object' || !('vt' in f || 'vts' in f || 'vf' in f)) return false;   // most foods: nothing to do
+  const { v, bad } = varietyClean(f);
+  const same = v ? f.vt === v.vt && f.vts === v.vts && JSON.stringify(f.vf) === JSON.stringify(v.vf) : f.vt === undefined && f.vts === undefined && f.vf === undefined;
+  if (same) return false;
+  delete f.vt; delete f.vts; delete f.vf;
+  if (v) Object.assign(f, v);
+  return bad;
+}
+/* Where a food has its group: foods in S.foods keep it in the record (like NOVA); the map files for CIQUAL, USDA and dmBio come in step L3 and will be read here.
+   Returns { state: 'none' | 'ok' | 'unknown', id, node, source, flags }: 'none' = not classified; 'ok' = the group is in the list (node: the subgroup or unit);
+   'unknown' = a well-formed id that this list does not have (a later version of the list, or the list could not be loaded): it counts as not classified. */
+function varietyOf(f) {
+  const none = { state: 'none', id: null, node: null, source: null, flags: [] };
+  if (!f || !novaStored(f)) return none;
+  const { v } = varietyClean(f);
+  if (!v) return none;
+  const node = varietyNode(v.vt);
+  if (!node || node.level === 'main') return { state: 'unknown', id: v.vt, node: null, source: v.vts || null, flags: [] };
+  return { state: 'ok', id: v.vt, node, source: v.vts || null, flags: (v.vf || []).filter((k) => VARIETY.flags.has(k)) };
+}
+const varietyUnknownFoods = () => (VARIETY ? Object.values(S.foods).filter((f) => varietyOf(f).state === 'unknown').length : 0);
+
 /* ================= start ================= */
 async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy asks only for the tables its foods come from (usda.json is 0.9 MB, dmbio.json 0.1 MB gzipped)
   const [r, ru, rd] = await Promise.all([fetch('ciqual.json'), need.usda ? fetch('usda.json').catch((e) => e) : null, need.dm ? fetch('dmbio.json').catch((e) => e) : null]);   // the files load at the same time
@@ -4942,6 +5052,8 @@ async function init() {
     const [log, foods, meta, sy, health, wlog] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health'), Store.get('wlog')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
+    let varBad = 0;   // a variety group (version 38) with a wrong shape is dropped, the food stays (said below)
+    for (const f of Object.values(S.foods)) if (varietyFix(f)) varBad++;
     if (meta && typeof meta === 'object') S.meta = Object.assign(metaDefaults(), meta);
     S.meta.water = cleanWater(S.meta.water);
     S.meta.ref = cleanRef(S.meta.ref);   // old saves have no profile; a damaged one is no profile
@@ -4956,6 +5068,7 @@ async function init() {
     render();
     if (hc.dropped) toast(`${plural(hc.dropped, 'Health log note')} could not be read and ${hc.dropped === 1 ? 'was' : 'were'} skipped.`);
     else if (wc.dropped) toast(`${plural(wc.dropped, 'water recording')} could not be read and ${wc.dropped === 1 ? 'was' : 'were'} skipped.`);
+    else if (varBad) toast(`${plural(varBad, 'food')} had a variety group that could not be read. ${varBad === 1 ? 'It is' : 'They are'} not classified.`);
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
     syncStart();
   } catch (err) {
@@ -4969,7 +5082,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { varietyBuild, varietyNode, varietyKey, VARIETY_V, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { varietyBuild, varietyNode, varietyKey, VARIETY_V, varietyClean, varietyFix, varietyOf, varietyCsv, varietyUnknownFoods, VAR_VT, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

@@ -491,6 +491,33 @@ A diagram alatt ugyanolyan jelmagyarázat áll, mint a Trendnél, és csak azoka
 
 **Megosztás.** A megosztott linken (14. fejezet) a Report fül a harmadik fül, és csak a megosztott napokat látja, a Trenddel, a „Meals and weekdays”, a „Foods”, a „Food processing (NOVA)” és a „Time of day” szakasszal együtt. A „Foods” mértékét ott is választhatod, de írni ott sem tud semmit, és a NOVA-csoportot sem tudja beállítani.
 
+## 18. Változatosság („Variety”): az előkészület, még nem látszik a Report fülön
+
+Ez a fejezet egy **készülő** funkcióról szól. A cél az, hogy az app megmondja, hány *különböző* növényi és állati egységet ettél egy héten (például hányféle zöldséget). A funkció lépésenként épül, és minden lépés külön verzió. A Report fülön a Variety szakasz **még nincs kész**, ezért a használatodban egyelőre semmi sem változik.
+
+**Mi van kész:**
+- **37-es verzió:** a rögzített lista. 17 főcsoportból, 75 alcsoportból és 164 egységből áll (például zöldség › levélzöldség › spenót). Az app induláskor ellenőrzi.
+- **38-as verzió:** egy saját tétel (amit te vittél fel, vagy az Open Food Facts-ból mentettél el) három új, **elhagyható** mezőt kaphat: a **csoportot** (a lista egy alcsoportja vagy egysége), a csoport **eredetét** (honnan jött: automatikus javaslatból, kézzel vagy AI válaszából) és egy **jelölőt** (most csak a „belsőség”, vagyis az „offal”, és csak a hús csoportjain belül).
+
+**Mit jelent ez neked most:**
+- Semmit nem kell megadnod. A tétel felvételénél, az „Edit food” ablakban és a naplózásnál nincs új mező vagy gomb. Egy csoport nélküli tétel egyszerűen „besorolatlan”.
+- Az új mezők **egyelőre csak az AI-s betöltésen át érkezhetnek**: ha a „Paste from AI” vagy az „Import foods (JSON)” válasza tartalmaz egy `vt` mezőt, az app megnézi, szerepel-e a listán. Ha igen, a tétel megkapja. Ha nem szerepel, vagy hibás az alakja, a mező **kimarad**, a „Check these:” sorban elolvashatod, miért, és a tétel ettől még betöltődik. Az app semmit nem javít át és nem talál ki.
+- Ami már megvan a tételen, azt az „Edit food”, az „Update existing” és a mentés megőrzi. Ha az „Update existing” válasza nem tartalmaz csoportot, a régi marad. Ha tartalmaz, az felváltja a régit.
+- A mezők **elmennek** a mentésfájlba (Save backup), visszaállításkor visszajönnek, a Sync átviszi őket a másik eszközre, a megosztó link is tartalmazza őket (a linkformátum nem változott), a „**Entries (CSV)**” pedig három új oszlopot kap a `nova` után: `variety_unit`, `variety_source`, `variety_flags`. Az üres cella azt jelenti, hogy a tétel nincs besorolva.
+- Régi mentésfájl, régi Sync-adat és régi link változtatás nélkül működik.
+- A tárolt adatból vagy a mentésfájlból érkező hibás alakú csoportot az app **eldobja**, a tétel megmarad, és szól, hány tételt érintett. A Sync-ből érkező hibás csoportot szó nélkül dobja el. Egy hibátlan, de az app listájában nem szereplő azonosítót (például egy későbbi lista egységét) **megtartja**, és besorolatlannak számolja.
+
+**Hogyan nézheted meg, hogy a lista betöltődött:**
+1. Nyisd meg a **Data** fület.
+2. Görgess le a „**Sources & licences**” kártyához.
+3. Keresd a mondatot: „Variety list: 164 units in 17 groups.” Ha az app nem tudta betölteni, a mondat ezt írja, az okával együtt, a többi funkció ettől még működik.
+
+**Ami még nincs meg:**
+- A CIQUAL, USDA és dmBio tételeknek még nincs csoportjuk (javaslati fájlok jönnek hozzájuk, jóváhagyott sorokkal).
+- A csoportot beállító képernyő (hasonló a „Set NOVA groups”-hoz).
+- Az AI-prompt frissítése a csoport azonosítóival.
+- A Report fül „Variety” szakasza.
+
 ## Ha elakadsz
 
 | Mit látsz | Mit csinálj |
