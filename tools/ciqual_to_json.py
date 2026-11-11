@@ -31,6 +31,10 @@ for c in value_cols:
     key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:40]
     nutrients.append({"key": key, "label": label, "unit": unit})
     col_for.append(c)
+# Nutrients the app tracks that CIQUAL 2020 does not report at all (version 35: caffeine). They come after every CIQUAL column, and every food has
+# "no data" (null) for them here, so the rule "v[i] matches nutrients[i]" holds. usda.json fills them where USDA has a value (see usda_to_json.py).
+EXTRA = [{"key": "caffeine", "label": "Caffeine", "unit": "mg"}]
+nutrients += EXTRA
 keys = [n["key"] for n in nutrients]
 assert len(set(keys)) == len(keys), [k for k in keys if keys.count(k) > 1]
 
@@ -68,7 +72,7 @@ for _, r in df.iterrows():
             kcal = round(num(p) * 4 + num(c_) * 4 + num(f) * 9, 1)
             kcal_est = True
             est += 1
-    vals = [kcal] + [parse(r[c]) for c in col_for]
+    vals = [kcal] + [parse(r[c]) for c in col_for] + [None] * len(EXTRA)
     item = {"c": str(r["alim_code"]).strip(), "n": r["alim_nom_eng"], "v": vals}
     for k, col in (("g", "alim_ssgrp_nom_eng"), ("G", "alim_grp_nom_eng")):
         if isinstance(r[col], str) and r[col].strip() not in ("-", "", "nan"):
@@ -80,7 +84,7 @@ for _, r in df.iterrows():
 out = {
     "source": "Anses. 2020. Ciqual French food composition table (CC BY 4.0). https://doi.org/10.5281/zenodo.4770202",
     "per": "100 g edible portion",
-    "encoding": "v[i] matches nutrients[i]: number | null = no data | '<x' = below limit | 't' = traces. foods[].e = 1: energy estimated from P/C/F.",
+    "encoding": "v[i] matches nutrients[i]: number | null = no data | '<x' = below limit | 't' = traces. foods[].e = 1: energy estimated from P/C/F. The last nutrient (caffeine) is not reported by CIQUAL: null for every food.",
     "nutrients": nutrients,
     "foods": foods,
 }

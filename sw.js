@@ -1,10 +1,10 @@
 /* Nutrilog service worker: offline use.
    - ciqual.json, usda.json and dmbio.json (the food tables): cache-first, each kept in a cache of its own that is NOT renewed with every app version.
-     Change the number of a cache only when its file changes (ciqual.json and usda.json share nutrilog-data-1, dmbio.json has nutrilog-dmbio-1).
+     Change the number of a cache only when its file changes (ciqual.json and usda.json share nutrilog-data-2, dmbio.json has nutrilog-dmbio-2; version 35 added the caffeine column to all three, so both numbers went up).
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v34';   // keep in step with VERSION in app.js
-const DATA = { 'ciqual.json': 'nutrilog-data-1', 'usda.json': 'nutrilog-data-1', 'dmbio.json': 'nutrilog-dmbio-1' };
+const CACHE = 'nutrilog-v35';   // keep in step with VERSION in app.js
+const DATA = { 'ciqual.json': 'nutrilog-data-2', 'usda.json': 'nutrilog-data-2', 'dmbio.json': 'nutrilog-dmbio-2' };
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',
   'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js'];
 const dataCacheOf = (pathname) => { const f = Object.keys(DATA).find((n) => pathname.endsWith('/' + n)); return f ? DATA[f] : null; };

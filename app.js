@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '34 · 5 Nov 2026';
+const VERSION = '35 · 11 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -281,7 +281,7 @@ const L = {
   water: ['Water', 'mac'], protein_crude_n_x_6_25: ['Crude protein (N × 6.25)', 'oth'], starch: ['Starch', 'oth'],
   fructose: ['Fructose', 'oth'], galactose: ['Galactose', 'oth'], glucose: ['Glucose', 'oth'], lactose: ['Lactose', 'oth'],
   maltose: ['Maltose', 'oth'], sucrose: ['Sucrose', 'oth'], polyols: ['Polyols', 'oth'], ash: ['Ash', 'oth'],
-  alcohol: ['Alcohol', 'oth'], organic_acids: ['Organic acids', 'oth'],
+  alcohol: ['Alcohol', 'oth'], organic_acids: ['Organic acids', 'oth'], caffeine: ['Caffeine', 'oth'],   // caffeine (version 35): the last nutrient, not in CIQUAL, from USDA SR Legacy, Open Food Facts and your own foods
 };
 const labelOf = (i) => (L[KEYS[i]] ? L[KEYS[i]][0] : CAT.nutrients[i].label);
 const groupOf = (i) => {
@@ -1009,6 +1009,7 @@ const OFF_MAP = {
   'vitamin-b2_100g': ['vitamin_b2_or_riboflavin', 1000], 'vitamin-pp_100g': ['vitamin_b3_or_niacin', 1000],
   'pantothenic-acid_100g': ['vitamin_b5_or_pantothenic_acid', 1000], 'vitamin-b6_100g': ['vitamin_b6', 1000],
   'vitamin-b9_100g': ['vitamin_b9_or_folate', 1e6], 'vitamin-b12_100g': ['vitamin_b12', 1e6],
+  'caffeine_100g': ['caffeine', 1000],   // Open Food Facts gives grams per 100 g, the app mg
 };
 const OFF_FIELDS = 'code,product_name,product_name_en,product_name_hu,brands,quantity,serving_quantity,serving_size,nova_group,nutriments';
 function offToFood(p) {

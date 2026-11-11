@@ -282,8 +282,8 @@ async def main():
         # ---- offline: the product table sits in a cache of its own, barcode still works
         await page.click('[data-tab=log]'); await page.wait_for_timeout(1500)
         keys = await T("caches.keys().then(async ks=>{const o={};for(const k of ks){o[k]=(await (await caches.open(k)).keys()).map(r=>new URL(r.url).pathname.split('/').pop())}return o})")
-        check('dmbio.json has its own cache, apart from the app files and the other food tables', keys.get('nutrilog-dmbio-1') == ['dmbio.json'] and not any('dmbio.json' in v for k, v in keys.items() if k != 'nutrilog-dmbio-1'), keys)
-        check('ciqual.json and usda.json stay together in nutrilog-data-1', sorted(keys.get('nutrilog-data-1', [])) == ['ciqual.json', 'usda.json'], keys.get('nutrilog-data-1'))
+        check('dmbio.json has its own cache, apart from the app files and the other food tables', keys.get('nutrilog-dmbio-2') == ['dmbio.json'] and not any('dmbio.json' in v for k, v in keys.items() if k != 'nutrilog-dmbio-2'), keys)
+        check('ciqual.json and usda.json stay together in nutrilog-data-2', sorted(keys.get('nutrilog-data-2', [])) == ['ciqual.json', 'usda.json'], keys.get('nutrilog-data-2'))
         await ctx.set_offline(True)
         n0 = len(off_calls)
         await page.reload(); await page.wait_for_selector('.hero', timeout=10000)

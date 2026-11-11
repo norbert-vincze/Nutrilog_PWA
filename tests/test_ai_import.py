@@ -290,8 +290,8 @@ async def main():
                 for k in pending: got[k] = default
             return got, dup
         got, dup = key_bullets(prompt)
-        left_out = {'protein_crude_n_x_6_25'}
-        check('prompt: the 63 keys of section 7 are the keys of the app, all but protein_crude_n_x_6_25, each once', set(got) == set(keys) - left_out and dup == [] and len(got) == 63, (set(keys) - left_out ^ set(got), dup, len(got)))
+        left_out = {'protein_crude_n_x_6_25', 'caffeine'}   # caffeine (version 35) is in the app and its tables, but not in prompt v3.1 yet; a caffeine value in an answer is still accepted (it is a key of the app)
+        check('prompt: the 63 keys of section 7 are the keys of the app, all but protein_crude_n_x_6_25 and caffeine, each once', set(got) == set(keys) - left_out and dup == [] and len(got) == 63, (set(keys) - left_out ^ set(got), dup, len(got)))
         wrong = [(k, got[k], unit_of[k]) for k in got if got[k] != unit_of.get(k)]
         check('prompt: every key of section 7 has the unit of the app (UNITS)', wrong == [], wrong[:5])
         codes = sorted({c for line in prompt.split('## 6. ', 1)[1].split('\n## 7.', 1)[0].split('\n') if line.startswith('- ') for c in re.findall(r'\b(\d{4,5})\b', line)})

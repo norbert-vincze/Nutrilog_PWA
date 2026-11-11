@@ -9,7 +9,7 @@ the JSON is a Nutrilog backup file that only holds foods (ids "u:dm<article id>"
 with the extra columns (confidence, fortified, basis, label keys, ...). They are joined on the dm article id.
 The source files are not in the repo.
 
-What is in `v` (64 values, same nutrients and order as ciqual.json; null = no data):
+What is in `v` (65 values, same nutrients and order as ciqual.json; null = no data):
   - the dm label values (energy, fat, saturated fat, carbohydrate, sugars, fibre, protein, salt, sodium, plus the
     label extras the CSV lists in "Címkéből átvett kulcsok") = measured. Their indexes are in `l`.
   - every other value is an ESTIMATE from the ingredient list (CIQUAL 2020 raw ingredients). `q` is its confidence.

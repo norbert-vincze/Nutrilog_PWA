@@ -7,7 +7,7 @@ Usage:
 The two folders are the unzipped "CSV" downloads from https://fdc.nal.usda.gov/download-datasets
 (Foundation Foods and SR Legacy). Needs pandas. The source files are not in the repo.
 
-The values in `v` follow the same 64 nutrients, in the same order, as ciqual.json, so the app can use both
+The values in `v` follow the same 65 nutrients, in the same order, as ciqual.json, so the app can use both
 with one nutrient list. Missing = null (no data). Nothing is guessed: a CIQUAL nutrient that USDA does not
 report stays empty (polyols, organic acids, chloride). Only these are derived:
   - salt (g)        = sodium (mg) x 2.5 / 1000
@@ -48,6 +48,7 @@ MAP = {
     "vitamin_c": ["401"], "vitamin_b1_or_thiamin": ["404"], "vitamin_b2_or_riboflavin": ["405"],
     "vitamin_b3_or_niacin": ["406"], "vitamin_b5_or_pantothenic_acid": ["410"], "vitamin_b6": ["415"],
     "vitamin_b9_or_folate": ["417"], "vitamin_b12": ["418"],
+    "caffeine": ["262"],                                     # mg; SR Legacy reports it for about two thirds of the foods, Foundation Foods not at all
 }
 DERIVED = {"kcal", "salt", "protein_crude_n_x_6_25", "polyols", "organic_acids", "chloride"}
 assert set(KEYS) == set(MAP) | DERIVED, (set(KEYS) ^ (set(MAP) | DERIVED))
