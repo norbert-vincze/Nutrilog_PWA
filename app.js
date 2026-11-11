@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '38 · 11 Nov 2026';
+const VERSION = '39 · 12 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -2868,7 +2868,7 @@ function viewData() {
       <p class="small" style="margin:8px 0">Reference intakes (Nutrients tab): EFSA (European Food Safety Authority), Dietary Reference Values for nutrients, Summary report, EFSA supporting publication 2017:e15121 (reproduction authorised with acknowledgement of the source), and the EFSA opinions of 2019 on sodium and chloride. Values for adults aged 18 and over. Not medical advice.</p>
       <p class="small" style="margin:8px 0">Packaged products (online): <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
-      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}${VARIETY ? ` Variety list: ${VARIETY.counts.unit} units in ${VARIETY.counts.main} groups.${varietyUnknownFoods() ? ` ${plural(varietyUnknownFoods(), 'food')} of yours ${varietyUnknownFoods() === 1 ? 'has a variety group' : 'have variety groups'} this version of the app does not know; ${varietyUnknownFoods() === 1 ? 'it counts' : 'they count'} as not classified.` : ''}` : VARIETY_ERR ? ` The variety list could not be loaded (${esc(VARIETY_ERR)}).` : ''}</p></div>
+      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}${VARIETY ? ` Variety list: ${VARIETY.counts.unit} units in ${VARIETY.counts.main} groups.${varietyUnknownFoods() ? ` ${plural(varietyUnknownFoods(), 'food')} of yours ${varietyUnknownFoods() === 1 ? 'has a variety group' : 'have variety groups'} this version of the app does not know; ${varietyUnknownFoods() === 1 ? 'it counts' : 'they count'} as not classified.` : ''} Variety maps: ${varietyMapCounts().ciqual} CIQUAL, ${varietyMapCounts().usda} USDA, ${varietyMapCounts().dmbio} dmBio foods have a group.${VMAP_ERR ? ` The variety maps could not be used completely (${esc(VMAP_ERR)}).` : ''}` : VARIETY_ERR ? ` The variety list could not be loaded (${esc(VARIETY_ERR)}).` : ''}</p></div>
   </div>`;
 }
 
@@ -4189,7 +4189,7 @@ function exportJson() {
 }
 /* the variety columns of the entries CSV (version 38): the group id as it is stored (also one this version does not know), where it came from, and the flags; empty when the food is not classified */
 function varietyCsv(f) {
-  const r = varietyOf(f);   // only foods that keep their group in the record (built-in foods get theirs from the map files in step L3)
+  const r = varietyOf(f);   // the group of the food: its own field (own and saved foods) or its row in the map file of its table (CIQUAL, USDA, dmBio; version 39)
   return r.state === 'none' ? ['', '', ''] : [r.id, r.source || '', r.flags.join(';')];
 }
 function exportEntries() {
@@ -4991,12 +4991,20 @@ function varietyFix(f) {
   if (v) Object.assign(f, v);
   return bad;
 }
-/* Where a food has its group: foods in S.foods keep it in the record (like NOVA); the map files for CIQUAL, USDA and dmBio come in step L3 and will be read here.
+/* Where a food has its group (the order of the plan, 3.2: the food's own field, then the map, then not classified):
+     - foods in S.foods (own "u:" and saved "o:") keep it in the record (like NOVA): the own field is the only source, a map is never looked at for them;
+     - CIQUAL, USDA and dmBio foods have it in the map file of their table (version 39, step L3: vt_map_*.json, only rows that were approved); a food of the tables that is not in the map is not classified.
+       A hand choice for a food of the tables will be kept on the device and win over the map (step L4, not built yet).
    Returns { state: 'none' | 'ok' | 'unknown', id, node, source, flags }: 'none' = not classified; 'ok' = the group is in the list (node: the subgroup or unit);
    'unknown' = a well-formed id that this list does not have (a later version of the list, or the list could not be loaded): it counts as not classified. */
 function varietyOf(f) {
   const none = { state: 'none', id: null, node: null, source: null, flags: [] };
-  if (!f || !novaStored(f)) return none;
+  if (!f) return none;
+  if (!novaStored(f)) {   // a food of the tables: the map (already checked against the list when it was loaded)
+    const m = VARIETY ? varietyMapOf(f) : null;
+    const node = m ? varietyNode(m.vt) : null;
+    return node ? { state: 'ok', id: m.vt, node, source: 'map', flags: m.vf.slice() } : none;
+  }
   const { v } = varietyClean(f);
   if (!v) return none;
   const node = varietyNode(v.vt);
@@ -5004,6 +5012,79 @@ function varietyOf(f) {
   return { state: 'ok', id: v.vt, node, source: v.vts || null, flags: (v.vf || []).filter((k) => VARIETY.flags.has(k)) };
 }
 const varietyUnknownFoods = () => (VARIETY ? Object.values(S.foods).filter((f) => varietyOf(f).state === 'unknown').length : 0);
+
+/* ================= Variety: the map files of the three tables (version 39, step L3 of the Variety plan) =================
+   vt_map_ciqual.json, vt_map_usda.json, vt_map_dmbio.json: { app:'tapnaplo-variety-map', version:1, source, updated, map:{ <code of the table>: "<vt>" | { vt, vf:[flag ids] } } }.
+   The code is the part after the prefix of the food id (c:  usda:  dm:). A map holds ONLY rows that Norbert approved (tools/variety_suggest.py writes them from a reviewed suggestion file);
+   nothing is filled in automatically and a new map is empty. A food of the tables that is not in its map is not classified, never guessed.
+   Checked against the list when it is loaded: a row with a wrong shape, an id that is not a subgroup or unit of the list, or a flag that is unknown or does not fit its group is left out and counted
+   (the file is shipped together with the list, so such a row is a mistake of the build, not a later list); a file that is not a map of that table, or has a newer version, is not used at all.
+   Never throws: without the list or without a file the app starts and the foods are not classified; the Data tab says why. Not user data: nothing of it goes into backup, Sync, CSV (except through the
+   entries CSV columns of version 38, which show the group the food has) or a shared link. */
+const VARIETY_MAP_V = 1;   // the file version this app can read
+const VMAP_FILES = { ciqual: 'vt_map_ciqual.json', usda: 'vt_map_usda.json', dmbio: 'vt_map_dmbio.json' };
+const VMAP_PREFIX = { ciqual: 'c:', usda: 'usda:', dmbio: 'dm:' };
+const VMAP_CODE = /^[A-Za-z0-9_-]{1,32}$/;
+let VMAPS = { ciqual: new Map(), usda: new Map(), dmbio: new Map() }, VMAP_ERR = '';
+/* pure: the raw JSON of one map file -> { map: Map(code -> { vt, vf: [...] }), dropped: [reasons of the rows that were left out], problems: [reasons the whole file is not used], newer } */
+function varietyMapBuild(raw, source, list) {
+  const out = { map: new Map(), dropped: [], problems: [], newer: false };
+  const fail = (msg) => { out.problems.push(msg); return out; };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fail('it is not a variety map');
+  if (raw.app !== 'tapnaplo-variety-map') return fail('it is not a variety map');
+  if (!Number.isInteger(raw.version) || raw.version < 1) return fail('the version is not a positive whole number');
+  if (raw.version > VARIETY_MAP_V) { out.newer = true; return fail('it needs a newer version of the app'); }
+  if (raw.source !== source) return fail(`it is the map of ${typeof raw.source === 'string' ? raw.source.slice(0, 20) : 'another table'}, not of ${source}`);
+  if (!raw.map || typeof raw.map !== 'object' || Array.isArray(raw.map)) return fail('"map" is not an object');
+  for (const code of Object.keys(raw.map)) {
+    const row = raw.map[code];
+    const bad = (why) => out.dropped.push(`${code}: ${why}`);
+    if (!VMAP_CODE.test(code)) { bad('the code has a wrong shape'); continue; }
+    const vt = typeof row === 'string' ? row : row && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).every((k) => k === 'vt' || k === 'vf') ? row.vt : undefined;
+    if (typeof vt !== 'string' || vt.length > 80 || !VAR_VT.test(vt)) { bad('the group has a wrong shape'); continue; }
+    const node = list.byId.get(vt);
+    if (!node || node.level === 'main') { bad(`${vt} is not a subgroup or unit of the list`); continue; }
+    const vf = [];
+    if (typeof row === 'object' && row.vf !== undefined) {
+      if (!Array.isArray(row.vf) || row.vf.length > VAR_MAX_FLAGS) { bad('"vf" is not a short list'); continue; }
+      let ok = true;
+      for (const fl of row.vf) {
+        const def = typeof fl === 'string' ? list.flags.get(fl) : null;
+        if (!def || !def.applies.includes(varietyMain(vt))) { ok = false; bad(`the flag ${typeof fl === 'string' ? fl.slice(0, 30) : '?'} is not known or does not fit ${vt}`); break; }
+        if (!vf.includes(fl)) vf.push(fl);
+      }
+      if (!ok) continue;
+    }
+    out.map.set(code, { vt, vf });
+  }
+  return out;
+}
+const varietyMapOf = (f) => {   // the map row { vt, vf } of a food of one of the tables, or null
+  const id = f && typeof f.id === 'string' ? f.id : '';
+  for (const src of Object.keys(VMAP_PREFIX)) if (id.startsWith(VMAP_PREFIX[src])) return VMAPS[src].get(id.slice(VMAP_PREFIX[src].length)) || null;
+  return null;
+};
+const varietyMapCounts = () => ({ ciqual: VMAPS.ciqual.size, usda: VMAPS.usda.size, dmbio: VMAPS.dmbio.size });
+async function loadVarietyMaps() {   // never throws; needs the list to check the rows against, so it runs after loadVariety
+  const fresh = { ciqual: new Map(), usda: new Map(), dmbio: new Map() }, probs = [];
+  if (VARIETY) {
+    await Promise.all(Object.keys(VMAP_FILES).map(async (src) => {
+      const file = VMAP_FILES[src];
+      try {
+        const r = await fetch(file).catch(() => null);
+        if (!r || !r.ok) throw new Error(r && r.status ? 'HTTP ' + r.status : 'no connection');
+        let raw;
+        try { raw = await r.json(); } catch { throw new Error('the file is not valid JSON'); }
+        const out = varietyMapBuild(raw, src, VARIETY);
+        if (out.problems.length) throw new Error(out.problems[0]);
+        fresh[src] = out.map;
+        if (out.dropped.length) probs.push(`${file}: ${out.dropped.length === 1 ? '1 row was' : out.dropped.length + ' rows were'} left out, ${out.dropped[0]}`);
+      } catch (err) { probs.push(`${file}: ${(err && err.message) || 'unknown error'}`); }
+    }));
+  }
+  VMAPS = fresh;
+  VMAP_ERR = probs.length ? probs[0] + (probs.length > 1 ? ` (and ${probs.length - 1} more)` : '') : '';
+}
 
 /* ================= start ================= */
 async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy asks only for the tables its foods come from (usda.json is 0.9 MB, dmbio.json 0.1 MB gzipped)
@@ -5048,7 +5129,7 @@ async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy
 async function init() {
   if (VIEW) { await initViewer(); return; }   // a shared copy: the storage of this browser is not opened, Sync does not start
   try {
-    await Promise.all([Store.open(), loadCatalog(), loadVariety()]);   // loadVariety never throws: the Variety list is optional
+    await Promise.all([Store.open(), loadCatalog(), loadVariety().then(loadVarietyMaps)]);   // loadVariety and loadVarietyMaps never throw: the Variety list and its maps are optional
     const [log, foods, meta, sy, health, wlog] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health'), Store.get('wlog')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
@@ -5082,7 +5163,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { varietyBuild, varietyNode, varietyKey, VARIETY_V, varietyClean, varietyFix, varietyOf, varietyCsv, varietyUnknownFoods, VAR_VT, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { varietyMapBuild, varietyMapOf, VARIETY_MAP_V, get VMAPS() { return VMAPS; }, get VMAP_ERR() { return VMAP_ERR; }, varietyBuild, varietyNode, varietyKey, VARIETY_V, varietyClean, varietyFix, varietyOf, varietyCsv, varietyUnknownFoods, VAR_VT, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

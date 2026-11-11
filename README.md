@@ -498,6 +498,7 @@ Ez a fejezet egy **készülő** funkcióról szól. A cél az, hogy az app megmo
 **Mi van kész:**
 - **37-es verzió:** a rögzített lista. 17 főcsoportból, 75 alcsoportból és 164 egységből áll (például zöldség › levélzöldség › spenót). Az app induláskor ellenőrzi.
 - **38-as verzió:** egy saját tétel (amit te vittél fel, vagy az Open Food Facts-ból mentettél el) három új, **elhagyható** mezőt kaphat: a **csoportot** (a lista egy alcsoportja vagy egysége), a csoport **eredetét** (honnan jött: automatikus javaslatból, kézzel vagy AI válaszából) és egy **jelölőt** (most csak a „belsőség”, vagyis az „offal”, és csak a hús csoportjain belül).
+- **39-es verzió:** a CIQUAL, USDA és dmBio tételek besorolásának helye. Mindhárom táblához tartozik egy **térképfájl** (`vt_map_ciqual.json`, `vt_map_usda.json`, `vt_map_dmbio.json`): tételkódonként megmondja a csoportot. A három fájl **üresen indul**. Az app semmit nem sorol be magától, és a sorokat sem töltjük ki helyetted: egy sor csak akkor kerül a térképbe, ha te jóváhagytad. A jóváhagyáshoz egy javaslatgeneráló eszköz készült (`tools/variety_suggest.py`). A három táblából egy táblázatot (CSV) csinál, soronként a javasolt csoporttal, a szabály nevével és a bizonyossággal, te átnézed, és csak az „igen”-nel (`yes`) jelölt sorok mennek a térképbe.
 
 **Mit jelent ez neked most:**
 - Semmit nem kell megadnod. A tétel felvételénél, az „Edit food” ablakban és a naplózásnál nincs új mező vagy gomb. Egy csoport nélküli tétel egyszerűen „besorolatlan”.
@@ -507,13 +508,22 @@ Ez a fejezet egy **készülő** funkcióról szól. A cél az, hogy az app megmo
 - Régi mentésfájl, régi Sync-adat és régi link változtatás nélkül működik.
 - A tárolt adatból vagy a mentésfájlból érkező hibás alakú csoportot az app **eldobja**, a tétel megmarad, és szól, hány tételt érintett. A Sync-ből érkező hibás csoportot szó nélkül dobja el. Egy hibátlan, de az app listájában nem szereplő azonosítót (például egy későbbi lista egységét) **megtartja**, és besorolatlannak számolja.
 
-**Hogyan nézheted meg, hogy a lista betöltődött:**
+**Mit jelent a 39-es verzió neked most:**
+- A használatodban semmi sem változik. A három térkép üres, ezért minden CIQUAL, USDA és dmBio tétel továbbra is besorolatlan.
+- Ha egy térképbe majd bekerül egy sor, az app ezt a sorrendet követi: ha a tételnek **saját csoportja** van (amit te vittél fel), az számít; táblából származó tételnél a **térkép**; különben a tétel besorolatlan. Egy saját tétel soha nem olvas térképet, akkor sem, ha a kódja egyezne egy táblabeli kóddal.
+- Az „Entries (CSV)” `variety_unit` oszlopa kitöltődik a térképből származó csoporttal, a `variety_source` oszlopban ilyenkor `map` áll.
+- A térkép hibás sorát az app eldobja, és szól róla a Data fülön. Ha a fájl egésze hibás (rossz alakú, rossz táblához tartozik, újabb verziójú), az egészet nem használja. Az app listájában nem szereplő csoportot sem fogad el, mert nem találgat.
+- A térképek **nem a te adataid**: nem kerülnek a mentésfájlba, a Sync-be és a megosztó linkbe. Az app fájljaival együtt frissülnek, így egy újonnan jóváhagyott sor a következő verzióval jut el a telefonodra.
+- A **pattogatott kukorica** és a **hummusz** csoportja az összetevőlistától függ. Ha csak konyhai összetevő van benne (kukorica, olaj, só; csicseriborsó, tahini, olívaolaj, citrom, só), alapanyagnak számít (kukorica, illetve csicseriborsó). Ha adalék is van benne (aroma, tartósítószer, sűrítőanyag), kész terméknek (kukoricás snack, illetve „hüvelyes- vagy zöldségalapú étel”). **Összetevőlista nélkül nincs javaslat.** A „konyhai összetevők” zárt listáját a fejlesztő jóváhagyásra elküldi neked.
+
+**Hogyan nézheted meg, hogy a lista és a térképek betöltődtek:**
 1. Nyisd meg a **Data** fület.
 2. Görgess le a „**Sources & licences**” kártyához.
 3. Keresd a mondatot: „Variety list: 164 units in 17 groups.” Ha az app nem tudta betölteni, a mondat ezt írja, az okával együtt, a többi funkció ettől még működik.
+4. Alatta ott a másik mondat: „Variety maps: 0 CIQUAL, 0 USDA, 0 dmBio foods have a group.” A számok mutatják, hány táblabeli tételnek van csoportja. Egyelőre mind a három nulla. Ha a térképekkel gond van, itt az ok is olvasható.
 
 **Ami még nincs meg:**
-- A CIQUAL, USDA és dmBio tételeknek még nincs csoportjuk (javaslati fájlok jönnek hozzájuk, jóváhagyott sorokkal).
+- A javaslatok átnézése és a térképek feltöltése. A leggyakrabban naplózott tételekkel érdemes kezdeni, ehhez a mentésfájlodból (Data › „Save backup (JSON)”) a `python3 -I tools/variety_suggest.py top` parancs listát készít a besorolatlan tételekről.
 - A csoportot beállító képernyő (hasonló a „Set NOVA groups”-hoz).
 - Az AI-prompt frissítése a csoport azonosítóival.
 - A Report fül „Variety” szakasza.

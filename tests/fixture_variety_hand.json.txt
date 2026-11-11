@@ -1,0 +1,840 @@
+{
+ "about": "Hand classification of 2 x 50 foods drawn at random (fixed seeds) from the rows that tools/variety_suggest.py gives a high or medium suggestion. Made by Claude on 2026-11-12 from the food names alone (the suggestion was not looked at), with the variety list and the rules of the plan (3.3). It is a yardstick for the tool, NOT an approval by Norbert: only rows that Norbert approves go into the maps. 'dev' was used while the rules were tuned (one miss, corn chips, led to a rule); 'heldout' was drawn after the tuning. A food whose hand label is debatable is listed in 'debatable'. The inputs (CIQUAL group, USDA category, dmBio ingredient text) are stored here because the FDC CSV files and the dmBio CSV are not in the repository.",
+ "debatable": {
+  "ciqual:20803": "Caribbean cabbage is a tuber (malanga, tub.minor.taro); the tool gives no suggestion",
+  "ciqual:2365": "nectar is taken as a sweetened drink, not a 100% juice",
+  "usda:167797": "a fruit smoothie is taken as a juice"
+ },
+ "samples": {
+  "dev": {
+   "seed": 20261112,
+   "items": [
+    {
+     "source": "ciqual",
+     "code": "15038",
+     "name": "Sesame seed, grilled, husked",
+     "hand": "nut.seeds.sesame",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "nuts and seeds"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "11105",
+     "name": "Hollandaise sauce, prepacked",
+     "hand": "spi.sauces",
+     "group": [
+      "miscellaneous",
+      "sauces"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "2028",
+     "name": "Lemon juice, pure juice",
+     "hand": "bev.juice",
+     "group": [
+      "beverages",
+      "non-alcoholic beverages"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "15007",
+     "name": "Coconut, kernel, dried",
+     "hand": "fru.tropical.coconut",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "nuts and seeds"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "8030",
+     "name": "Rillettes, goose",
+     "hand": "mea.poultry.goose",
+     "group": [
+      "meat, egg and fish",
+      "delicatessen meat and similar"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "11042",
+     "name": "Cumin, seed",
+     "hand": "spi.dry-spices",
+     "group": [
+      "miscellaneous",
+      "spices"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "24665",
+     "name": "Almond cake, prepacked",
+     "hand": "swe.pastry",
+     "group": [
+      "sugar and confectionery",
+      "cakes and pastry"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "38105",
+     "name": "Corn chips or tortilla chips",
+     "hand": "sna.corn",
+     "group": [
+      "cereal products",
+      "savoury biscuits"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "31030",
+     "name": "Dark chocolate bar, without sugar and with artificial sweeteners",
+     "hand": "swe.chocolate",
+     "group": [
+      "sugar and confectionery",
+      "chocolate and chocolate products"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20289",
+     "name": "Tomato, roasted/baked, with skin",
+     "hand": "veg.fruit.tomato",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "16614",
+     "name": "Vegetable fat (like margarine), 80% fat, salted",
+     "hand": "fat.spread.margarine",
+     "group": [
+      "fats and oils",
+      "margarines"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "7170",
+     "name": "Panini bread",
+     "hand": "gra.wheat.wheat",
+     "group": [
+      "cereal products",
+      "breads and similar"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "19050",
+     "name": "Milk, skimmed, UHT",
+     "hand": "dai.milk.cow-milk",
+     "group": [
+      "milk and milk products",
+      "milk"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "36014",
+     "name": "Chicken, stewing, leg, raw",
+     "hand": "mea.poultry.chicken",
+     "group": [
+      "meat, egg and fish",
+      "raw meat"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "13107",
+     "name": "Pear, peeled, raw",
+     "hand": "fru.pome.pear",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "fruits"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "11129",
+     "name": "Hunter-style sauce (a garnish of mushrooms, shallots and tomatoes in white wine sauce), prepacked",
+     "hand": "spi.sauces",
+     "group": [
+      "miscellaneous",
+      "sauces"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "76050",
+     "name": "Mineral still water (Thonon), bottled, lightly mineralized",
+     "hand": "bev.water",
+     "group": [
+      "beverages",
+      "water"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "18309",
+     "name": "Fruit soft drink, still (fruit juice content unspecified), with sugar",
+     "hand": "bev.sweetened",
+     "group": [
+      "beverages",
+      "non-alcoholic beverages"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "15014",
+     "name": "Coconut, immature kernel, fresh",
+     "hand": "fru.tropical.coconut",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "nuts and seeds"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "9310",
+     "name": "Oat, raw",
+     "hand": "gra.oat.oat",
+     "group": [
+      "cereal products",
+      "pasta, rice and grains"
+     ]
+    },
+    {
+     "source": "usda",
+     "code": "174152",
+     "name": "Beverages, Fruit punch drink, frozen concentrate",
+     "hand": "bev.sweetened",
+     "group": "Beverages"
+    },
+    {
+     "source": "usda",
+     "code": "173207",
+     "name": "Beverages, carbonated, low calorie, other than cola or pepper, with aspartame, contains caffeine",
+     "hand": "bev.sweetened",
+     "group": "Beverages"
+    },
+    {
+     "source": "usda",
+     "code": "173363",
+     "name": "Beef, round, knuckle, tip center, steak, separable lean and fat, trimmed to 0\" fat, select, raw",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "2684443",
+     "name": "Crustaceans, shrimp, farm raised, raw",
+     "hand": "fis.shellfish.shrimp",
+     "group": "Finfish and Shellfish Products"
+    },
+    {
+     "source": "usda",
+     "code": "174463",
+     "name": "Lamb, New Zealand, imported, loin saddle, separable lean and fat, raw",
+     "hand": "mea.red.lamb",
+     "group": "Lamb, Veal, and Game Products"
+    },
+    {
+     "source": "usda",
+     "code": "171581",
+     "name": "Sauce, pesto, BUITONI, pesto with basil, ready-to-serve, refrigerated",
+     "hand": "spi.sauces",
+     "group": "Soups, Sauces, and Gravies"
+    },
+    {
+     "source": "usda",
+     "code": "168431",
+     "name": "Lettuce, red leaf, raw",
+     "hand": "veg.leaf.lettuce",
+     "group": "Vegetables and Vegetable Products"
+    },
+    {
+     "source": "usda",
+     "code": "174534",
+     "name": "Split pea soup, canned, reduced sodium, prepared with water or ready-to serve",
+     "hand": "dis.soup",
+     "group": "Soups, Sauces, and Gravies"
+    },
+    {
+     "source": "usda",
+     "code": "170929",
+     "name": "Spices, mustard seed, ground",
+     "hand": "spi.dry-spices",
+     "group": "Spices and Herbs"
+    },
+    {
+     "source": "usda",
+     "code": "168747",
+     "name": "Alcoholic beverage, beer, regular, BUDWEISER",
+     "hand": "bev.alcohol",
+     "group": "Beverages"
+    },
+    {
+     "source": "usda",
+     "code": "172135",
+     "name": "Beef, round, outside round, bottom round, steak, separable lean and fat, trimmed to 0\" fat, all grades, cooked, grilled",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "174716",
+     "name": "Beef, New Zealand, imported, bolar blade, separable lean only, raw",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "2258590",
+     "name": "Peppers, bell, red, raw",
+     "hand": "veg.fruit.pepper",
+     "group": "Vegetables and Vegetable Products"
+    },
+    {
+     "source": "usda",
+     "code": "168665",
+     "name": "Beef, brisket, whole, separable lean and fat, trimmed to 1/8\" fat, all grades, cooked, braised",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "171845",
+     "name": "Bread, naan, plain, commercially prepared, refrigerated",
+     "hand": "gra.wheat.wheat",
+     "group": "Baked Products"
+    },
+    {
+     "source": "usda",
+     "code": "169728",
+     "name": "Pasta, fresh-refrigerated, plain, cooked",
+     "hand": "gra.wheat.durum",
+     "group": "Cereal Grains and Pasta"
+    },
+    {
+     "source": "usda",
+     "code": "172920",
+     "name": "Soup, tomato rice, canned, prepared with equal volume water",
+     "hand": "dis.soup",
+     "group": "Soups, Sauces, and Gravies"
+    },
+    {
+     "source": "usda",
+     "code": "172588",
+     "name": "Lamb, Australian, imported, fresh, loin, separable lean only, trimmed to 1/8\" fat, raw",
+     "hand": "mea.red.lamb",
+     "group": "Lamb, Veal, and Game Products"
+    },
+    {
+     "source": "usda",
+     "code": "171496",
+     "name": "Turkey, whole, breast, meat only, cooked, roasted",
+     "hand": "mea.poultry.turkey",
+     "group": "Poultry Products"
+    },
+    {
+     "source": "usda",
+     "code": "167828",
+     "name": "Pork, fresh, loin, center loin (roasts), bone-in, separable lean and fat, cooked, roasted",
+     "hand": "mea.red.pork",
+     "group": "Pork Products"
+    },
+    {
+     "source": "dmbio",
+     "code": "3079748",
+     "name": "Bio kesudiókrém, 250 g",
+     "hand": "nut.nuts.cashew",
+     "ingredients": "Pontos termékmegnevezés:  Bio kesudiókrém  100 % pirított KESUDIÓ*.  *ellenőrzött ökológiai gazdálkodásból.  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1592734",
+     "name": "Bio zöldfűszersó, tengeri sóval, 200 g",
+     "hand": "spi.dry-spices",
+     "ingredients": "Pontos termékmegnevezés:  Tengeri só bio zöldfűszerekkel  85 % tengeri só, 12,4 % zöldfűszerek (őrölt póréhagyma*, őrölt ZELLER*, őrölt lestyán*, őrölt édeskömény*, őrölt majoránna*, őrölt bazsalikom*, őrölt metélőhagyma*), őrölt vöröshagyma*, őrölt pasztinák*, őrölt sárgarépa*, őrölt chili*.  *ellenőrzött ökológiai gazdálkodásból   Nyomokban földimogyorót, gluténtartalmú gabonaféléket, mandulát, tejet, zellert és mustárt tartalmazhat.  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1490004",
+     "name": "Bio vörös lencse, 500 g",
+     "hand": "leg.lentils.red-lentil",
+     "ingredients": "Pontos termékmegnevezés:  Bio vörös lencse  99,8 % vörös lencse*, napraforgóolaj*. *ellenőrzött ökológiai gazdálkodásból  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "3084459",
+     "name": "Bio csipkebogyó-hibiszkusz tea, 20 filter, 40 g",
+     "hand": "bev.unsweetened",
+     "ingredients": "Pontos termékmegnevezés:  Bio csipkebogyótea hibiszkusszal  51 % csipkebogyó*, 49 % hibiszkusz.  *ellenőrzött ökológiai gazdálkodásból."
+    },
+    {
+     "source": "dmbio",
+     "code": "1453253",
+     "name": "Bio zabital, cukormentes, 1 l",
+     "hand": "bev.plant",
+     "ingredients": "Pontos termékmegnevezés:  Fermentált zab alapú bio ital, UHT-hőkezelt  Ivóvíz, 9 % TELJES ÉRTÉKŰ ZAB*, napraforgóolaj*, tengeri só.  *ellenőrzött ökológiai gazdálkodásból  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1486713",
+     "name": "Bio zöld pesto bazsalikommal, 120 g",
+     "hand": "spi.sauces",
+     "ingredients": "60 % bazsalikom*, 26 % extra szűz olívaolaj*, citromlé*, 4 % fenyőmag*, tengeri só.   *ellenőrzött ökológiai gazdálkodásból."
+    },
+    {
+     "source": "dmbio",
+     "code": "1465655",
+     "name": "Bio bourbon vaníliás cukor, 32 g",
+     "hand": "swe.sugar-honey",
+     "ingredients": "Pontos termékmegnevezés:  Bio bourbon vaníliás cukor  90 % finomítatlan nádcukor*, 10 % őrölt bourbon vanília*¹.  *ellenőrzött ökológiai gazdálkodásból  ¹Rainforest Alliance tanúsított"
+    },
+    {
+     "source": "dmbio",
+     "code": "1586755",
+     "name": "Bio bogyós gyümölcsös crunchy, 500 g",
+     "hand": "dis.breakfast",
+     "ingredients": "Pontos termékmegnevezés:  Bio ropogós sült müzli zabpehellyel és liofilizált bogyós gyümölcsökkel  66 % ZABPEHELY*, rizsszirup*, repceolaj*, répacukor*, puffasztott TÖNKÖLYBÚZA*, 2 % tőzegáfonyalé-koncentrátum*, 1,5 % liofilizált bogyós gyümölcsök* (málnadarabkák*, szeder*, eperdarabkák*), citromlé-koncentrátum*, tengeri só.  *ellenőrzött ökológiai gazdálkodásból   Nyomokban dióféléket, szezámmagot és szóját tartalmazhat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1601896",
+     "name": "Bio étcsokoládé cseppek, 100 g",
+     "hand": "swe.chocolate",
+     "ingredients": "Pontos termékmegnevezés:  Bio étcsokoládé cseppek  Kakaómassza*, nádcukor*, kakaóvaj*, emulgeálószer: lecitin*.  *ellenőrzött ökológiai gazdálkodásból.  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1454202",
+     "name": "Bio alma-mangó gyümölcslé, 330 ml",
+     "hand": "bev.juice",
+     "ingredients": "Pontos termékmegnevezés:  Bio alma-mangólé  75 % almalé*, 25 % mangóvelő*. *ellenőrzött ökológiai gazdálkodásból"
+    }
+   ]
+  },
+  "heldout": {
+   "seed": 20261113,
+   "items": [
+    {
+     "source": "ciqual",
+     "code": "13136",
+     "name": "Raspberry, frozen, raw",
+     "hand": "fru.berry.raspberry",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "fruits"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "25958",
+     "name": "Soup, watercress, prepacked, to be reheated",
+     "hand": "dis.soup",
+     "group": [
+      "starters and dishes",
+      "soups"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20092",
+     "name": "Carrot, dehydrated",
+     "hand": "veg.root.carrot",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "40600",
+     "name": "Blood, beef, raw",
+     "hand": "mea.red.beef",
+     "group": [
+      "meat, egg and fish",
+      "raw meat"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "24011",
+     "name": "Biscuit (cookie), assortment of miniature sweets and biscuits",
+     "hand": "swe.pastry",
+     "group": [
+      "sugar and confectionery",
+      "sweet biscuits"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "25928",
+     "name": "Soup, chicken and vegetables, dehydrated and reconstituted",
+     "hand": "dis.soup",
+     "group": [
+      "starters and dishes",
+      "soups"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "76020",
+     "name": "Mineral still water (Evian), bottled, lightly mineralized",
+     "hand": "bev.water",
+     "group": [
+      "beverages",
+      "water"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20085",
+     "name": "Sweet pepper, green, raw",
+     "hand": "veg.fruit.pepper",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "2365",
+     "name": "Passion fruit nectar",
+     "hand": "bev.sweetened",
+     "group": [
+      "beverages",
+      "non-alcoholic beverages"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20803",
+     "name": "Caribbean cabbage, pulp, steamed, sampled in the island of La Martinique",
+     "hand": "tub.minor.taro",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20035",
+     "name": "Onion, cooked",
+     "hand": "veg.allium.onion",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "25543",
+     "name": "Sandwich on french bread (average)",
+     "hand": "dis.bread",
+     "group": [
+      "starters and dishes",
+      "sandwiches"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "27006",
+     "name": "Trout, roasted/baked",
+     "hand": "fis.freshwater.trout",
+     "group": [
+      "meat, egg and fish",
+      "fish, cooked"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20004",
+     "name": "Swiss chard, raw",
+     "hand": "veg.leaf.chard",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "18154",
+     "name": "Black tea, brewed, without sugar",
+     "hand": "bev.unsweetened",
+     "group": [
+      "beverages",
+      "non-alcoholic beverages"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "20158",
+     "name": "New Zealand spinach, cooked",
+     "hand": "veg.leaf.spinach",
+     "group": [
+      "fruits, vegetables, legumes and nuts",
+      "vegetables"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "31070",
+     "name": "Dark chocolate bar, with dried fruits (nuts, almonds, raisin, praline)",
+     "hand": "swe.chocolate",
+     "group": [
+      "sugar and confectionery",
+      "chocolate and chocolate products"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "6102",
+     "name": "Beef, round, raw",
+     "hand": "mea.red.beef",
+     "group": [
+      "meat, egg and fish",
+      "raw meat"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "26272",
+     "name": "Pizza, chicken, prepacked",
+     "hand": "dis.bread",
+     "group": [
+      "starters and dishes",
+      "pizzas, crepe and pies"
+     ]
+    },
+    {
+     "source": "ciqual",
+     "code": "40118",
+     "name": "Liver, turkey, cooked",
+     "hand": "mea.poultry.turkey",
+     "group": [
+      "meat, egg and fish",
+      "cooked meat"
+     ]
+    },
+    {
+     "source": "usda",
+     "code": "174315",
+     "name": "Lamb, leg, shank half, separable lean and fat, trimmed to 1/4\" fat, choice, raw",
+     "hand": "mea.red.lamb",
+     "group": "Lamb, Veal, and Game Products"
+    },
+    {
+     "source": "usda",
+     "code": "1999628",
+     "name": "Mushrooms, shiitake",
+     "hand": "veg.mushroom.shiitake",
+     "group": "Vegetables and Vegetable Products"
+    },
+    {
+     "source": "usda",
+     "code": "171583",
+     "name": "Soup, vegetable broth, ready to serve",
+     "hand": "dis.soup",
+     "group": "Soups, Sauces, and Gravies"
+    },
+    {
+     "source": "usda",
+     "code": "174354",
+     "name": "Lamb, variety meats and by-products, kidneys, raw",
+     "hand": "mea.red.lamb",
+     "group": "Lamb, Veal, and Game Products"
+    },
+    {
+     "source": "usda",
+     "code": "173351",
+     "name": "Beef, short loin, t-bone steak, separable lean and fat, trimmed to 1/8\" fat, all grades, cooked, grilled",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "171101",
+     "name": "Turkey, canned, meat only, with broth",
+     "hand": "mea.poultry.turkey",
+     "group": "Poultry Products"
+    },
+    {
+     "source": "usda",
+     "code": "167797",
+     "name": "Fruit juice smoothie, BOLTHOUSE FARMS, BERRY BOOST",
+     "hand": "bev.juice",
+     "group": "Fruits and Fruit Juices"
+    },
+    {
+     "source": "usda",
+     "code": "174098",
+     "name": "Crackers, flavored, fish-shaped",
+     "hand": "sna.other-grain",
+     "group": "Baked Products"
+    },
+    {
+     "source": "usda",
+     "code": "172769",
+     "name": "Muffins, oat bran",
+     "hand": "swe.pastry",
+     "group": "Baked Products"
+    },
+    {
+     "source": "usda",
+     "code": "171921",
+     "name": "Carbonated beverage, chocolate-flavored soda",
+     "hand": "bev.sweetened",
+     "group": "Beverages"
+    },
+    {
+     "source": "usda",
+     "code": "171324",
+     "name": "Spices, fenugreek seed",
+     "hand": "spi.dry-spices",
+     "group": "Spices and Herbs"
+    },
+    {
+     "source": "usda",
+     "code": "168938",
+     "name": "Wheat flour, white (industrial), 10% protein, unbleached, enriched",
+     "hand": "gra.wheat.wheat",
+     "group": "Cereal Grains and Pasta"
+    },
+    {
+     "source": "usda",
+     "code": "169501",
+     "name": "Beef, rib, whole (ribs 6-12), separable lean and fat, trimmed to 1/8\" fat, select, cooked, broiled",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "168166",
+     "name": "Raisins, seeded",
+     "hand": "fru.grape-fig.grape",
+     "group": "Fruits and Fruit Juices"
+    },
+    {
+     "source": "usda",
+     "code": "172410",
+     "name": "Duck, domesticated, meat only, raw",
+     "hand": "mea.poultry.duck",
+     "group": "Poultry Products"
+    },
+    {
+     "source": "usda",
+     "code": "174045",
+     "name": "Beef, round, bottom round, steak, separable lean only, trimmed to 1/8\" fat, select, cooked, braised",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "usda",
+     "code": "172766",
+     "name": "Muffins, blueberry, dry mix",
+     "hand": "swe.pastry",
+     "group": "Baked Products"
+    },
+    {
+     "source": "usda",
+     "code": "171177",
+     "name": "Soup, ramen noodle, any flavor, dry",
+     "hand": "dis.soup",
+     "group": "Soups, Sauces, and Gravies"
+    },
+    {
+     "source": "usda",
+     "code": "172775",
+     "name": "Pancakes, special dietary, dry mix",
+     "hand": "swe.pastry",
+     "group": "Baked Products"
+    },
+    {
+     "source": "usda",
+     "code": "171734",
+     "name": "Beef, Australian, imported, grass-fed, loin, top sirloin cap-off steak/roast, boneless, separable lean only, raw",
+     "hand": "mea.red.beef",
+     "group": "Beef Products"
+    },
+    {
+     "source": "dmbio",
+     "code": "3121356",
+     "name": "Ecetes cékla, szeletelt, 330 g",
+     "hand": "veg.root.beetroot",
+     "ingredients": "Cékla*, ételecet*, répacukor*, tengeri só, kömény*, szegfűszeg*.  *ellenőrzött ökológiai gazdálkodásból"
+    },
+    {
+     "source": "dmbio",
+     "code": "1544928",
+     "name": "Bio kókuszzsír, extra szűz, 300 ml",
+     "hand": "fat.oils.coconut-oil",
+     "ingredients": "finomítatlan kókuszdióolaj*  *ellenőrzött ökológiai gazdálkodásból"
+    },
+    {
+     "source": "dmbio",
+     "code": "1509217",
+     "name": "Bio jeges tea, fehér tea őszibarackvelővel és málnalével, 500 ml",
+     "hand": "bev.sweetened",
+     "ingredients": "Pontos termékmegnevezés:  Bio üdítőital fehér teából, őszibarackvelőből és málnaléből szőlőlé-koncentrátummal  90 % forrázat fehér teából (ivóvíz, 0,2 % fehér tea*), 4 % őszibarackvelő*, 4 % málnalé*, 2 % szőlőlé-koncentrátum*.  *ellenőrzött ökológiai gazdálkodásból"
+    },
+    {
+     "source": "dmbio",
+     "code": "1454192",
+     "name": "Bio almalé, szűretlen, 1 l",
+     "hand": "bev.juice",
+     "ingredients": "Pontos termékmegnevezés:  Bio almalé, szűretlen  almalé*. *ellenőrzött ökológiai gazdálkodásból."
+    },
+    {
+     "source": "dmbio",
+     "code": "1683673",
+     "name": "Bio Bourbon vaníliarúd, 2 db",
+     "hand": "spi.dry-spices",
+     "ingredients": "Pontos termékmegnevezés:  dmBio bourbon vanília rúd, 2 db  Bourbonvanília-rúd*1.  *ellenőrzött ökológiai gazdálkodásból.  1Fairtrade tanúsított"
+    },
+    {
+     "source": "dmbio",
+     "code": "1706403",
+     "name": "Bio instant tönkölykávé, koffeinmentes, 100 g",
+     "hand": "bev.unsweetened",
+     "ingredients": "Pontos termékmegnevezés:  Azonnal oldódó kivonat tönkölyből és cikóriából  80 % TÖNKÖLY*¹, 20 % cikória*.  *ellenőrzött ökológiai gazdálkodásból  ¹a tönköly egy BÚZAFAJTA"
+    },
+    {
+     "source": "dmbio",
+     "code": "1490277",
+     "name": "Bio instant malátakávé, koffeinmentes, 100 g",
+     "hand": "bev.unsweetened",
+     "ingredients": "Pontos termékmegnevezés:  Bio malátakávé, azonnal oldódó  Malátázott ÁRPA*.  *ellenőrzött ökológiai gazdálkodásból  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1537148",
+     "name": "Bio árpagyöngy, 500 g",
+     "hand": "gra.rye-barley.barley",
+     "ingredients": "Pontos termékmegnevezés:  Bio árpagyöngy  ÁRPAGYÖNGY*.  *biodinamikus gazdálkodásból   Nyomokban szezámmagot tartalmazhat.  Kérjük, vegye figyelembe az allergénekkel kapcsolatos tudnivalókat."
+    },
+    {
+     "source": "dmbio",
+     "code": "1657697",
+     "name": "Bio fűszeres sütőtök ízű agavészirup, 250 ml",
+     "hand": "swe.sugar-honey",
+     "ingredients": "Pontos termékmegnevezés:  dmBio fűszeres sütőtök ízű agavészirup 250 ml (350 g)  90% agavészirup*, 7% sütőtöklé-koncentrátum*, almaszirup*, 0,5% keverék fűszerkivonatokból* (fahéjpárlat*, gyömbérkivonat*, szegfűszegolaj*, borspárlat*, fahéjkéregolaj*), citromlé-koncentrátum*.  *ellenőrzött ökológiai gazdálkodásból."
+    },
+    {
+     "source": "dmbio",
+     "code": "1635251",
+     "name": "Bio koffeinmentes őrölt kávé, 250 g",
+     "hand": "bev.unsweetened",
+     "ingredients": "Pontos termékmegnevezés:  Bio pörkölt őrölt kávé, koffeinmentes  Arabica kávébab*.  *ellenőrzött ökológiai gazdálkodásból"
+    }
+   ]
+  }
+ }
+}

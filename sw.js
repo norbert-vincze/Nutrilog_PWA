@@ -3,10 +3,11 @@
      Change the number of a cache only when its file changes (ciqual.json and usda.json share nutrilog-data-2, dmbio.json has nutrilog-dmbio-2; version 35 added the caffeine column to all three, so both numbers went up).
    - every other own file: network-first (always revalidated), falling back to the cache when offline
    - calls to other sites (Open Food Facts) are left alone */
-const CACHE = 'nutrilog-v38';   // keep in step with VERSION in app.js
+const CACHE = 'nutrilog-v39';   // keep in step with VERSION in app.js
 const DATA = { 'ciqual.json': 'nutrilog-data-2', 'usda.json': 'nutrilog-data-2', 'dmbio.json': 'nutrilog-dmbio-2' };
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg',
-  'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js', 'variety_units.json'];   // variety_units.json (version 37): small, and its names may be corrected, so it is revalidated like the app files
+  'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'zxing.min.js', 'variety_units.json',
+  'vt_map_ciqual.json', 'vt_map_usda.json', 'vt_map_dmbio.json'];   // variety_units.json (version 37) and the three variety maps (version 39): small, and a corrected name or a newly approved row must reach the phone with the next version, so they are revalidated like the app files
 const dataCacheOf = (pathname) => { const f = Object.keys(DATA).find((n) => pathname.endsWith('/' + n)); return f ? DATA[f] : null; };
 
 self.addEventListener('install', (e) => {

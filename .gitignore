@@ -3,3 +3,4 @@ tests/*.y4m
 tests/*.json
 tests/__pycache__/
 tests/*.csv
+tools/__pycache__/
