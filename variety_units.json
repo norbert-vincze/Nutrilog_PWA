@@ -1,0 +1,367 @@
+{"app":"tapnaplo-variety","version":1,"updated":"2026-11-11",
+"flags":[{"id": "offal", "hu": "belsőség", "en": "offal", "applies": ["mea"]}],
+"main":[
+ {"id":"veg","hu":"Zöldségek","en":"Vegetables","role":"base","subs":[
+  {"id":"veg.leaf","hu":"Levélzöldségek","en":"Leafy vegetables","units":[
+   {"id": "veg.leaf.lettuce", "hu": "saláta", "en": "lettuce", "a": ["fejes saláta", "jégsaláta", "római saláta", "lollo rosso", "iceberg lettuce", "romaine"]},
+   {"id": "veg.leaf.spinach", "hu": "spenót", "en": "spinach"},
+   {"id": "veg.leaf.chard", "hu": "mángold", "en": "chard", "a": ["swiss chard"]},
+   {"id": "veg.leaf.rocket", "hu": "rukkola", "en": "rocket", "a": ["arugula"]},
+   {"id": "veg.leaf.kale", "hu": "fodros kel", "en": "kale", "a": ["curly kale"]},
+   {"id": "veg.leaf.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.brassica","hu":"Káposztafélék és virágzatuk","en":"Brassicas","units":[
+   {"id": "veg.brassica.cabbage", "hu": "fejes káposzta", "en": "cabbage", "a": ["káposzta", "fehér káposzta", "kelkáposzta", "savanyú káposzta", "white cabbage", "savoy cabbage", "sauerkraut"]},
+   {"id": "veg.brassica.red-cabbage", "hu": "vöröskáposzta", "en": "red cabbage"},
+   {"id": "veg.brassica.broccoli", "hu": "brokkoli", "en": "broccoli"},
+   {"id": "veg.brassica.cauliflower", "hu": "karfiol", "en": "cauliflower"},
+   {"id": "veg.brassica.brussels-sprouts", "hu": "kelbimbó", "en": "Brussels sprouts"},
+   {"id": "veg.brassica.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.root","hu":"Gyökérzöldségek","en":"Root vegetables","units":[
+   {"id": "veg.root.carrot", "hu": "sárgarépa", "en": "carrot", "a": ["répa"]},
+   {"id": "veg.root.parsley-root", "hu": "petrezselyemgyökér", "en": "parsley root"},
+   {"id": "veg.root.parsnip", "hu": "paszternák", "en": "parsnip"},
+   {"id": "veg.root.beetroot", "hu": "cékla", "en": "beetroot", "a": ["beet"]},
+   {"id": "veg.root.radish", "hu": "retek", "en": "radish"},
+   {"id": "veg.root.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.allium","hu":"Hagymafélék","en":"Alliums","units":[
+   {"id": "veg.allium.onion", "hu": "vöröshagyma", "en": "onion", "a": ["hagyma", "sárgahagyma", "yellow onion"]},
+   {"id": "veg.allium.red-onion", "hu": "lilahagyma", "en": "red onion"},
+   {"id": "veg.allium.garlic", "hu": "fokhagyma", "en": "garlic"},
+   {"id": "veg.allium.leek", "hu": "póréhagyma", "en": "leek"},
+   {"id": "veg.allium.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.fruit","hu":"Terméses zöldségek","en":"Fruiting vegetables","units":[
+   {"id": "veg.fruit.tomato", "hu": "paradicsom", "en": "tomato"},
+   {"id": "veg.fruit.pepper", "hu": "paprika", "en": "pepper", "a": ["bell pepper", "kápia", "tv paprika"]},
+   {"id": "veg.fruit.cucumber", "hu": "uborka", "en": "cucumber"},
+   {"id": "veg.fruit.eggplant", "hu": "padlizsán", "en": "eggplant", "a": ["aubergine"]},
+   {"id": "veg.fruit.zucchini", "hu": "cukkini", "en": "zucchini", "a": ["courgette"]},
+   {"id": "veg.fruit.pumpkin", "hu": "sütőtök", "en": "pumpkin", "a": ["tök", "butternut", "hokkaido", "pumpkin flesh"]},
+   {"id": "veg.fruit.sweetcorn", "hu": "csemegekukorica", "en": "sweetcorn", "a": ["sweet corn", "corn on the cob"]},
+   {"id": "veg.fruit.olive", "hu": "olajbogyó", "en": "olive", "a": ["olíva", "olives"]},
+   {"id": "veg.fruit.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.stem","hu":"Szár-, hajtás- és egyéb zöldségek","en":"Stem, shoot and other vegetables","units":[
+   {"id": "veg.stem.asparagus", "hu": "spárga", "en": "asparagus"},
+   {"id": "veg.stem.celery-stalk", "hu": "szárzeller", "en": "celery stalk", "a": ["celery"]},
+   {"id": "veg.stem.fennel", "hu": "édeskömény", "en": "fennel"},
+   {"id": "veg.stem.artichoke", "hu": "articsóka", "en": "artichoke"},
+   {"id": "veg.stem.green-bean", "hu": "zöldbab", "en": "green bean", "a": ["green beans", "string beans"]},
+   {"id": "veg.stem.green-pea", "hu": "zöldborsó", "en": "green pea", "a": ["peas", "garden peas"]},
+   {"id": "veg.stem.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"veg.mushroom","hu":"Gombák","en":"Mushrooms","units":[
+   {"id": "veg.mushroom.button-mushroom", "hu": "csiperke", "en": "button mushroom", "a": ["champignon"]},
+   {"id": "veg.mushroom.oyster-mushroom", "hu": "laskagomba", "en": "oyster mushroom", "a": ["laska"]},
+   {"id": "veg.mushroom.shiitake", "hu": "shiitake", "en": "shiitake"},
+   {"id": "veg.mushroom.porcini", "hu": "vargánya", "en": "porcini", "a": ["cep", "boletus"]},
+   {"id": "veg.mushroom.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"fru","hu":"Gyümölcsök","en":"Fruits","role":"base","subs":[
+  {"id":"fru.pome","hu":"Almatermésűek","en":"Pome fruits","units":[
+   {"id": "fru.pome.apple", "hu": "alma", "en": "apple"},
+   {"id": "fru.pome.pear", "hu": "körte", "en": "pear"},
+   {"id": "fru.pome.quince", "hu": "birs", "en": "quince"},
+   {"id": "fru.pome.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.stone","hu":"Csonthéjas gyümölcsök","en":"Stone fruits","units":[
+   {"id": "fru.stone.peach", "hu": "őszibarack", "en": "peach", "a": ["barack", "nectarine", "nektarin"]},
+   {"id": "fru.stone.apricot", "hu": "sárgabarack", "en": "apricot"},
+   {"id": "fru.stone.plum", "hu": "szilva", "en": "plum", "a": ["prune", "aszalt szilva"]},
+   {"id": "fru.stone.cherry", "hu": "cseresznye", "en": "cherry"},
+   {"id": "fru.stone.sour-cherry", "hu": "meggy", "en": "sour cherry", "a": ["morello"]},
+   {"id": "fru.stone.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.berry","hu":"Bogyós jellegű gyümölcsök","en":"Berries","units":[
+   {"id": "fru.berry.strawberry", "hu": "eper", "en": "strawberry"},
+   {"id": "fru.berry.raspberry", "hu": "málna", "en": "raspberry"},
+   {"id": "fru.berry.blackberry", "hu": "szeder", "en": "blackberry"},
+   {"id": "fru.berry.blueberry", "hu": "áfonya", "en": "blueberry"},
+   {"id": "fru.berry.cranberry", "hu": "vörösáfonya", "en": "cranberry"},
+   {"id": "fru.berry.currant", "hu": "ribizli", "en": "currant"},
+   {"id": "fru.berry.gooseberry", "hu": "egres", "en": "gooseberry"},
+   {"id": "fru.berry.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.citrus","hu":"Citrusfélék","en":"Citrus fruits","units":[
+   {"id": "fru.citrus.orange", "hu": "narancs", "en": "orange"},
+   {"id": "fru.citrus.mandarin", "hu": "mandarin", "en": "mandarin", "a": ["clementine", "tangerine"]},
+   {"id": "fru.citrus.grapefruit", "hu": "grapefruit", "en": "grapefruit"},
+   {"id": "fru.citrus.lemon", "hu": "citrom", "en": "lemon"},
+   {"id": "fru.citrus.lime", "hu": "lime", "en": "lime"},
+   {"id": "fru.citrus.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.melon","hu":"Dinnyék","en":"Melons","units":[
+   {"id": "fru.melon.watermelon", "hu": "görögdinnye", "en": "watermelon"},
+   {"id": "fru.melon.melon", "hu": "sárgadinnye", "en": "melon", "a": ["cantaloupe", "honeydew", "dinnye"]},
+   {"id": "fru.melon.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.tropical","hu":"Trópusi és szubtrópusi gyümölcsök","en":"Tropical and subtropical fruits","units":[
+   {"id": "fru.tropical.banana", "hu": "banán", "en": "banana"},
+   {"id": "fru.tropical.mango", "hu": "mangó", "en": "mango"},
+   {"id": "fru.tropical.pineapple", "hu": "ananász", "en": "pineapple"},
+   {"id": "fru.tropical.papaya", "hu": "papaja", "en": "papaya"},
+   {"id": "fru.tropical.kiwi", "hu": "kivi", "en": "kiwi"},
+   {"id": "fru.tropical.pomegranate", "hu": "gránátalma", "en": "pomegranate"},
+   {"id": "fru.tropical.date", "hu": "datolya", "en": "date"},
+   {"id": "fru.tropical.avocado", "hu": "avokádó", "en": "avocado"},
+   {"id": "fru.tropical.coconut", "hu": "kókusz", "en": "coconut", "a": ["kókuszhús", "kókuszreszelék", "kókusztej", "coconut milk", "coconut flesh", "desiccated coconut"]},
+   {"id": "fru.tropical.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fru.grape-fig","hu":"Szőlő, füge és egyéb gyümölcsök","en":"Grapes, figs and other fruits","units":[
+   {"id": "fru.grape-fig.grape", "hu": "szőlő", "en": "grape", "a": ["mazsola", "raisin", "raisins", "sultana"]},
+   {"id": "fru.grape-fig.fig", "hu": "füge", "en": "fig", "a": ["aszalt füge", "dried fig"]},
+   {"id": "fru.grape-fig.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"gra","hu":"Gabonafélék","en":"Grains","role":"base","subs":[
+  {"id":"gra.wheat","hu":"Búza és rokon gabonák","en":"Wheat and related grains","units":[
+   {"id": "gra.wheat.wheat", "hu": "búza", "en": "wheat", "a": ["búzaliszt", "kenyér", "zsemle", "kifli", "wheat flour", "bread", "búzakorpa", "wheat bran"]},
+   {"id": "gra.wheat.spelt", "hu": "tönköly", "en": "spelt"},
+   {"id": "gra.wheat.durum", "hu": "durum", "en": "durum", "a": ["bulgur", "kuszkusz", "couscous", "tészta", "pasta", "spagetti", "durum semolina"]},
+   {"id": "gra.wheat.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"gra.oat","hu":"Zab","en":"Oats","units":[
+   {"id": "gra.oat.oat", "hu": "zab", "en": "oat", "a": ["zabpehely", "zabkása", "zabkorpa", "zabliszt", "rolled oats", "oatmeal", "porridge oats"]},
+   {"id": "gra.oat.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"gra.rye-barley","hu":"Rozs és árpa","en":"Rye and barley","units":[
+   {"id": "gra.rye-barley.rye", "hu": "rozs", "en": "rye", "a": ["rozskenyér", "rozspehely", "rozsliszt"]},
+   {"id": "gra.rye-barley.barley", "hu": "árpa", "en": "barley", "a": ["árpagyöngy", "pearl barley", "árpapehely"]},
+   {"id": "gra.rye-barley.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"gra.rice","hu":"Rizs","en":"Rice","units":[
+   {"id": "gra.rice.rice", "hu": "rizs", "en": "rice", "a": ["fehér rizs", "barna rizs", "rizstészta", "rizspehely", "basmati", "jázmin rizs", "rice noodles", "white rice", "brown rice"]},
+   {"id": "gra.rice.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"gra.corn","hu":"Kukorica","en":"Maize","units":[
+   {"id": "gra.corn.corn", "hu": "kukorica", "en": "maize", "a": ["kukoricadara", "polenta", "tortilla", "kukoricaliszt", "cornmeal"]},
+   {"id": "gra.corn.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"gra.minor","hu":"Egyéb gabonák és álgabonák","en":"Other grains and pseudocereals","units":[
+   {"id": "gra.minor.millet", "hu": "köles", "en": "millet"},
+   {"id": "gra.minor.buckwheat", "hu": "hajdina", "en": "buckwheat"},
+   {"id": "gra.minor.quinoa", "hu": "quinoa", "en": "quinoa"},
+   {"id": "gra.minor.amaranth", "hu": "amaránt", "en": "amaranth"},
+   {"id": "gra.minor.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"tub","hu":"Keményítőtartalmú gumók","en":"Starchy tubers","role":"base","subs":[
+  {"id":"tub.potato","hu":"Burgonya","en":"Potato","units":[
+   {"id": "tub.potato.potato", "hu": "burgonya", "en": "potato", "a": ["krumpli", "burgonyapüré", "burgonyapehely", "mashed potato"]},
+   {"id": "tub.potato.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"tub.sweet-potato","hu":"Édesburgonya","en":"Sweet potato","units":[
+   {"id": "tub.sweet-potato.sweet-potato", "hu": "édesburgonya", "en": "sweet potato", "a": ["batáta", "batata"]},
+   {"id": "tub.sweet-potato.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"tub.minor","hu":"Egyéb gumók és keményítőtartalmú gyökerek","en":"Other tubers and starchy roots","units":[
+   {"id": "tub.minor.cassava", "hu": "manióka", "en": "cassava", "a": ["tápióka", "tapioca"]},
+   {"id": "tub.minor.taro", "hu": "taró", "en": "taro"},
+   {"id": "tub.minor.yam", "hu": "jamgyökér", "en": "yam"},
+   {"id": "tub.minor.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"leg","hu":"Hüvelyesek","en":"Legumes","role":"base","subs":[
+  {"id":"leg.beans","hu":"Babfélék","en":"Beans","units":[
+   {"id": "leg.beans.white-bean", "hu": "fehérbab", "en": "white bean", "a": ["white beans", "navy bean", "cannellini"]},
+   {"id": "leg.beans.red-bean", "hu": "vörösbab", "en": "red kidney bean", "a": ["kidney bean", "red kidney beans"]},
+   {"id": "leg.beans.black-bean", "hu": "feketebab", "en": "black bean"},
+   {"id": "leg.beans.pinto-bean", "hu": "tarkabab", "en": "pinto bean", "a": ["pinto beans", "borlotti"]},
+   {"id": "leg.beans.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"leg.lentils","hu":"Lencsefélék","en":"Lentils","units":[
+   {"id": "leg.lentils.brown-lentil", "hu": "barna lencse", "en": "brown lentil", "a": ["lencse", "lentil", "lentils"]},
+   {"id": "leg.lentils.red-lentil", "hu": "vörös lencse", "en": "red lentil"},
+   {"id": "leg.lentils.green-lentil", "hu": "zöld lencse", "en": "green lentil"},
+   {"id": "leg.lentils.black-lentil", "hu": "fekete lencse", "en": "black lentil", "a": ["beluga"]},
+   {"id": "leg.lentils.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"leg.chickpea-pea","hu":"Csicseriborsó és szárazborsó","en":"Chickpeas and dried peas","units":[
+   {"id": "leg.chickpea-pea.chickpea", "hu": "csicseriborsó", "en": "chickpea", "a": ["humusz", "hummus", "chickpeas"]},
+   {"id": "leg.chickpea-pea.split-pea", "hu": "sárgaborsó", "en": "split pea", "a": ["szárazborsó", "dried pea", "yellow split pea", "green split pea"]},
+   {"id": "leg.chickpea-pea.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"leg.soy","hu":"Szója és szójatermékek","en":"Soy and soy products","units":[
+   {"id": "leg.soy.soybean", "hu": "szójabab", "en": "soybean", "a": ["edamame", "tofu", "tempeh", "szójaliszt", "szójadara", "soya", "soy flour"]},
+   {"id": "leg.soy.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"nut","hu":"Diófélék és magvak","en":"Nuts and seeds","role":"base","subs":[
+  {"id":"nut.nuts","hu":"Dió- és mogyorófélék","en":"Tree nuts and peanuts","units":[
+   {"id": "nut.nuts.walnut", "hu": "dió", "en": "walnut"},
+   {"id": "nut.nuts.hazelnut", "hu": "mogyoró", "en": "hazelnut"},
+   {"id": "nut.nuts.almond", "hu": "mandula", "en": "almond", "a": ["mandulavaj", "almond butter"]},
+   {"id": "nut.nuts.cashew", "hu": "kesudió", "en": "cashew"},
+   {"id": "nut.nuts.pistachio", "hu": "pisztácia", "en": "pistachio"},
+   {"id": "nut.nuts.peanut", "hu": "földimogyoró", "en": "peanut", "a": ["mogyoróvaj", "peanut butter", "földimogyoróvaj"]},
+   {"id": "nut.nuts.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"nut.seeds","hu":"Olajos magvak","en":"Oilseeds","units":[
+   {"id": "nut.seeds.sunflower-seed", "hu": "napraforgómag", "en": "sunflower seed"},
+   {"id": "nut.seeds.pumpkin-seed", "hu": "tökmag", "en": "pumpkin seed"},
+   {"id": "nut.seeds.sesame", "hu": "szezámmag", "en": "sesame", "a": ["tahini", "tahina", "szezámkrém"]},
+   {"id": "nut.seeds.flax", "hu": "lenmag", "en": "flaxseed", "a": ["flaxseed", "linseed"]},
+   {"id": "nut.seeds.chia", "hu": "chiamag", "en": "chia seed"},
+   {"id": "nut.seeds.poppy", "hu": "mák", "en": "poppy seed", "a": ["mákmag"]},
+   {"id": "nut.seeds.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"mea","hu":"Húsok","en":"Meat","role":"base","subs":[
+  {"id":"mea.poultry","hu":"Szárnyas","en":"Poultry","units":[
+   {"id": "mea.poultry.chicken", "hu": "csirke", "en": "chicken", "a": ["csirkemell", "csirkecomb", "csirkeszárny", "chicken breast", "chicken thigh"]},
+   {"id": "mea.poultry.turkey", "hu": "pulyka", "en": "turkey"},
+   {"id": "mea.poultry.duck", "hu": "kacsa", "en": "duck"},
+   {"id": "mea.poultry.goose", "hu": "liba", "en": "goose"},
+   {"id": "mea.poultry.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"mea.red","hu":"Vörös hús","en":"Red meat","units":[
+   {"id": "mea.red.beef", "hu": "marha", "en": "beef", "a": ["marhahús", "borjú", "veal"]},
+   {"id": "mea.red.pork", "hu": "sertés", "en": "pork", "a": ["sertéshús", "sonka", "bacon", "szalonna", "ham"]},
+   {"id": "mea.red.lamb", "hu": "bárány", "en": "lamb"},
+   {"id": "mea.red.goat", "hu": "kecske", "en": "goat"},
+   {"id": "mea.red.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"mea.game","hu":"Vad","en":"Game","units":[
+   {"id": "mea.game.deer", "hu": "szarvas", "en": "deer", "a": ["szarvashús", "venison"]},
+   {"id": "mea.game.roe-deer", "hu": "őz", "en": "roe deer"},
+   {"id": "mea.game.wild-boar", "hu": "vaddisznó", "en": "wild boar"},
+   {"id": "mea.game.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"fis","hu":"Halak és egyéb vízi élelmiszerek","en":"Fish and other aquatic foods","role":"base","subs":[
+  {"id":"fis.freshwater","hu":"Édesvízi hal","en":"Freshwater fish","units":[
+   {"id": "fis.freshwater.carp", "hu": "ponty", "en": "carp"},
+   {"id": "fis.freshwater.catfish", "hu": "harcsa", "en": "catfish"},
+   {"id": "fis.freshwater.trout", "hu": "pisztráng", "en": "trout"},
+   {"id": "fis.freshwater.pikeperch", "hu": "süllő", "en": "pikeperch", "a": ["zander"]},
+   {"id": "fis.freshwater.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fis.sea","hu":"Tengeri hal","en":"Sea fish","units":[
+   {"id": "fis.sea.cod", "hu": "tőkehal", "en": "cod"},
+   {"id": "fis.sea.tuna", "hu": "tonhal", "en": "tuna"},
+   {"id": "fis.sea.mackerel", "hu": "makréla", "en": "mackerel"},
+   {"id": "fis.sea.salmon", "hu": "lazac", "en": "salmon"},
+   {"id": "fis.sea.sardine", "hu": "szardínia", "en": "sardine"},
+   {"id": "fis.sea.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fis.shellfish","hu":"Rákfélék és puhatestűek","en":"Crustaceans and molluscs","units":[
+   {"id": "fis.shellfish.shrimp", "hu": "garnéla", "en": "shrimp", "a": ["prawn"]},
+   {"id": "fis.shellfish.mussel", "hu": "kagyló", "en": "mussel"},
+   {"id": "fis.shellfish.squid", "hu": "tintahal", "en": "squid", "a": ["calamari"]},
+   {"id": "fis.shellfish.octopus", "hu": "polip", "en": "octopus"},
+   {"id": "fis.shellfish.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fis.algae","hu":"Algák","en":"Algae","units":[
+   {"id": "fis.algae.nori", "hu": "nori", "en": "nori"},
+   {"id": "fis.algae.wakame", "hu": "wakame", "en": "wakame"},
+   {"id": "fis.algae.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"egg","hu":"Tojás","en":"Eggs","role":"base","subs":[
+  {"id":"egg.eggs","hu":"Tojás","en":"Eggs","units":[
+   {"id": "egg.eggs.chicken-egg", "hu": "csirketojás", "en": "chicken egg", "a": ["tojás", "egg", "eggs", "főtt tojás", "rántotta", "omlett"]},
+   {"id": "egg.eggs.quail-egg", "hu": "fürjtojás", "en": "quail egg"},
+   {"id": "egg.eggs.duck-egg", "hu": "kacsatojás", "en": "duck egg"},
+   {"id": "egg.eggs.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"dai","hu":"Tejtermékek","en":"Dairy","role":"base","subs":[
+  {"id":"dai.milk","hu":"Tej","en":"Milk","units":[
+   {"id": "dai.milk.cow-milk", "hu": "tehéntej", "en": "cow's milk", "a": ["tej", "milk"]},
+   {"id": "dai.milk.goat-milk", "hu": "kecsketej", "en": "goat's milk"},
+   {"id": "dai.milk.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"dai.fermented","hu":"Fermentált tejtermékek","en":"Fermented dairy","units":[
+   {"id": "dai.fermented.yoghurt", "hu": "natúr joghurt", "en": "plain yoghurt", "a": ["joghurt", "yogurt"]},
+   {"id": "dai.fermented.kefir", "hu": "kefir", "en": "kefir"},
+   {"id": "dai.fermented.curdled-milk", "hu": "aludttej", "en": "curdled milk", "a": ["író", "buttermilk"]},
+   {"id": "dai.fermented.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"dai.fresh-cheese","hu":"Friss sajtok és túrófélék","en":"Fresh cheeses and curds","units":[
+   {"id": "dai.fresh-cheese.quark", "hu": "túró", "en": "quark"},
+   {"id": "dai.fresh-cheese.cottage-cheese", "hu": "cottage cheese", "en": "cottage cheese"},
+   {"id": "dai.fresh-cheese.ricotta", "hu": "ricotta", "en": "ricotta"},
+   {"id": "dai.fresh-cheese.mozzarella", "hu": "mozzarella", "en": "mozzarella"},
+   {"id": "dai.fresh-cheese.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"dai.aged-cheese","hu":"Érlelt sajtok","en":"Aged cheeses","units":[
+   {"id": "dai.aged-cheese.trappist", "hu": "trappista", "en": "Trappist cheese"},
+   {"id": "dai.aged-cheese.gouda", "hu": "gouda", "en": "Gouda"},
+   {"id": "dai.aged-cheese.cheddar", "hu": "cheddar", "en": "Cheddar"},
+   {"id": "dai.aged-cheese.parmesan", "hu": "parmezán", "en": "Parmesan"},
+   {"id": "dai.aged-cheese.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"dai.cream","hu":"Tejszín és tejföl","en":"Cream and sour cream","units":[
+   {"id": "dai.cream.cooking-cream", "hu": "főzőtejszín", "en": "cooking cream"},
+   {"id": "dai.cream.whipping-cream", "hu": "habtejszín", "en": "whipping cream"},
+   {"id": "dai.cream.sour-cream", "hu": "tejföl", "en": "sour cream"},
+   {"id": "dai.cream.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"fat","hu":"Zsiradékok","en":"Fats and oils","role":"base","subs":[
+  {"id":"fat.oils","hu":"Növényi olajok","en":"Vegetable oils","units":[
+   {"id": "fat.oils.olive-oil", "hu": "olívaolaj", "en": "olive oil"},
+   {"id": "fat.oils.rapeseed-oil", "hu": "repceolaj", "en": "rapeseed oil"},
+   {"id": "fat.oils.sunflower-oil", "hu": "napraforgóolaj", "en": "sunflower oil"},
+   {"id": "fat.oils.pumpkin-seed-oil", "hu": "tökmagolaj", "en": "pumpkin seed oil"},
+   {"id": "fat.oils.coconut-oil", "hu": "kókuszolaj", "en": "coconut oil", "a": ["kókuszzsír", "coconut fat"]},
+   {"id": "fat.oils.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fat.animal","hu":"Állati zsiradékok","en":"Animal fats","units":[
+   {"id": "fat.animal.butter", "hu": "vaj", "en": "butter"},
+   {"id": "fat.animal.lard", "hu": "sertészsír", "en": "lard"},
+   {"id": "fat.animal.duck-fat", "hu": "kacsazsír", "en": "duck fat"},
+   {"id": "fat.animal.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]},
+  {"id":"fat.spread","hu":"Kenhető zsiradék","en":"Spreads","units":[
+   {"id": "fat.spread.margarine", "hu": "margarin", "en": "margarine"},
+   {"id": "fat.spread.other", "hu": "egyéb (nincs a listán)", "en": "other (not listed)"}
+  ]}
+ ]},
+ {"id":"bev","hu":"Italok","en":"Drinks","role":"separate","subs":[
+  {"id":"bev.water","hu":"Víz","en":"Water","ex":{"hu": ["csapvíz", "ásványvíz"], "en": ["tap water", "mineral water"]}},
+  {"id":"bev.unsweetened","hu":"Cukrozatlan tea és kávé","en":"Unsweetened tea and coffee","ex":{"hu": ["tea", "gyógytea", "feketekávé"], "en": ["tea", "herbal tea", "black coffee"]}},
+  {"id":"bev.milk-based","hu":"Tejjel készült ital","en":"Milk-based drinks","ex":{"hu": ["tejeskávé", "kakaóital"], "en": ["milky coffee", "cocoa drink"]}},
+  {"id":"bev.plant","hu":"Növényi italok","en":"Plant-based drinks","ex":{"hu": ["zabital", "szójaital", "mandulaital", "rizsital", "kókusztej-ital"], "en": ["oat drink", "soy drink", "almond drink", "rice drink", "coconut drink"]}},
+  {"id":"bev.juice","hu":"100%-os gyümölcs- és zöldséglé","en":"100% fruit and vegetable juice","ex":{"hu": ["almalé", "narancslé", "zöldséglé", "kókuszvíz"], "en": ["apple juice", "orange juice", "vegetable juice", "coconut water"]}},
+  {"id":"bev.sweetened","hu":"Cukros vagy édesített ital","en":"Sweetened drinks","ex":{"hu": ["üdítő", "jegestea", "energiaital"], "en": ["soft drink", "iced tea", "energy drink"]}},
+  {"id":"bev.alcohol","hu":"Alkoholos ital","en":"Alcoholic drinks","ex":{"hu": ["sör", "bor", "rövidital"], "en": ["beer", "wine", "spirits"]}}
+ ]},
+ {"id":"spi","hu":"Fűszerek és ízesítők","en":"Herbs, spices and condiments","role":"separate","subs":[
+  {"id":"spi.herbs","hu":"Fűszernövények","en":"Herbs","ex":{"hu": ["petrezselyem", "bazsalikom", "oregánó"], "en": ["parsley", "basil", "oregano"]}},
+  {"id":"spi.dry-spices","hu":"Száraz fűszerek","en":"Dry spices","ex":{"hu": ["bors", "fahéj", "őrölt paprika", "só"], "en": ["pepper", "cinnamon", "ground paprika", "salt"]}},
+  {"id":"spi.sauces","hu":"Szószok és öntetek","en":"Sauces and dressings","ex":{"hu": ["ketchup", "mustár", "pesto", "salátaöntet"], "en": ["ketchup", "mustard", "pesto", "salad dressing"]}}
+ ]},
+ {"id":"swe","hu":"Édességek","en":"Sweets","role":"separate","subs":[
+  {"id":"swe.chocolate","hu":"Csokoládék és kakaó","en":"Chocolate and cocoa","ex":{"hu": ["étcsokoládé", "tejcsokoládé", "praliné", "kakaópor"], "en": ["dark chocolate", "milk chocolate", "praline", "cocoa powder"]}},
+  {"id":"swe.candy","hu":"Cukorkák","en":"Candy","ex":{"hu": ["gumicukor", "keménycukorka"], "en": ["gummy candy", "hard candy"]}},
+  {"id":"swe.pastry","hu":"Sütemények és kekszek","en":"Cakes and biscuits","ex":{"hu": ["piskóta", "torta", "keksz", "gofri"], "en": ["sponge cake", "cake", "biscuit", "waffle"]}},
+  {"id":"swe.dairy-dessert","hu":"Tejalapú desszertek","en":"Dairy desserts","ex":{"hu": ["puding", "fagylalt", "tejberizs"], "en": ["pudding", "ice cream", "rice pudding"]}},
+  {"id":"swe.fruit-sweets","hu":"Gyümölcsalapú édességek","en":"Fruit-based sweets","ex":{"hu": ["lekvár", "kandírozott gyümölcs"], "en": ["jam", "candied fruit"]}},
+  {"id":"swe.sugar-honey","hu":"Cukor és méz","en":"Sugar and honey","ex":{"hu": ["kristálycukor", "méz", "juharszirup"], "en": ["sugar", "honey", "maple syrup"]}}
+ ]},
+ {"id":"sna","hu":"Sós snackek","en":"Savoury snacks","role":"separate","subs":[
+  {"id":"sna.potato","hu":"Burgonyás snackek","en":"Potato snacks","ex":{"hu": ["burgonyachips"], "en": ["potato crisps"]}},
+  {"id":"sna.corn","hu":"Kukoricás snackek","en":"Maize snacks","ex":{"hu": ["tortillachips", "kukoricachips", "aromás vagy adalékos pattogatott kukorica"], "en": ["tortilla chips", "corn chips", "flavoured or additive-containing popcorn"]}},
+  {"id":"sna.other-grain","hu":"Egyéb gabonaalapú snackek","en":"Other grain snacks","ex":{"hu": ["ropi", "sós keksz"], "en": ["pretzel sticks", "salty crackers"]}},
+  {"id":"sna.seed","hu":"Magalapú snackek","en":"Seed and nut snacks","ex":{"hu": ["sózott, ízesített magkeverék"], "en": ["salted or flavoured nut mix"]}}
+ ]},
+ {"id":"dis","hu":"Összetett ételek","en":"Mixed dishes","role":"separate","subs":[
+  {"id":"dis.bread","hu":"Kenyéralapú","en":"Bread-based","ex":{"hu": ["szendvics", "pizza", "hamburger"], "en": ["sandwich", "pizza", "burger"]}},
+  {"id":"dis.pasta-grain","hu":"Tészta- vagy gabonaalapú","en":"Pasta or grain-based","ex":{"hu": ["lasagne", "rizottó", "paella"], "en": ["lasagne", "risotto", "paella"]}},
+  {"id":"dis.meat-fish","hu":"Húsos vagy halas","en":"Meat or fish-based","ex":{"hu": ["pörkölt", "rakott húsos étel", "halas egytálétel"], "en": ["stew", "meat bake", "fish one-pot"]}},
+  {"id":"dis.legume-veg","hu":"Hüvelyes- vagy zöldségalapú","en":"Legume or vegetable-based","ex":{"hu": ["babfőzelék", "zöldségragu", "adalékos humusz"], "en": ["bean stew", "vegetable ragout", "hummus with additives"]}},
+  {"id":"dis.soup","hu":"Levesek","en":"Soups","ex":{"hu": ["zöldségleves", "húsleves", "krémleves"], "en": ["vegetable soup", "meat soup", "cream soup"]}},
+  {"id":"dis.breakfast","hu":"Reggeli gabonakészítmények","en":"Breakfast cereals","ex":{"hu": ["müzli", "ízesített gabonapehely"], "en": ["muesli", "flavoured cereal flakes"]}}
+ ]},
+ {"id":"sup","hu":"Étrend-kiegészítők","en":"Supplements","role":"separate","subs":[
+  {"id":"sup.vitamin","hu":"Vitaminok","en":"Vitamins","ex":{"hu": ["D-vitamin", "multivitamin"], "en": ["vitamin D", "multivitamin"]}},
+  {"id":"sup.mineral","hu":"Ásványi anyagok","en":"Minerals","ex":{"hu": ["magnézium", "vas", "kalcium"], "en": ["magnesium", "iron", "calcium"]}},
+  {"id":"sup.protein","hu":"Fehérje- és aminosav-készítmények","en":"Protein and amino acid products","ex":{"hu": ["fehérjepor", "aminosav-készítmény"], "en": ["protein powder", "amino acid product"]}},
+  {"id":"sup.other","hu":"Egyéb készítmények","en":"Other supplements","ex":{"hu": ["kreatin", "probiotikum"], "en": ["creatine", "probiotic"]}}
+ ]}
+]}

@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '36 · 11 Nov 2026';
+const VERSION = '37 · 11 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -251,6 +251,7 @@ const S = {
 let CAT = null, CIQ = [], CIQ_BY_ID = new Map();   // CIQ_BY_ID holds the CIQUAL ('c:') and the USDA ('usda:') foods; 'u:' is already taken by foods you create
 let USDA = [], USDA_ERR = '';
 let DMBIO = [], DM_ERR = '';   // dmBio products sold by dm Hungary (dmbio.json); ids 'dm:<dm article id>'
+let VARIETY = null, VARIETY_ERR = '';   // the list of plant and animal units of the Variety feature (variety_units.json, version 37); see "Variety" below
 let KEYS = [], UNITS = [], IDX = {}, NUT_N = 0;
 let saveTimer = null;
 
@@ -2867,7 +2868,7 @@ function viewData() {
       <p class="small" style="margin:8px 0">Reference intakes (Nutrients tab): EFSA (European Food Safety Authority), Dietary Reference Values for nutrients, Summary report, EFSA supporting publication 2017:e15121 (reproduction authorised with acknowledgement of the source), and the EFSA opinions of 2019 on sodium and chloride. Values for adults aged 18 and over. Not medical advice.</p>
       <p class="small" style="margin:8px 0">Packaged products (online): <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a>, a community database, ODbL licence. Label data can be incomplete.</p>
       <p class="small muted" style="margin:8px 0">Barcode reader for browsers without a built-in one: ZXing-js, Apache 2.0 licence (ZXING-LICENSE.txt).</p>
-      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}</p></div>
+      <p class="small muted" style="margin:8px 0">CIQUAL lists French market averages, USDA values describe the US market. This app is an information tool, not medical advice. Database: ${CAT ? CAT.foods.length : 0} CIQUAL foods, ${USDA.length} USDA foods, ${DMBIO.length} dmBio products, ${CAT ? CAT.nutrients.length : 0} nutrients.${USDA_ERR ? ` The USDA data could not be loaded (${esc(USDA_ERR)}).` : ''}${DM_ERR ? ` The dmBio data could not be loaded (${esc(DM_ERR)}).` : ''}${VARIETY ? ` Variety list: ${VARIETY.counts.unit} units in ${VARIETY.counts.main} groups.` : VARIETY_ERR ? ` The variety list could not be loaded (${esc(VARIETY_ERR)}).` : ''}</p></div>
   </div>`;
 }
 
@@ -4795,6 +4796,105 @@ function persistState() {
   }).catch(() => { el.textContent = 'Could not check the storage status.'; });
 }
 
+/* ================= Variety: the list of plant and animal units (version 37, step L1 of the Variety plan) =================
+   variety_units.json is the fixed list the Variety feature counts with: main groups (17) > subgroups (75) > units (164, plus one "other (not listed)" in every subgroup of the base groups).
+   A main group has role "base" (counted: veg fru gra tub leg nut mea fis egg dai fat; subgroups with units) or "separate" (bev spi swe sna dis sup: subgroups only, no units, examples in ex).
+   Nothing in the app uses the list yet: it is loaded and checked at start, so a damaged or changed file is noticed at once, and the app starts without it if it cannot be read (VARIETY_ERR says why).
+   The ids are final keys: never renamed, a unit that must go gets deprecated: true and replacedBy. The names and aliases (a) are only for suggestions later; a suggestion never changes a
+   classification without approval. The list has a version; a file with a higher one says "needs a newer version of the app", it is never guessed. */
+const VARIETY_V = 1;   // the file version this app can read
+const varietyKey = (s) => norm(s).replace(/\s+/g, ' ').trim();   // accent-free, lower case, one space: how names and aliases are compared
+const VAR_MAIN_ID = /^[a-z]{3,6}$/, VAR_PART_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+function varietyBuild(raw) {   // pure: { data, errors, newer }; data is null when there is any error (nothing is repaired or guessed)
+  const errors = [];
+  const bad = (m) => { if (errors.length < 50) errors.push(m); };
+  const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+  const text = (x) => typeof x === 'string' && x.trim() !== '';
+  if (!isObj(raw)) return { data: null, errors: ['the file is not a Nutrilog variety list'] };
+  if (raw.app !== 'tapnaplo-variety') return { data: null, errors: ['the file is not a Nutrilog variety list'] };
+  if (!Number.isInteger(raw.version) || raw.version < 1) return { data: null, errors: ['the version number is missing'] };
+  if (raw.version > VARIETY_V) return { data: null, errors: ['it needs a newer version of the app'], newer: true };
+  if (!Array.isArray(raw.main) || !raw.main.length) return { data: null, errors: ['the list of main groups is missing'] };
+  const byId = new Map(), mains = [], subs = [], units = [], alias = new Map(), clash = new Set();
+  const put = (n) => { if (byId.has(n.id)) bad(`the id ${n.id} is used twice`); else byId.set(n.id, n); };
+  const names = (o, id) => {
+    if (!text(o.hu)) bad(`${id} has no Hungarian name`);
+    if (!text(o.en)) bad(`${id} has no English name`);
+  };
+  for (const m of raw.main) {
+    if (!isObj(m) || typeof m.id !== 'string' || !VAR_MAIN_ID.test(m.id)) { bad('a main group has no valid id'); continue; }
+    names(m, m.id);
+    if (m.role !== 'base' && m.role !== 'separate') bad(`${m.id} has no role (base or separate)`);
+    const mn = { id: m.id, level: 'main', hu: m.hu, en: m.en, role: m.role, main: m.id, sub: null, subs: [] };
+    put(mn); mains.push(mn);
+    if (!Array.isArray(m.subs) || !m.subs.length) { bad(`${m.id} has no subgroups`); continue; }
+    for (const s of m.subs) {
+      const sid = isObj(s) && typeof s.id === 'string' ? s.id : '';
+      const sp = sid.split('.');
+      if (sp.length !== 2 || sp[0] !== m.id || !VAR_PART_ID.test(sp[1])) { bad(`the subgroup id ${sid || '(missing)'} does not belong under ${m.id}`); continue; }
+      names(s, sid);
+      const sn = { id: sid, level: 'sub', hu: s.hu, en: s.en, role: m.role, main: m.id, sub: sid, units: [], ex: isObj(s.ex) ? s.ex : null };
+      put(sn); subs.push(sn); mn.subs.push(sn);
+      if (m.role === 'base') {
+        if (!Array.isArray(s.units) || !s.units.length) { bad(`${sid} has no units`); continue; }
+        if (!s.units.some((u) => isObj(u) && u.id === sid + '.other')) bad(`${sid} has no "other (not listed)" unit (${sid}.other)`);
+      } else if (s.units !== undefined) bad(`${sid} is in a separate group, so it has no units`);
+      for (const u of (m.role === 'base' && Array.isArray(s.units) ? s.units : [])) {
+        const uid = isObj(u) && typeof u.id === 'string' ? u.id : '';
+        const up = uid.split('.');
+        if (up.length !== 3 || up[0] !== m.id || up[1] !== sp[1] || !VAR_PART_ID.test(up[2])) { bad(`the unit id ${uid || '(missing)'} does not belong under ${sid}`); continue; }
+        names(u, uid);
+        if (u.a !== undefined && !(Array.isArray(u.a) && u.a.every(text))) bad(`${uid} has an alias list that is not a list of names`);
+        if (u.deprecated !== undefined && typeof u.deprecated !== 'boolean') bad(`${uid}: deprecated must be true or false`);
+        const un = { id: uid, level: 'unit', hu: u.hu, en: u.en, role: 'base', main: m.id, sub: sid, other: up[2] === 'other', a: Array.isArray(u.a) ? u.a.filter(text) : [], deprecated: u.deprecated === true, replacedBy: typeof u.replacedBy === 'string' ? u.replacedBy : null, flags: Array.isArray(u.flags) ? u.flags : [] };
+        put(un); units.push(un); sn.units.push(un);
+      }
+    }
+  }
+  /* what refers to other ids: replacedBy, the flags, and the names (one name or alias must point to one unit only) */
+  const flags = new Map();
+  if (raw.flags !== undefined && !Array.isArray(raw.flags)) bad('the list of flags is not a list');
+  for (const f of Array.isArray(raw.flags) ? raw.flags : []) {
+    if (!isObj(f) || typeof f.id !== 'string' || !VAR_PART_ID.test(f.id) || flags.has(f.id)) { bad('a flag has no valid or no unique id'); continue; }
+    names(f, 'the flag ' + f.id);
+    if (!Array.isArray(f.applies) || !f.applies.length || f.applies.some((x) => !mains.some((m) => m.id === x))) bad(`the flag ${f.id} applies to a main group that does not exist`);
+    flags.set(f.id, { id: f.id, hu: f.hu, en: f.en, applies: Array.isArray(f.applies) ? f.applies.slice() : [] });
+  }
+  for (const u of units) {
+    if (u.deprecated) { const to = u.replacedBy && byId.get(u.replacedBy); if (!to || to.level !== 'unit') bad(`${u.id} is deprecated but replacedBy does not name a unit`); }
+    else if (u.replacedBy) bad(`${u.id} has replacedBy but is not deprecated`);
+    for (const fl of u.flags) { const fd = flags.get(fl); if (!fd) bad(`${u.id} has the unknown flag ${fl}`); else if (!fd.applies.includes(u.main)) bad(`${u.id} has the flag ${fl}, which does not apply to ${u.main}`); }
+    if (u.other) continue;
+    for (const t of [u.hu, u.en, ...u.a]) {
+      const k = varietyKey(t);
+      if (!k) continue;
+      const have = alias.get(k);
+      if (have && have !== u.id) { const pair = [have, u.id].sort().join(' and '); if (!clash.has(pair + k)) { clash.add(pair + k); bad(`the name "${k}" points to both ${pair}`); } } else alias.set(k, u.id);
+    }
+  }
+  if (errors.length) return { data: null, errors };
+  const active = units.filter((u) => !u.deprecated && !u.other);
+  return {
+    errors,
+    data: {
+      version: raw.version, updated: typeof raw.updated === 'string' ? raw.updated : '', mains, subs, units, byId, alias, flags,
+      counts: { main: mains.length, base: mains.filter((m) => m.role === 'base').length, separate: mains.filter((m) => m.role === 'separate').length, sub: subs.length, unit: active.length, other: units.filter((u) => u.other).length, deprecated: units.filter((u) => u.deprecated).length },
+    },
+  };
+}
+const varietyNode = (id) => (VARIETY && typeof id === 'string' ? VARIETY.byId.get(id) || null : null);
+async function loadVariety() {   // never throws: the Variety feature is optional, the app starts without it
+  try {
+    const r = await fetch('variety_units.json').catch(() => null);
+    if (!r || !r.ok) throw new Error(r && r.status ? 'HTTP ' + r.status : 'no connection');
+    let raw;
+    try { raw = await r.json(); } catch { throw new Error('the file is not valid JSON'); }
+    const out = varietyBuild(raw);
+    if (out.errors.length) throw new Error(out.errors[0] + (out.errors.length > 1 ? ` (and ${out.errors.length - 1} more)` : ''));
+    VARIETY = out.data; VARIETY_ERR = '';
+  } catch (err) { VARIETY = null; VARIETY_ERR = (err && err.message) || 'unknown error'; }
+}
+
 /* ================= start ================= */
 async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy asks only for the tables its foods come from (usda.json is 0.9 MB, dmbio.json 0.1 MB gzipped)
   const [r, ru, rd] = await Promise.all([fetch('ciqual.json'), need.usda ? fetch('usda.json').catch((e) => e) : null, need.dm ? fetch('dmbio.json').catch((e) => e) : null]);   // the files load at the same time
@@ -4838,7 +4938,7 @@ async function loadCatalog(need = { usda: true, dm: true }) {   // a shared copy
 async function init() {
   if (VIEW) { await initViewer(); return; }   // a shared copy: the storage of this browser is not opened, Sync does not start
   try {
-    await Promise.all([Store.open(), loadCatalog()]);
+    await Promise.all([Store.open(), loadCatalog(), loadVariety()]);   // loadVariety never throws: the Variety list is optional
     const [log, foods, meta, sy, health, wlog] = await Promise.all([Store.get('log'), Store.get('foods'), Store.get('meta'), Store.get('sync'), Store.get('health'), Store.get('wlog')]);
     if (Array.isArray(log)) S.log = log;
     if (foods && typeof foods === 'object') S.foods = foods;
@@ -4869,7 +4969,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { varietyBuild, varietyNode, varietyKey, VARIETY_V, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();
