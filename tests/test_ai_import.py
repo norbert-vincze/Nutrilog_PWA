@@ -3,7 +3,7 @@
 Covers: reading (clean JSON, fences and prose around it, curly quotes, BOM, decimal comma, numbers as text), every error and every warning,
 the review editor with the ~ marks, several foods in one answer, duplicates (update / save as new / cancel, with Undo), what the diary shows after an update,
 the ~ on the Nutrients tab, the CSV columns, backup and restore, sync transport (fake GitHub), the clipboard (allowed and refused), the prompt text
-(v3.1: it is tools/ai_prompt.md as it is; its keys, units, CIQUAL codes, example and confidence words must agree with the app), no network and no stored answer, font sizes, touch targets, contrast, offline.
+(v3.2: it is tools/ai_prompt.md as it is; its keys, units, CIQUAL codes, example and confidence words must agree with the app), no network and no stored answer, font sizes, touch targets, contrast, offline.
 The real clipboard of an iPhone is not testable here."""
 import asyncio, csv, io, json, os, pathlib, re, sys
 from playwright.async_api import async_playwright
@@ -259,7 +259,7 @@ async def main():
         e, w = await warns_of(doc(food(barcode='')))
         check('an empty barcode is fine', e == [] and w == [], (e, w))
 
-        # =========================================================== 4 the prompt is the doc (v3.1) and agrees with the importer
+        # =========================================================== 4 the prompt is the doc (v3.2) and agrees with the importer
         prompt = await T('window.__tapnaplo.aiPrompt()')
         keys = await T('window.__tapnaplo.KEYS')
         ciq = json.load(open(ROOT / 'ciqual.json', encoding='utf-8'))
@@ -267,7 +267,7 @@ async def main():
         check('KEYS in the app are the keys of ciqual.json', keys == [n['key'] for n in ciq['nutrients']], len(keys))
         md = (ROOT / 'tools' / 'ai_prompt.md').read_text(encoding='utf-8').replace('\r\n', '\n')
         check('prompt: "Copy AI prompt" gives the text of tools/ai_prompt.md as it is', prompt == md.rstrip() + '\n', (len(prompt), len(md)))
-        check('prompt: the title is v3.1', prompt.split('\n')[0] == '# Nutrilog tételpontosító (v3.1, végleges)', prompt.split('\n')[0])
+        check('prompt: the title is v3.2', prompt.split('\n')[0] == '# Nutrilog tételpontosító (v3.2, végleges)', prompt.split('\n')[0])
         heads = re.findall(r'^## (\d+)\. ', prompt, re.M)
         check('prompt: the sections 0 to 10 are all there, in order', heads == [str(i) for i in range(11)], heads)
 
@@ -290,14 +290,28 @@ async def main():
                 for k in pending: got[k] = default
             return got, dup
         got, dup = key_bullets(prompt)
-        left_out = {'protein_crude_n_x_6_25', 'caffeine'}   # caffeine (version 35) is in the app and its tables, but not in prompt v3.1 yet; a caffeine value in an answer is still accepted (it is a key of the app)
-        check('prompt: the 63 keys of section 7 are the keys of the app, all but protein_crude_n_x_6_25 and caffeine, each once', set(got) == set(keys) - left_out and dup == [] and len(got) == 63, (set(keys) - left_out ^ set(got), dup, len(got)))
+        left_out = {'protein_crude_n_x_6_25'}   # caffeine (version 35) is in the prompt since v3.2 (version 36); only the crude protein key is left out on purpose
+        check('prompt: the 64 keys of section 7 are the keys of the app, all but protein_crude_n_x_6_25, each once', set(got) == set(keys) - left_out and dup == [] and len(got) == 64, (set(keys) - left_out ^ set(got), dup, len(got)))
         wrong = [(k, got[k], unit_of[k]) for k in got if got[k] != unit_of.get(k)]
         check('prompt: every key of section 7 has the unit of the app (UNITS)', wrong == [], wrong[:5])
         codes = sorted({c for line in prompt.split('## 6. ', 1)[1].split('\n## 7.', 1)[0].split('\n') if line.startswith('- ') for c in re.findall(r'\b(\d{4,5})\b', line)})
         ciq_codes = {str(f['c']) for f in ciq['foods']}
         check('prompt: the 74 CIQUAL codes of section 6 all exist in ciqual.json', len(codes) == 74 and set(codes) <= ciq_codes, (len(codes), sorted(set(codes) - ciq_codes)))
         check('prompt: the scaling step 4.3.f is in the text', 'f. **Skálázás a címke energiájához' in prompt and 'A `water` kulcsot ilyenkor ne becsüld' in prompt)
+        # v3.2 (version 36): caffeine never estimated, alcohol from % vol, density rules for liquids
+        sec5 = prompt.split('## 5. ', 1)[1].split('\n## 6.', 1)[0]
+        sec3 = prompt.split('## 3. ', 1)[1].split('\n## 4.', 1)[0]
+        sec2 = prompt.split('## 2. ', 1)[1].split('\n## 3.', 1)[0]
+        sec7 = prompt.split('## 7. Tápanyagkulcsok\n', 1)[1].split('\n## 8.', 1)[0]
+        check('prompt v3.2: caffeine is never estimated (section 5) and never in est (section 9, 10)', '**A `caffeine` kulcsot soha nem becsülöd.**' in sec5 and 'és a `caffeine` sem.' in prompt and 'A `caffeine` nincs az `est`-ben' in prompt)
+        check('prompt v3.2: caffeine in section 7 is label-only: no inference from ingredients, "caffeine-free" is not zero', 'Összetevőből soha nem következtetsz rá' in sec7 and 'A „koffeinmentes” felirat önmagában nem nulla' in sec7 and 'g → mg × 1000' in sec2)
+        check('prompt v3.2: alcohol from % vol is x 0.789, only for a 100 ml basis', '% vol × 0,789' in sec2 and '100 g alapnál nem váltod át' in sec2)
+        check('prompt v3.2: 100 ml labels keep their values, 100 g labels of non-water liquids get no 100 ml row without a known density',
+              'változtatás nélkül' in sec3 and 'nincs `100 ml` sor 100 grammal' in sec3 and '100 × sűrűség' in sec3)
+        dens = {'víz 1,00', 'tehéntej 1,03', 'napraforgóolaj 0,92', 'repceolaj 0,92', 'olívaolaj 0,91', 'méz 1,42', 'háztartási ecet (5–10% ecetsav) 1,01'}
+        check('prompt v3.2: the density reference values are in section 3 (and no coconut oil value)', all(d in sec3 for d in dens) and 'kókuszolaj és a kókuszzsír 24 °C alatt szilárd' in sec3, [d for d in dens if d not in sec3])
+        cf = await parse(doc(food(est=[], confidence='none', n={'kcal': 45, 'carbohydrate': 11, 'caffeine': 32})))
+        check('prompt v3.2: an answer with a caffeine label value (not in est) is accepted without a warning', cf['errors'] == [] and len(cf['foods']) == 1 and cf['foods'][0]['warnings'] == [] and cf['foods'][0]['food']['n'].get('caffeine') == 32, (cf['errors'], [x['warnings'] for x in cf['foods']]))
         m = re.search(r'```json\n(.*?)\n```', prompt, re.S)
         ex = json.loads(m.group(1)) if m else None
         if ex is not None:
