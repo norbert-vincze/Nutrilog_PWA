@@ -32,7 +32,7 @@ function normHm(v) {   // when leaving the field or saving: 8:30 and 830 become 
 const prec = (v) => Number(Number(v).toPrecision(6));
 const num = (s) => parseFloat(String(s).replace(',', '.'));        // accepts 1.5 and 1,5
 const TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);   // phone or tablet
-const VERSION = '39 · 12 Nov 2026';
+const VERSION = '40 · 21 Nov 2026';
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /* Viewer mode (version 23). A link  …/Nutrilog_PWA/#share=z.<data>  opens a read-only copy of some days of a diary (see "share" below).
@@ -139,8 +139,15 @@ const Store = (() => {
 })();
 
 /* ================= state ================= */
-const MEAL_COUNT = 6;           // how many "Meal N" slots the diary shows
-const MEALS = Array.from({ length: MEAL_COUNT }, (_, i) => ({ id: 'm' + (i + 1), name: 'Meal ' + (i + 1) }));
+/* Meals (version 40): "Meal 1" … "Meal 6" are always shown in the Diary. A seventh, eighth … Meal is added with the "Add Meal N" button under the last one:
+   nothing is stored for an empty Meal, an entry just carries its id ('m7'), so backup, Sync, CSV and the share link needed no new field. MEAL_MAX is the highest number
+   (the share link accepts ids of one or two digits). An id that is not 'm1' … 'mMEAL_MAX' (old or damaged data) is not a Meal of this app: mealNum() says 0. */
+const MEAL_COUNT = 6;           // the slots that are always shown
+const MEAL_MAX = 20;            // the highest Meal number ("Add Meal N" stops here)
+const mealNum = (id) => { const m = typeof id === 'string' ? /^m([1-9]\d?)$/.exec(id) : null, n = m ? +m[1] : 0; return n >= 1 && n <= MEAL_MAX ? n : 0; };   // 1…MEAL_MAX, or 0
+const mealNameOf = (id) => (mealNum(id) ? 'Meal ' + mealNum(id) : '');
+const mealsShown = (list) => list.reduce((n, e) => Math.max(n, mealNum(e.m)), MEAL_COUNT);   // how many Meals a list of entries needs: 6, or the highest Meal that has an entry
+const mealSlots = (n) => Array.from({ length: n }, (_, i) => ({ id: 'm' + (i + 1), name: 'Meal ' + (i + 1) }));
 /* meta: last = last meal/amount per food, portions = your own portion sizes, nova = NOVA group you chose for CIQUAL and USDA foods (food id -> 1..4),
    water = the water you drank on a day, in whole millilitres ('YYYY-MM-DD' -> 1..WATER_MAX_ML; a day without a key has nothing logged),
    ref = the reference intake profile (see cleanRef), null when none is set */
@@ -1382,7 +1389,8 @@ function viewLog() {
   const lostD = DM_ERR ? S.log.filter((e) => e.d === S.day && e.f.startsWith('dm:')).length : 0;
   const dmWarn = lostD ? `<div class="banner">The dmBio food data could not be loaded (${esc(DM_ERR)}), so ${lostD} ${lostD === 1 ? 'entry is' : 'entries are'} hidden on this day. Check your internet connection and reload the app.</div>` : '';
   const usdaWarn = lostU ? `<div class="banner">The USDA food data could not be loaded (${esc(USDA_ERR)}), so ${lostU} ${lostU === 1 ? 'entry is' : 'entries are'} hidden on this day. Check your internet connection and reload the app.</div>` : '';
-  const meals = MEALS.map((m) => {
+  const shownMeals = mealsShown(es), nextMeal = shownMeals + 1;   // Meal 1 - 6, or up to the highest Meal that has an entry on this day
+  const meals = mealSlots(shownMeals).map((m) => {
     const list = es.filter((e) => e.m === m.id).sort(byTime);
     let mk = 0, mkn = 0;
     for (const e of list) { const fd = getFood(e.f), v = vecOf(fd).lo[0]; if (!Number.isNaN(v)) { mk += v * e.a / fd.basis.qty; mkn++; } }
@@ -1428,7 +1436,7 @@ function viewLog() {
     </div>
     ${usdaWarn}${dmWarn}${viewWarn}
     ${estE ? '<div class="banner">~ means the energy is an estimate, not a label value: calculated from protein, carbohydrate and fat (generic food data, Atwater factors), or marked as an estimate in a food you made.</div>' : ''}
-    ${nova}<div id="water">${waterHtml()}</div>${empty}${meals}`;
+    ${nova}<div id="water">${waterHtml()}</div>${empty}${meals}${VIEW || nextMeal > MEAL_MAX ? '' : `<button class="add-meal" data-act="add" data-meal="m${nextMeal}">${IC.plus}<span>Add Meal ${nextMeal}</span></button>`}`;
 }
 
 /* ================= Reference intake (version 26) ================= */
@@ -2322,13 +2330,20 @@ function rpLegendHtml(items, cls = '') {   // items: [swatch, text] or a falsy v
 }
 function rpMealAgg(P) {   // per meal: energy lower / upper value over the period, items, items with energy data, estimates, the days it has entries
   const mk = (id, name) => ({ id, name, lo: 0, hi: 0, n: 0, cnt: 0, est: 0, days: new Set() });
-  const rows = MEALS.map((m) => mk(m.id, m.name)), other = mk('', 'No meal'), byId = new Map(rows.map((o) => [o.id, o]));
+  const rows = mealSlots(MEAL_COUNT).map((m) => mk(m.id, m.name)), other = mk('', 'No meal'), extra = new Map();   // Meal 1 - 6 are always rows; Meal 7 and up (version 40) only when the period has an entry in them
+  const rowOf = (id) => {
+    const n = mealNum(id);
+    if (!n) return other;   // an entry whose meal is not Meal 1…MEAL_MAX (old data) is not lost: it is "No meal"
+    if (n <= MEAL_COUNT) return rows[n - 1];
+    if (!extra.has(n)) extra.set(n, mk('m' + n, 'Meal ' + n));
+    return extra.get(n);
+  };
   for (const d of P.days) for (const e of P.by.get(d)) {
-    const f = getFood(e.f), v = vecOf(f), o = byId.get(e.m) || other;   // an entry whose meal is not Meal 1…N (old data) is not lost: it is "No meal"
+    const f = getFood(e.f), v = vecOf(f), o = rowOf(e.m);
     o.n++; o.days.add(d);
     if (!Number.isNaN(v.lo[0])) { const k = e.a / f.basis.qty; o.lo += v.lo[0] * k; o.hi += v.hi[0] * k; o.cnt++; if (isEst(f, 0, v)) o.est++; }
   }
-  return other.n ? [...rows, other] : rows;
+  return [...rows, ...[...extra.entries()].sort((a, b) => a[0] - b[0]).map((x) => x[1]), ...(other.n ? [other] : [])];
 }
 function rpMealRows(P) {
   const nd = P.nd, rows = rpMealAgg(P), tot = rows.reduce((s, o) => s + o.lo, 0), pc = sharePct(rows.map((o) => o.lo), tot);
@@ -3261,7 +3276,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     <div class="chips" id="chips">${chips.map(([l, v]) => `<button class="chip-btn" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     ${unitG ? '<button class="chip-btn accent" id="saveportion" style="justify-self:start">+ Save as portion</button>' : ''}
     <div class="grid2">
-      <label class="f">Meal<select id="meal">${MEALS.map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
+      <label class="f">Meal<select id="meal">${mealSlots(Math.min(MEAL_MAX, Math.max(mealsShown(entriesOf(entry ? entry.d : S.day)), mealNum(entry ? entry.m : meal)) + 1)).map((m) => `<option value="${m.id}" ${m.id === (entry ? entry.m : meal) ? 'selected' : ''}>${m.name}</option>`).join('')}</select></label>
       <label class="f">Time (24 h)<input type="text" id="tm" inputmode="numeric" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="5" placeholder="HH:MM" value="${startTime}"></label>
     </div>
     <p class="note field-err" id="tmerr" role="alert" hidden>Enter a time in 24-hour form, for example 13:45.</p>
@@ -3306,7 +3321,7 @@ function openAmount({ food, entry, meal, afterAdd }) {
     if (Number.isNaN(a)) { amterr.hidden = false; amt.setAttribute('aria-invalid', 'true'); amt.focus(); return; }
     if (badTime) { tmerr.scrollIntoView({ block: 'center' }); return; }
     const m = $('#meal', sh.el).value;
-    const mealName = (MEALS.find((x) => x.id === m) || {}).name;
+    const mealName = mealNameOf(m);
     if (entry) { entry.a = a; entry.m = m; entry.tm = tmv; } else S.log.push({ id: uid(), d: S.day, m, f: food.id, a, t: Date.now(), tm: tmv });
     S.meta.last[food.id] = a;
     save(); sh.close(); render();
@@ -4209,7 +4224,7 @@ function exportEntries() {
   const head = ['date', 'time', 'meal', 'food_id', 'food', 'brand', 'source', 'amount', 'unit', 'nova', 'variety_unit', 'variety_source', 'variety_flags', 'energy_estimated', 'estimate_confidence', 'est_keys', ...KEYS.map((_, i) => ucol(i)), ...mi.map((i) => ucol(i) + '__max'), ...ei.map((i) => ucol(i) + '__est')];
   const lines = [csvLine(head)];
   for (const { e, f, lo, hi, est } of data) {
-    lines.push(csvLine([e.d, timeOf(e), (MEALS.find((m) => m.id === e.m) || {}).name, f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, unitOf(f), novaOf(f) || '', ...varietyCsv(f), energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
+    lines.push(csvLine([e.d, timeOf(e), mealNameOf(e.m), f.id, f.name, f.brand || (f.src === 'dmbio' ? 'dmBio' : ''), f.src, e.a, unitOf(f), novaOf(f) || '', ...varietyCsv(f), energyEstimated(f) ? 1 : 0, (f.q && CONF[f.q]) || '', KEYS.filter((_, i) => est[i]).join(';'), ...lo, ...mi.map((i) => hi[i]), ...ei.map((i) => est[i])]));
   }
   download(`nutrilog-entries-${ymd(new Date())}.csv`, BOM + lines.join('\n'), 'text/csv;charset=utf-8');
 }
@@ -4827,10 +4842,10 @@ async function refreshApp() {
   } catch { /* reload anyway */ }
   location.reload();
 }
-/* The meal of the most recent entry on the day shown; Meal 1 when the day is still empty. */
+/* The meal of the most recent entry on the day shown (also Meal 7 and up, version 40); Meal 1 when the day is still empty. */
 function defaultMeal() {
   const last = S.log.filter((e) => e.d === S.day).sort((a, b) => b.t - a.t)[0];
-  return last && MEALS.some((m) => m.id === last.m) ? last.m : MEALS[0].id;
+  return last && mealNum(last.m) ? last.m : 'm1';
 }
 function persistState() {
   const el = $('#persist-state');
@@ -5163,7 +5178,7 @@ function syncStart() {
   window.addEventListener('online', () => syncRun('online'));
   setInterval(() => { if (document.visibilityState === 'visible') syncRun('timer'); }, 300000);
 }
-window.__tapnaplo = { varietyMapBuild, varietyMapOf, VARIETY_MAP_V, get VMAPS() { return VMAPS; }, get VMAP_ERR() { return VMAP_ERR; }, varietyBuild, varietyNode, varietyKey, VARIETY_V, varietyClean, varietyFix, varietyOf, varietyCsv, varietyUnknownFoods, VAR_VT, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
+window.__tapnaplo = { mealNum, mealNameOf, mealsShown, MEAL_COUNT, MEAL_MAX, varietyMapBuild, varietyMapOf, VARIETY_MAP_V, get VMAPS() { return VMAPS; }, get VMAP_ERR() { return VMAP_ERR; }, varietyBuild, varietyNode, varietyKey, VARIETY_V, varietyClean, varietyFix, varietyOf, varietyCsv, varietyUnknownFoods, VAR_VT, get VARIETY() { return VARIETY; }, get VARIETY_ERR() { return VARIETY_ERR; }, rpMealAgg, rpMealRows, rpWeekdayRows, rpNovaBars, rpFoodsMake, rpMark, novaParts, RP_TOP_SOURCES, get RP_NOW() { return RP_NOW; }, rpBuckets, rpTrendBars, rpNiceMax, rpMeasureInfo, rpBarVal, curMeasure, get RP_TREND() { return RP_TREND; }, rpTimeStats, get RP_HOURS() { return RP_HOURS; }, SY, syncRun, syncStamp, syncRecords, canon, S, HU: DICT, vecOf, totalsFor, searchCiqual, searchUsda, getFood, offToFood, fmt, novaOf, setNova, novaStats, sharePct, get KEYS() { return KEYS; }, get IDX() { return IDX; }, get USDA() { return USDA; }, get DMBIO() { return DMBIO; }, searchDm, isEst, CONF, trackedEst, render, save, parseAiImport, aiPrompt, findDuplicate, estSet, AI_IMPORT_VERSION, parseFoodsFile, planFoodsImport, estShare, aiConf, isMl, unitOf, VIEW, shareSnapshot, shareLink, shareParse, shareCheck, b64u, waterOf, setWater, cleanWater, WATER_MAX_ML, waterRecs, waterLegacy, waterRange, waterDayList, cleanDrink, cleanWlog, rpWaterTimeStats, get RP_WHOURS() { return RP_WHOURS; }, cleanHealth, cleanNote, healthSorted, healthPreview, charCount, HEALTH_MAX, HEALTH_PREVIEW, HEALTH_PAGE, HEALTH_DRAFT_KEY, validRec, cleanRef, DRV, refCompare, refProfileText, KCAL_PER_MJ, omegaRatio, OMEGA6, OMEGA3, RP, rpRange, rpStats, rpFull, rpStep, rpNum, rpCompare, covText };
 init();
 
 })();

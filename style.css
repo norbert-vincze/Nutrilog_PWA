@@ -584,3 +584,7 @@ details.water-list[open] > summary::after { content: "−"; }
   #rp-whours .rp-table th, #rp-whours .rp-table td { padding: 8px 2px; }
   #rp-whours .rp-table thead th { font-size: .7rem; }
 }
+
+/* version 40: the "Add Meal N" button under the last Meal of the Diary (Meal 7, 8 ... one at a time). A calm grey bar like the other cards, 52 px high. */
+.add-meal { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; margin-top: 26px; border: 0; border-radius: 16px; background: var(--surface); color: var(--ink); font-weight: 680; }
+.add-meal svg { width: 18px; height: 18px; }
